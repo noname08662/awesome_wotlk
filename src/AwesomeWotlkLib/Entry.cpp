@@ -1,4 +1,5 @@
 #include "BugFixes.h"
+#include "D3D.h"
 #include "CommandLine.h"
 #include "NamePlates.h"
 #include "Misc.h"
@@ -8,9 +9,9 @@
 #include "Fonts.h"
 #include "Spell.h"
 #include "UnitAPI.h"
+#include "VoiceChat.h"
 #include <Windows.h>
 #include <Detours/detours.h>
-#include "VoiceChat.h"
 
 
 static int lua_debugbreak(lua_State* L)
@@ -48,6 +49,7 @@ static void OnAttach()
     // Initialize modules
     DetourTransactionBegin();
     Hooks::initialize();
+    D3D::initialize();
     BugFixes::initialize();
     CommandLine::initialize();
     Inventory::initialize();
