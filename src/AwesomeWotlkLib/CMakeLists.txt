@@ -5,6 +5,7 @@ add_library(
 		"Entry.cpp"
 
 		GameClient.h
+		"D3D.h" "D3D.cpp"
         "NamePlates.h" "NamePlates.cpp"
 		"Hooks.h" "Hooks.cpp"
 		"Misc.h" "Misc.cpp"
