@@ -1,12 +1,10 @@
 #include "GameClient.h"
+#include "D3D.h"
 #include "Fonts.h"
 #include <Detours/detours.h>
 #include <map>
 #include <iostream>
 #include <set>
-
-#include <d3d9.h>
-#include <d3dcompiler.h>
 
 #undef min
 #undef max
@@ -20,9 +18,6 @@
 #include FT_BBOX_H
 #include FT_GLYPH_H
 
-#pragma comment(lib, "d3d9.lib")
-#pragma comment(lib, "d3dcompiler.lib")
-
 
 // ----  if you want overkill quality, try raising these
 #define SDF_SAMPLER_SLOT 13
@@ -34,11 +29,11 @@
 // ----
 
 
-#define g_FontPixelShader (*(FontShaderData**)0x00C7D2CC)
-#define g_FontVertexShader (*(FontShaderData**)0x00C7D2D0)
+#define g_FontPixelShader (*reinterpret_cast<D3D::ShaderData**>(0x00C7D2CC))
+#define g_FontVertexShader (*reinterpret_cast<D3D::ShaderData**>(0x00C7D2D0))
 
-static IDirect3DPixelShader9* s_cachedPSShader = nullptr;
-static IDirect3DVertexShader9* s_cachedVSShader = nullptr;
+static IDirect3DPixelShader9* s_cachedPS = nullptr;
+static IDirect3DVertexShader9* s_cachedVS = nullptr;
 
 static FT_Library g_realFtLibrary = nullptr;
 
@@ -62,77 +57,8 @@ static int CVarHandler_MSDFMode(Console::CVar* cvar, const char*, const char* va
     return 1;
 }
 
+
 // these structs are NOT to be trusted, rough LLM estimation
-struct FontShaderData
-{
-    IUnknown* base_interface;                       // 0x00
-    DWORD unknown_vtable_ptr;                       // 0x04
-    IDirect3DResource9* resource_interface_1;       // 0x08
-    IDirect3DResource9* resource_interface_2;       // 0x0C
-    IDirect3DBaseTexture9* texture_interface_1;     // 0x10
-    IDirect3DBaseTexture9* texture_interface_2;     // 0x14
-    void* additional_resource;                      // 0x18
-    DWORD reference_count;                          // 0x1C
-
-    union {                                         // 0x20
-        IDirect3DPixelShader9* pixel_shader;
-        IDirect3DVertexShader9* vertex_shader;
-    };
-
-    DWORD shader_version;                           // 0x24
-    DWORD reserved_1;                               // 0x28
-    DWORD compilation_flags;                        // 0x2C
-
-    DWORD shader_enabled;                           // 0x30
-    DWORD reserved_2;                               // 0x34
-    DWORD reserved_3;                               // 0x38
-    DWORD texture_dimension_flags;                  // 0x3C
-    DWORD constant_buffer_size;                     // 0x40
-    DWORD active_samplers;                          // 0x44
-    DWORD instruction_slots;                        // 0x48
-    DWORD bytecode_length;                          // 0x4C
-
-    void* bytecode_memory;                          // 0x50
-    DWORD reserved_4;                               // 0x54
-    DWORD creation_timestamp;                       // 0x58
-    DWORD bytecode_checksum;                        // 0x5C
-
-    void* texture_stage_state;                      // 0x60
-    void* sampler_state_block;                      // 0x64
-    DWORD active_texture_stages;                    // 0x68
-    DWORD primary_sampler_index;                    // 0x6C
-    DWORD blend_stage_enabled;                      // 0x70
-    DWORD alpha_test_enabled;                       // 0x74
-    DWORD render_state_flags;                       // 0x78
-    DWORD fog_enabled;                              // 0x7C
-
-    DWORD lighting_enabled;                         // 0x80
-    DWORD vertex_shader_constants;                  // 0x84
-    DWORD pixel_shader_constants;                   // 0x88
-    DWORD texture_filter_flags;                     // 0x8C
-    DWORD mipmap_settings;                          // 0x90
-    DWORD reserved_5;                               // 0x94
-    DWORD reserved_6;                               // 0x98
-    DWORD reserved_7;                               // 0x9C
-
-    DWORD font_antialiasing;                        // 0xA0
-    DWORD subpixel_rendering;                       // 0xA4
-    DWORD reserved_8;                               // 0xA8
-
-    char coordinate_data[20];                       // 0xAC-0xBF
-
-    DWORD extended_flags_1;                         // 0xC0
-    DWORD reserved_9;                               // 0xC4
-    float unknown_float_1;                          // 0xC8
-    DWORD combined_hash;                            // 0xCC
-    DWORD validation_flag;                          // 0xD0
-
-    WORD max_texture_width;                         // 0xD4
-    WORD max_texture_height;                        // 0xD8
-    DWORD padding[8];                               // 0xDC-0xFB
-    DWORD final_validation;                         // 0xFC
-};
-
 template<typename T>
 struct TSGrowableArray
 {
@@ -371,42 +297,57 @@ struct CGxString
     char unk_E0[20];                            // 0xDC
 };
 
+
 struct TextureWrapperInternal {
-    uint32_t width;                 // +0x00
-    uint32_t height;                // +0x04
-    char pad0[0x30];                // +0x08
-    IDirect3DTexture9* d3dTex;      // +0x38
-    char pad1[8];                   // +0x3C
-};
+    uint32_t width;            // +0x00
+    uint32_t height;           // +0x04
+    uint8_t  reserved0[12];    // +0x08 .. +0x13
+    uint32_t width_alt;        // +0x14
+    uint32_t height_alt;       // +0x18
+    uint8_t  reserved1[28];    // +0x1C .. +0x37
+    IDirect3DTexture9* d3dTex; // +0x38
+    uint8_t  reserved2[4];     // +0x3C .. +0x3F
+}; // sizeof >= 64
 
 struct TextureWrapper {
-    char pad[68];                           // +0x00
-    TextureWrapperInternal* internalObj;    // +0x44
+    uint8_t pad[68];                   // +0x00 .. +0x43
+    TextureWrapperInternal* internal;  // +0x44
+    // ...
 };
 
+struct TextureSlot {
+    TextureWrapper* wrapper; // +0x00
+    uint8_t padding[20];     // +0x04 .. +0x17
+}; // sizeof = 24
+
 struct TextureData {
-    char pad[396];                          // +0x00
-    TextureWrapper** wrapperArray;          // +0x44
+    uint8_t pad_until_slots[396]; // +0x00 .. +0x18B
+    TextureSlot slots[8];         // +0x18C
+    // ... other stuff may follow
 };
 
 struct RenderContext {
-    uint32_t pad0[6];           // +0x00
-    TextureData* textureData;   // +0x18
-    uint32_t pad1[2];           // +0x1C
-    CGxString* firstString;     // +0x24
+    uint32_t pad0[6];                   // +0x00 .. +0x17
+    TextureData* textureData;			// +0x18
+    uint32_t pad1[2];                   // +0x1C .. +0x23
+    CGxString* firstString;				// +0x24
+    uint32_t linkedListOffset;          // +0x28
+    // ...
+}; // size >= 0x2C
+
+typedef void(__thiscall* IGxuCallbackFn)(void* thisptr, int arg);
+struct IGxuFontObj {
+    void* vtable;               // +0x00
+    uint32_t unk04;             // +0x04
+    uint8_t flagsByte;          // +0x08
+    uint8_t pad09[3];           // +0x09 .. +0x0B
+    IGxuCallbackFn** vfuncTbl;  // +0x0C
+    uint32_t nodeLinkOffset;    // +0x10
+    uint32_t pad14;             // +0x14
+    RenderContext* renderCtx;	// +0x18
+    // ...
 };
 
-
-struct FaceCacheKey
-{
-    FT_Face face;
-    uint32_t codepoint;
-
-    bool operator<(const FaceCacheKey& other) const {
-        if (face != other.face) return face < other.face;
-        return codepoint < other.codepoint;
-    }
-};
 
 struct GlyphMetrics
 {
@@ -784,7 +725,6 @@ static bool IsFontMSDFCompatible(msdfgen::FontHandle* font) {
 }
 
 
-static std::map<FaceCacheKey, GlyphMetrics> g_glyphCache;
 static std::map<FT_Face, std::unique_ptr<FontHandle>> g_fontHandles;
 static msdfgen::FreetypeHandle* g_msdfFreetype = nullptr;
 
@@ -808,26 +748,6 @@ FreeType_GetKerning_t FreeType_GetKerning_orig = (FreeType_GetKerning_t)0x009910
 FreeType_Done_FreeType_t FreeType_Done_FreeType_orig = (FreeType_Done_FreeType_t)0x00992CB0;
 FreeType_NewFace_t FreeType_NewFace_orig = (FreeType_NewFace_t)0x009931A0;
 
-
-static inline IDirect3DDevice9* GetD3DDevice() {
-    __try {
-        const DWORD pDevicePtr = *reinterpret_cast<DWORD*>(0x00C5DF88);
-        if (!pDevicePtr) return nullptr;
-
-        IDirect3DDevice9* pDevice = *reinterpret_cast<IDirect3DDevice9**>(pDevicePtr + 0x397C);
-        if (!pDevice) return nullptr;
-
-        DWORD* vtable = *reinterpret_cast<DWORD**>(pDevice);
-        if (!vtable || IsBadReadPtr(vtable, sizeof(DWORD) * 10)) {
-            return nullptr;
-        }
-
-        return pDevice;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return nullptr;
-    }
-}
 
 static inline bool __cdecl isFontValid(FT_Face fontFace) {
     auto it = g_fontHandles.find(fontFace);
@@ -862,25 +782,10 @@ static msdfgen::FontHandle* CreateMSDFGenFont(const FT_Byte* file_base, FT_Long 
 }
 
 static bool CreateAtlasPage(FontHandle* fontHandle) {
-    IDirect3DDevice9* device = GetD3DDevice();
-    if (!device) return false;
-
     auto page = std::make_unique<AtlasPage>();
-
-    if (FAILED(device->CreateTexture(
-        ATLAS_SIZE, ATLAS_SIZE, 1, 0,
-        D3DFMT, D3DPOOL_MANAGED,
-        &page->texture, nullptr
-    ))) {
+    if (!D3D::CreateTexture(&page->texture, ATLAS_SIZE, ATLAS_SIZE, 1, 0, D3DFMT, D3DPOOL_MANAGED, false)) {
         return false;
     }
-
-    D3DLOCKED_RECT lockedRect{};
-    if (SUCCEEDED(page->texture->LockRect(0, &lockedRect, nullptr, 0))) {
-        std::memset(lockedRect.pBits, 0, ATLAS_SIZE * lockedRect.Pitch);
-        page->texture->UnlockRect(0);
-    }
-
     fontHandle->atlasPages.push_back(std::move(page));
     return true;
 }
@@ -1087,6 +992,7 @@ static const GlyphMetrics* CacheGlyphMSDF(FT_Face face, uint32_t codepoint) {
         pageIndex = fontHandle->atlasPages.size() - 1;
         targetPage = fontHandle->atlasPages.back().get();
     }
+    if (pageIndex > 8) return nullptr;
 
     std::vector<unsigned char> msdf_data;
     if (outline_width > 0 && outline_height > 0) {
@@ -1129,145 +1035,6 @@ static const GlyphMetrics* CacheGlyphMSDF(FT_Face face, uint32_t codepoint) {
 }
 
 
-typedef void(__thiscall* CGxDeviceD3d__IShaderCreateVertex_t)(int pThis, FontShaderData* shaderData);
-static CGxDeviceD3d__IShaderCreateVertex_t CGxDeviceD3d__IShaderCreateVertex_orig = (CGxDeviceD3d__IShaderCreateVertex_t)0x006AA0D0;
-
-static void __fastcall CGxDeviceD3d__IShaderCreateVertex_hk(int pThis, void* edx, FontShaderData* shaderData) {
-    CGxDeviceD3d__IShaderCreateVertex_orig(pThis, shaderData);
-
-    if (shaderData != g_FontVertexShader && g_FontVertexShader != nullptr) return;
-
-    if (s_cachedVSShader) {
-        shaderData->vertex_shader = s_cachedVSShader;
-        shaderData->vertex_shader->AddRef();
-        shaderData->compilation_flags = 1;
-        return;
-    }
-
-    const char* vs = R"(
-        uniform float4x4 WorldViewProj;
-        float4 control : register(c7);
-
-        struct VS_IN {
-            float4 pos  : POSITION0;
-            float4 col  : COLOR0;
-            float2 uv0  : TEXCOORD0;
-        };
-
-        struct PS_IN {
-            float4 pos  : POSITION;
-            float4 col  : COLOR0;
-            float2 uv0  : TEXCOORD0;
-        };
-
-        PS_IN main(VS_IN IN) {
-            PS_IN OUT;
-            return OUT;
-        }
-    )";
-
-    ID3DBlob* pCode = nullptr;
-    ID3DBlob* pError = nullptr;
-    HRESULT hr = D3DCompile(vs, strlen(vs), nullptr, nullptr, nullptr, "main", "vs_3_0", 0, 0, &pCode, &pError);
-    if (FAILED(hr)) {
-        if (pError) pError->Release();
-        return;
-    }
-
-    IDirect3DDevice9* device = GetD3DDevice();
-    if (device) {
-        hr = device->CreateVertexShader(reinterpret_cast<const DWORD*>(pCode->GetBufferPointer()), &s_cachedVSShader);
-        if (SUCCEEDED(hr)) {
-            shaderData->vertex_shader = s_cachedVSShader;
-            shaderData->vertex_shader->AddRef();
-            shaderData->compilation_flags = 1;
-        }
-    }
-    pCode->Release();
-}
-
-
-typedef void(__thiscall* CGxDeviceD3d__IShaderCreatePixel_t)(int pThis, FontShaderData* shaderData);
-static CGxDeviceD3d__IShaderCreatePixel_t CGxDeviceD3d__IShaderCreatePixel_orig = (CGxDeviceD3d__IShaderCreatePixel_t)0x006AA070;
-
-static void __fastcall CGxDeviceD3d__IShaderCreatePixel_hk(int pThis, void* edx, FontShaderData* shaderData) {
-    CGxDeviceD3d__IShaderCreatePixel_orig(pThis, shaderData);
-
-    if (shaderData != g_FontPixelShader && g_FontPixelShader != nullptr) return;
-
-    if (s_cachedPSShader) {
-        shaderData->pixel_shader = s_cachedPSShader;
-        shaderData->pixel_shader->AddRef();
-        shaderData->compilation_flags = 1;
-        return;
-    }
-
-    const char* ps = R"(
-        sampler2D gameTexture : register(s0);
-        sampler2D sdfAtlas    : register(s13);
-
-        float4 control : register(c13); // font size, outline mode, spread, atlas size
-
-        struct PS_IN {
-            float4 col : COLOR0;
-            float2 uv0 : TEXCOORD0;
-        };
-
-        float median(float r, float g, float b) {
-            return max(min(r, g), min(max(r, g), b));
-        }
-
-        float4 main(PS_IN IN) : COLOR {
-            if (control.x < 1.0f) return tex2D(gameTexture, IN.uv0) * IN.col;
-
-            float2 uv = IN.uv0;
-
-            float outlineHint = control.y;
-            float fontSize = control.x;
-            float outlinePx = 0.0f;
-
-            if (outlineHint >= 1.5f) {
-                outlinePx = max(2.75f, pow(fontSize, 0.150f) * 1.6f);
-            } else if (outlineHint >= 0.5f) {
-                outlinePx = max(1.50f, pow(fontSize, 0.075f) * 1.5f);
-            }
-            float4 sample = tex2D(sdfAtlas, uv);
-
-            float sd = median(sample.r, sample.g, sample.b);
-            float screenPxRange = (control.z / max(max(fwidth(uv.x), fwidth(uv.y)) * control.a, 1e-6)) * (1.0f - min(0.3f, fontSize * 0.0035f)); // smoother edges for larger text
-            float opacity = saturate((sd - 0.5f) * screenPxRange + 0.5f);
-
-            if (outlinePx > 0.0f) {
-                return float4(
-                    lerp(float3(0.0f, 0.0f, 0.0f), IN.col.rgb, opacity),
-                    max(opacity, saturate((sample.a - 0.5f) * screenPxRange * 5.0f + outlinePx)) * IN.col.a
-                );
-            }
-            return float4(IN.col.rgb, opacity * IN.col.a);
-        }
-    )";
-
-    ID3DBlob* pCode = nullptr;
-    ID3DBlob* pError = nullptr;
-    HRESULT hr = D3DCompile(ps, std::strlen(ps), nullptr, nullptr, nullptr, "main", "ps_3_0", 0, 0, &pCode, &pError);
-    if (FAILED(hr)) {
-        if (pError) pError->Release();
-        return;
-    }
-
-    IDirect3DDevice9* device = GetD3DDevice();
-    if (device) {
-        hr = device->CreatePixelShader(reinterpret_cast<const DWORD*>(pCode->GetBufferPointer()), &s_cachedPSShader);
-        if (SUCCEEDED(hr)) {
-            shaderData->pixel_shader = s_cachedPSShader;
-            shaderData->pixel_shader->AddRef();
-            shaderData->compilation_flags = 1;
-        }
-    }
-    pCode->Release();
-}
-
-
 typedef double(__cdecl* GetFontEffectiveWidth_t)(int a1, float a2);
 static GetFontEffectiveWidth_t GetFontEffectiveWidth_orig = (GetFontEffectiveWidth_t)0x006C0B60;
 
@@ -1283,7 +1050,7 @@ static int __fastcall CGxString__WriteGeometry_hk(CGxString* pThis, void* edx, i
 
     auto it = g_fontHandles.find(pThis->m_fontObj->m_fontResource->fontFace);
     if (it == g_fontHandles.end() || !it->second->isValid) {
-        IDirect3DDevice9* device = GetD3DDevice();
+        IDirect3DDevice9* device = D3D::GetDevice();
         if (device) {
             const float resetControl[4] = { 0, 0, 0, 0 };
             device->SetPixelShaderConstantF(SDF_SAMPLER_SLOT, resetControl, 1);
@@ -1291,9 +1058,10 @@ static int __fastcall CGxString__WriteGeometry_hk(CGxString* pThis, void* edx, i
         return result;
     }
     FontHandle* fontHandle = it->second.get();
-    if (!fontHandle->atlasPages[index]->texture) return result;
+    if (fontHandle->atlasPages.empty() || static_cast<size_t>(index) >= fontHandle->atlasPages.size()) return result;
+    if (!fontHandle->atlasPages[index] || !fontHandle->atlasPages[index]->texture) return result;
 
-    IDirect3DDevice9* device = GetD3DDevice();
+    IDirect3DDevice9* device = D3D::GetDevice();
     if (!device) return result;
 
     const uint32_t flags = pThis->m_fontObj->m_atlasPages[0].m_flags;
@@ -1311,11 +1079,11 @@ static int __fastcall CGxString__WriteGeometry_hk(CGxString* pThis, void* edx, i
 }
 
 
-typedef void(__thiscall* IGxuFontRenderBatch_t)(int* pThis);
+typedef void(__thiscall* IGxuFontRenderBatch_t)(IGxuFontObj* pThis);
 static IGxuFontRenderBatch_t IGxuFontRenderBatch_orig = reinterpret_cast<IGxuFontRenderBatch_t>(0x006C53A0);
 
-static void __fastcall IGxuFontRenderBatch_hk(int* pThis) {
-    IDirect3DDevice9* device = GetD3DDevice();
+static void __fastcall IGxuFontRenderBatch_hk(IGxuFontObj* pThis) {
+    IDirect3DDevice9* device = D3D::GetDevice();
     if (!device) {
         IGxuFontRenderBatch_orig(pThis);
         return;
@@ -1356,7 +1124,11 @@ static CGlyphCacheEntry* __fastcall CGxString__GetOrCreateGlyphEntry_hk(CFontObj
     FT_Face face = fontObj->m_fontResource->fontFace;
 
     const GlyphMetrics* gm = CacheGlyphMSDF(face, codepoint);
-    if (!gm || !isFontValid(face))  return CGxString__GetOrCreateGlyphEntry_orig(fontObj, codepoint);
+    if (!gm || !isFontValid(face)) {
+        fontObj->m_atlasPages[0].m_flags &= ~0x80000000;
+        fontObj->m_atlasPages[0].m_flags |= (9 << 28);
+        return CGxString__GetOrCreateGlyphEntry_orig(fontObj, codepoint);
+    }
 
     // store target page idx
     fontObj->m_atlasPages[0].m_flags &= ~0xF0000000;
@@ -1373,32 +1145,9 @@ static CGlyphCacheEntry* __fastcall CGxString__GetOrCreateGlyphEntry_hk(CFontObj
     return result;
 }
 
+
 typedef double(__thiscall* CGxString__GetBearingX_t)(CFontObject* fontObj, CGlyphCacheEntry* entry, float flag, float scale);
 static CGxString__GetBearingX_t CGxString__GetBearingX_orig = reinterpret_cast<CGxString__GetBearingX_t>(0x006C24F0);
-
-
-static void(*CGxString__GetGlyphYMetrics_orig)() = (decltype(CGxString__GetGlyphYMetrics_orig))0x006C8C71;
-static constexpr DWORD_PTR CGxString__GetGlyphYMetrics_jmpback = 0x006C8C77;
-
-__declspec(naked) static void CGxString_GetGlyphYMetrics_hk() // skip the orig baseline calc
-{
-    __asm {
-        mov edx, [ecx + 54h];
-        pushad;
-        push ecx;
-        call isFontValid;
-        add esp, 4;
-        test al, al;
-        popad;
-        jz font_unsafe;
-        xor ecx, ecx;
-        jmp CGxString__GetGlyphYMetrics_jmpback;
-        font_unsafe:
-            mov ecx, [edx + 68h];
-            jmp CGxString__GetGlyphYMetrics_jmpback;
-    }
-}
-
 
 typedef int(__thiscall* CGxString__InitializeTextLine_t)(CGxString* pThis, char* text, int textLength, int* a4, C3Vector* startPos, void* a6, int a7);
 static CGxString__InitializeTextLine_t CGxString__InitializeTextLine_orig = reinterpret_cast<CGxString__InitializeTextLine_t>(0x006C6CD0);
@@ -1471,7 +1220,7 @@ static int __fastcall CGxString__InitializeTextLine_hk(CGxString* pThis, void* e
 }
 
 
-typedef CGlyphCacheEntry*(__thiscall* IGxuFontInitGlyphMetrics_t)(CFramePoint* pAtlasPage, CGlyphMetrics* resultBuffer);
+typedef CGlyphCacheEntry* (__thiscall* IGxuFontInitGlyphMetrics_t)(CFramePoint* pAtlasPage, CGlyphMetrics* resultBuffer);
 static IGxuFontInitGlyphMetrics_t IGxuFontInitGlyphMetrics_orig = reinterpret_cast<IGxuFontInitGlyphMetrics_t>(0x006C9D90);
 
 static void(*IGxuFontInitGlyphMetrics_site_orig)() = (decltype(IGxuFontInitGlyphMetrics_site_orig))0x006C4051;
@@ -1483,15 +1232,41 @@ __declspec(naked) void IGxuFontInitGlyphMetrics_site_hk()
         pushfd;
         mov esi, [edi + 180h];  // fontObj->m_atlasPages[0].m_flags
         shr esi, 28;
+        and esi, 0Fh;
+        cmp esi, 9;
+        jz pages_match;
         cmp ebx, esi; // compare the current engine page against the current msdf page, keep the engine up to speed
         je pages_match;
         xor eax, eax; // manually page the engine side when msdf atlas fills up
         popfd;
         jmp IGxuFontInitGlyphMetrics_site_jmpback;
-        pages_match:
-            popfd;
-            call IGxuFontInitGlyphMetrics_orig;
-            jmp IGxuFontInitGlyphMetrics_site_jmpback;
+    pages_match:
+        popfd;
+        call IGxuFontInitGlyphMetrics_orig;
+        jmp IGxuFontInitGlyphMetrics_site_jmpback;
+    }
+}
+
+
+static void(*CGxString__GetGlyphYMetrics_orig)() = (decltype(CGxString__GetGlyphYMetrics_orig))0x006C8C71;
+static constexpr DWORD_PTR CGxString__GetGlyphYMetrics_jmpback = 0x006C8C77;
+
+__declspec(naked) static void CGxString_GetGlyphYMetrics_hk() // skip the orig baseline calc
+{
+    __asm {
+        mov edx, [ecx + 54h];
+        pushad;
+        push ecx;
+        call isFontValid;
+        add esp, 4;
+        test al, al;
+        popad;
+        jz font_unsafe;
+        xor ecx, ecx;
+        jmp CGxString__GetGlyphYMetrics_jmpback;
+    font_unsafe:
+        mov ecx, [edx + 68h];
+        jmp CGxString__GetGlyphYMetrics_jmpback;
     }
 }
 
@@ -1499,8 +1274,16 @@ __declspec(naked) void IGxuFontInitGlyphMetrics_site_hk()
 static int __cdecl FreeType_Init_hk(void* memory, FT_Library* alibrary) {
     if (!INITIALIZED) {
         const int mode = std::atoi(s_cvar_MSDFMode->vStr);
-        if (mode < 1) return FreeType_Init_orig(memory, alibrary);
-
+        Console::CVar* locale_cvar = Console::GetCVar("locale");
+        if (locale_cvar && locale_cvar->vStr) {
+            const char* locale = locale_cvar->vStr;
+            if (mode < 1 || strcmp(locale, "zhCN") == 0 || strcmp(locale, "zhTW") == 0 || strcmp(locale, "koKR") == 0) {
+                return FreeType_Init_orig(memory, alibrary);
+            }
+        }
+        else {
+            return FreeType_Init_orig(memory, alibrary);
+        }
         ALLOW_UNSAFE_FONTS = mode > 1;
 
         DetourTransactionBegin();
@@ -1545,6 +1328,84 @@ void Fonts::initialize()
     s_cvar_MSDFMode = Console::RegisterCVar("MSDFMode", NULL, (Console::CVarFlags)1, "1", CVarHandler_MSDFMode, 0, 0, 0, 0);;
     DetourAttach(&(LPVOID&)FreeType_Init_orig, FreeType_Init_hk);
 
-    //DetourAttach(&(LPVOID&)CGxDeviceD3d__IShaderCreateVertex_orig, CGxDeviceD3d__IShaderCreateVertex_hk);
-    DetourAttach(&(LPVOID&)CGxDeviceD3d__IShaderCreatePixel_orig, CGxDeviceD3d__IShaderCreatePixel_hk);
+    D3D::RegisterOnDestroy([]() {
+        if (s_cachedVS) { s_cachedVS->Release(); s_cachedVS = nullptr; }
+        if (s_cachedPS) { s_cachedPS->Release(); s_cachedPS = nullptr; }
+
+        for (auto& [face, handle] : g_fontHandles) {
+            if (!handle) continue;
+            handle->atlasPages.clear();
+            handle->glyphCache.clear();
+        }
+        });
+
+    D3D::RegisterPixelShaderInit([](D3D::ShaderData* shaderData) -> IDirect3DPixelShader9* {
+        if (shaderData != g_FontPixelShader && g_FontPixelShader != nullptr) return nullptr;
+
+        if (s_cachedPS) {
+            if (shaderData->pixel_shader) {
+                reinterpret_cast<IDirect3DPixelShader9*>(shaderData->pixel_shader)->Release();
+            }
+            shaderData->pixel_shader = s_cachedPS;
+            s_cachedPS->AddRef();
+            shaderData->compilation_flags = 1;
+            return s_cachedPS;
+        }
+
+        const char* psCode = R"(
+                sampler2D gameTexture : register(s0);
+                sampler2D sdfAtlas    : register(s13);
+
+                float4 control : register(c13); // font size, outline mode, spread, atlas size
+
+                struct PS_IN {
+                    float4 col : COLOR0;
+                    float2 uv0 : TEXCOORD0;
+                };
+
+                float median(float r, float g, float b) {
+                    return max(min(r, g), min(max(r, g), b));
+                }
+
+                float4 main(PS_IN IN) : COLOR {
+                    if (control.x < 1.0f) return tex2D(gameTexture, IN.uv0) * IN.col;
+
+                    float2 uv = IN.uv0;
+
+                    float outlineHint = control.y;
+                    float fontSize = control.x;
+                    float outlinePx = 0.0f;
+
+                    if (outlineHint >= 1.5f) {
+                        outlinePx = max(2.75f, pow(fontSize, 0.150f) * 1.6f);
+                    } else if (outlineHint >= 0.5f) {
+                        outlinePx = max(1.50f, pow(fontSize, 0.075f) * 1.5f);
+                    }
+                    float4 sample = tex2D(sdfAtlas, uv);
+
+                    float sd = median(sample.r, sample.g, sample.b);
+                    float screenPxRange = (control.z / max(max(fwidth(uv.x), fwidth(uv.y)) * control.a, 1e-6)) * (1.0f - min(0.3f, fontSize * 0.0035f)); // smoother edges for larger text
+                    float opacity = saturate((sd - 0.5f) * screenPxRange + 0.5f);
+
+                    if (outlinePx > 0.0f) {
+                        return float4(
+                            lerp(float3(0.0f, 0.0f, 0.0f), IN.col.rgb, opacity),
+                            max(opacity, saturate((sample.a - 0.5f) * screenPxRange * 5.0f + outlinePx)) * IN.col.a
+                        );
+                    }
+                    return float4(IN.col.rgb, opacity * IN.col.a);
+                }
+            )";
+        s_cachedPS = D3D::CompilePixelShader(psCode);
+
+        if (s_cachedPS) {
+            if (shaderData->pixel_shader) {
+                reinterpret_cast<IDirect3DPixelShader9*>(shaderData->pixel_shader)->Release();
+            }
+            shaderData->pixel_shader = s_cachedPS;
+            s_cachedPS->AddRef();
+            shaderData->compilation_flags = 1;
+        }
+        return s_cachedPS;
+        });
 }
