@@ -33,7 +33,7 @@ static Console::CVar* s_cvar_nameplateMaxRaiseDistance;
 static Console::CVar* s_cvar_nameplateExtendWorldFrameHeight;
 static Console::CVar* s_cvar_nameplateUpperBorderOnlyBoss;
 
-guid_t parseGuidFromString(const char* str)
+static guid_t parseGuidFromString(const char* str)
 {
     if (!str)
         return 0;
@@ -414,7 +414,6 @@ static void NameplateStackingUpdate(lua_State* L, NamePlateVars* vars)
         std::string point;
         std::string relativeToName;
         std::string relativePoint;
-        double xOfs, yOfs;
 
         lua_pushframe(L, entry.nameplate);
         int frame_idx = lua_gettop(L);
@@ -666,7 +665,7 @@ static void onUpdateCallback()
 }
 
 LPVOID PatchNamePlateLevelUpdate_orig = (LPVOID)0x0098E9F9;
-void __declspec(naked) PatchNamePlateLevelUpdate_hk()
+static void __declspec(naked) PatchNamePlateLevelUpdate_hk()
 {
     __asm {
         push edi;

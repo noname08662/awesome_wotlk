@@ -11,7 +11,12 @@ add_library(
 		"Misc.h" "Misc.cpp"
 		"BugFixes.h" "BugFixes.cpp"
 		"Utils.h" "Utils.cpp"
-		"Fonts.h" "Fonts.cpp"
+		"MSDF.h" "MSDF.cpp"
+		"MSDFValidator.h" "MSDFUtils.h"
+		"MSDFTypes.h" "MSDFShaders.h"
+		"MSDFFont.h" "MSDFFont.cpp"
+		"MSDFCache.h" "MSDFCache.cpp"
+		"MSDFPregen.h" "MSDFPregen.cpp"
 		"CommandLine.cpp" "CommandLine.h"
 		"Inventory.cpp" "Inventory.h"
 		"Item.h" "Item.cpp"
@@ -25,6 +30,7 @@ target_include_directories(
 		${CMAKE_SOURCE_DIR}/deps/skia/include
 		${CMAKE_SOURCE_DIR}/deps/msdfgen
 		${CMAKE_BINARY_DIR}/deps/msdfgen
+		${CMAKE_SOURCE_DIR}/unordered_dense/include
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
@@ -39,6 +45,7 @@ target_link_libraries(
         uuid
         sapi
 		"${CMAKE_SOURCE_DIR}/deps/skia/skia.lib"
+		ankerl::unordered_dense
 )
 
 target_compile_definitions(

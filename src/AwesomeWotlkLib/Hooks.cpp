@@ -512,7 +512,7 @@ static char __cdecl CGWorldFrame_Intersect_new(C3Vector* playerPos, C3Vector* ca
         g_actual_distance = 1.0f;
     }
 
-    int cleanup_timer = g_models_being_faded.size() + 1;
+    uint32_t cleanup_timer = g_models_being_faded.size() + 1;
     for (auto it = g_models_being_faded.begin(); it != g_models_being_faded.end();) {
         void* modelPtr = *it;
 
@@ -571,7 +571,7 @@ static void(*IterateCollisionList_orig)() = (decltype(IterateCollisionList_orig)
 static constexpr DWORD_PTR IterateCollisionList_jmpback = 0x007A27A5;
 static constexpr DWORD_PTR IterateCollisionList_skipaddr = 0x007A2943;
 
-__declspec(naked) void IterateCollisionList_hk()
+static __declspec(naked) void IterateCollisionList_hk()
 {
     __asm {
         mov esi, [edx + 4]       // esi = object entry
@@ -610,7 +610,7 @@ static void(*IterateWorldObjCollisionList_orig)() = (decltype(IterateWorldObjCol
 static constexpr DWORD_PTR IterateWorldObjCollisionList_jmpback = 0x007A2A23;
 static constexpr DWORD_PTR IterateWorldObjCollisionList_skipaddr = 0x007A2A8A;
 
-__declspec(naked) void IterateWorldObjCollisionList_hk()
+static __declspec(naked) void IterateWorldObjCollisionList_hk()
 {
     __asm {
         mov edx, [ebp + 0Ch]
@@ -639,7 +639,7 @@ static void __cdecl ResetKeywordFlags() {
     g_playerLocationKeywordActive = false;
 }
 
-void __declspec(naked) SpellCastReset_hk() {
+static void __declspec(naked) SpellCastReset_hk() {
     __asm {
         call ResetKeywordFlags
         call ReleaseAoETargetingCircle_orig

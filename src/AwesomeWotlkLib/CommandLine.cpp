@@ -9,7 +9,7 @@ static std::vector<std::string> s_commandLine;
 
 static const char* getParam(const char* item)
 {
-    for (int i = 1; (i + 1) < s_commandLine.size(); i++) {
+    for (uint32_t i = 1; (i + 1) < s_commandLine.size(); i++) {
         const char* key = s_commandLine[i].c_str();
         if (char c = *(key++); c == '-' || c == '/') {
             if (key[0] == '-') ++key;

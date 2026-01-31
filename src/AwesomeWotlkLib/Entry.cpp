@@ -6,7 +6,7 @@
 #include "Hooks.h"
 #include "Inventory.h"
 #include "Item.h"
-#include "Fonts.h"
+#include "MSDF.h"
 #include "Spell.h"
 #include "UnitAPI.h"
 #include "VoiceChat.h"
@@ -19,7 +19,7 @@ static int lua_debugbreak(lua_State* L)
     if (IsDebuggerPresent())
         DebugBreak();
     return 0;
-}
+	}
 
 static int lua_openawesomewotlk(lua_State* L)
 {
@@ -54,7 +54,7 @@ static void OnAttach()
     CommandLine::initialize();
     Inventory::initialize();
     Item::initialize();
-    Fonts::initialize();
+    MSDF::initialize();
     NamePlates::initialize();
     Misc::initialize();
     UnitAPI::initialize();

@@ -4,10 +4,11 @@
 #include "Utils.h"
 #include <Windows.h>
 #include <Detours/detours.h>
-#define M_PI           3.14159265358979323846
+
 #undef min
 #undef max
 
+static constexpr double M_PI = 3.14159265358979323846;
 static Console::CVar* s_cvar_interactionMode;
 static Console::CVar* s_cvar_interactionAngle;
 static Console::CVar* s_cvar_cameraFov = NULL;
@@ -46,7 +47,7 @@ static int lua_CopyToClipboard(lua_State* L)
 }
 
 static guid_t s_requestedInteraction = 0;
-void ProcessQueuedInteraction()
+static void ProcessQueuedInteraction()
 {
     if (!s_requestedInteraction)
         return;
@@ -59,7 +60,7 @@ void ProcessQueuedInteraction()
     s_requestedInteraction = 0;
 }
 
-bool IsGoodObject(uint8_t gameObjectType)
+static bool IsGoodObject(uint8_t gameObjectType)
 {
     switch (gameObjectType)
     {
@@ -325,7 +326,7 @@ static void __fastcall Camera_Initialize_hk(Camera* self, void* edx, float a2, f
     Camera_Initialize_orig(self, edx, a2, a3, fov);
 }
 
-void updateShowPlayer()
+static void updateShowPlayer()
 {
     CGUnit_C* player = ObjectMgr::GetCGUnitPlayer();
     if (!player)
