@@ -18,3 +18,8 @@ set(MSDFGEN_USE_VCPKG OFF CACHE BOOL "" FORCE)
 set(MSDFGEN_USE_SKIA ON CACHE BOOL "" FORCE)
 
 add_subdirectory(msdfgen)
+
+add_library(unordered_dense INTERFACE)
+add_library(ankerl::unordered_dense ALIAS unordered_dense)
+
+target_compile_features(unordered_dense INTERFACE cxx_std_17)
