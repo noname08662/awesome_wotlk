@@ -3,7 +3,7 @@
 #undef min
 #undef max
 
-#include <MSDFTypes.h>
+#include "MSDFTypes.h"
 
 #include <msdfgen.h>
 #include <msdfgen-ext.h>
@@ -171,6 +171,15 @@ namespace MSDF {
 	inline bool ALLOW_UNSAFE_FONTS = false; // due to how distance fields are calculated, some fonts with self-intersecting contours (e.g. diediedie) will break
     inline LPWSTR IS_PREGEN = wcsstr(GetCommandLineW(), L"-msdf-pregen");
 
+	inline const bool IS_WIN10 = []() {
+		HMODULE hKernel = GetModuleHandleW(L"kernelbase.dll");
+		if (!hKernel) return false;
+
+		return (GetProcAddress(hKernel, "VirtualAlloc2") != nullptr &&
+			GetProcAddress(hKernel, "MapViewOfFile3") != nullptr &&
+			GetProcAddress(hKernel, "UnmapViewOfFile2") != nullptr);
+		}();
+
 	inline Console::CVar* s_cvar_MSDFMode;
 	inline int CVarHandler_MSDFMode(Console::CVar* cvar, const char*, const char* value, void*) {
 		const int val = std::atoi(value);
@@ -182,7 +191,6 @@ namespace MSDF {
 		return (locale && locale->vStr) ? locale->vStr : std::string{};
 	}
 
-	inline static VectorPool<GlyphQuad> s_glyphQuads;
 	inline static std::vector<uint8_t> s_prefetchPayload;
 
     void initialize();

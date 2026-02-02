@@ -7,11 +7,6 @@
 #include <mutex>
 #include <memory>
 
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#include FT_BBOX_H
-#include FT_OUTLINE_H
-
 // these structs are NOT to be trusted, rough LLM estimation
 template<typename T>
 struct TSGrowableArray
@@ -306,25 +301,6 @@ struct IGxuFontObj {
 };
 
 
-struct CacheKey {
-    uint32_t sdfRenderSize = 0;
-    uint32_t sdfSpread = 0;
-    uint32_t d3dFormat = 0;
-    bool operator==(const CacheKey& other) const {
-        return sdfRenderSize == other.sdfRenderSize &&
-            sdfSpread == other.sdfSpread &&
-            d3dFormat == other.d3dFormat;
-    }
-};
-
-struct GlyphQuad {
-    uint32_t codepoint;
-    uint32_t quadIndex;
-    bool operator<(const GlyphQuad& other) const {
-        return codepoint < other.codepoint;
-    }
-};
-
 struct GlyphMetrics {
     uint16_t width = 0;
     uint16_t height = 0;
@@ -343,38 +319,4 @@ struct GlyphMetricsToStore {
     int16_t bitmapLeft = 0;
     std::vector<uint8_t> ownedPixelData;
     uint32_t dataSize = 0;
-};
-
-struct ThreadLocalBatch {
-    std::vector<std::pair<uint32_t, GlyphMetrics>> glyphs;
-    std::vector<std::vector<uint8_t>> ownedBuffers;
-    std::mutex mutex;
-    size_t memoryUsed = 0;
-};
-
-struct PreGenRequest {
-    FT_Face face = nullptr;
-    const FT_Byte* data = nullptr;
-    FT_Long size = 0;
-    FT_Long faceIndex = 0;
-    std::string familyName;
-    std::string styleName;
-};
-
-struct AtlasPage {
-    IDirect3DTexture9* texture = nullptr;
-    int nextX = 0, nextY = 0;
-    int rowHeight = 0;
-    int g = 0;
-    std::vector<uint32_t> codepoints;
-
-    AtlasPage(int gutter) : nextX(gutter), nextY(gutter), g(gutter) {}
-    ~AtlasPage() { if (texture) texture->Release(); }
-
-    void Clear() {
-        nextX = g;
-        nextY = g;
-        rowHeight = 0;
-        codepoints.clear();
-    }
 };

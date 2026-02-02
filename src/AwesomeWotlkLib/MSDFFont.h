@@ -3,12 +3,28 @@
 #include "MSDFCache.h"
 #include <map>
 
-class MSDFCache;
-class MSDFPregen;
-
 class MSDFFont {
     friend class MSDFCache;
     friend class MSDFPregen;
+
+private:
+    struct AtlasPage {
+        IDirect3DTexture9* texture = nullptr;
+        int nextX = 0, nextY = 0;
+        int rowHeight = 0;
+        int g = 0;
+        std::vector<uint32_t> codepoints;
+
+        AtlasPage(int gutter) : nextX(gutter), nextY(gutter), g(gutter) {}
+        ~AtlasPage() { if (texture) texture->Release(); }
+
+        void Clear() {
+            nextX = g;
+            nextY = g;
+            rowHeight = 0;
+            codepoints.clear();
+        }
+    };
 
 public:
     MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize, FT_Long faceIndex);

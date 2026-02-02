@@ -67,19 +67,17 @@ void MSDFPregen::ExecutePreGeneration() {
 
     std::string locale = MSDF::GetGameLocale();
 
-
-    VectorPool<FT_Face> invalid;
-    auto faces = invalid.Acquire(s_pendingRequests.size());
+    std::vector<FT_Face> invalid;
+    invalid.reserve(s_pendingRequests.size());
 
     for (size_t i = 0; i < s_pendingRequests.size(); ++i) {
         auto it = MSDFFont::s_fontHandles.find(s_pendingRequests[i].face);
         if (it == MSDFFont::s_fontHandles.end() ||
                 !MSDFValidator::IsFontMSDFCompatible(it->second->m_msdfFont)) {
-            if (it->second) faces.push_back(it->second->m_ftFace);
+            if (it->second) invalid.push_back(it->second->m_ftFace);
         }
     }
-    for (FT_Face face : faces) MSDFFont::Unregister(face);
-    invalid.Release(std::move(faces));
+    for (FT_Face face : invalid) MSDFFont::Unregister(face);
 
     while (!s_pendingRequests.empty()) {
         printf("\n=== MSDF Font Pre-Generation ===\n");

@@ -19,7 +19,7 @@ MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize, FT_L
             (MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont));
     }
     else {
-        m_isValid = MSDF::ALLOW_UNSAFE_FONTS || m_cache->GetManifestSize() || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
+        m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
     }
     if (m_isValid) m_glyphPool.reserve(4096);
 }
@@ -45,7 +45,7 @@ MSDFFont* MSDFFont::Get(FT_Face face) {
 void MSDFFont::Register(FT_Face face, const FT_Byte* data, FT_Long size, FT_Long index) {
     if (s_fontHandles.find(face) != s_fontHandles.end()) return;
     auto font = std::make_unique<MSDFFont>(face, data, size, index);
-    s_fontHandles[face] = std::move(font);
+    if (font->m_msdfFont && (MSDF::IS_PREGEN || font->m_isValid)) s_fontHandles[face] = std::move(font);
 }
 
 void MSDFFont::Unregister(FT_Face face) {
@@ -70,8 +70,6 @@ void MSDFFont::Shutdown() {
 }
 
 const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
-    if (!m_isValid || !m_msdfFont) return nullptr;
-
     auto pit = m_glyphPool.find(codepoint);
     if (pit != m_glyphPool.end()) return &pit->second;
 
@@ -131,7 +129,7 @@ const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
     return &metrics;
 }
 
-AtlasPage* MSDFFont::GetAtlasPage(size_t index) const {
+MSDFFont::AtlasPage* MSDFFont::GetAtlasPage(size_t index) const {
     if (index < m_atlasPages.size()) {
         return m_atlasPages[index].get();
     }

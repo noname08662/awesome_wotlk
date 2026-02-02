@@ -1,7 +1,8 @@
-#include <MSDFFont.h>
-#include <MSDFCache.h>
-#include <MSDFPregen.h>
-#include <MSDFShaders.h>
+#include "MSDFFont.h"
+#include "MSDFCache.h"
+#include "MSDFManager.h"
+#include "MSDFPregen.h"
+#include "MSDFShaders.h"
 #include <Detours/detours.h>
 
 int __cdecl MSDF::FreeType_NewMemoryFace_hk(FT_Library library, const FT_Byte* file_base,
@@ -72,6 +73,8 @@ void __cdecl MSDF::PrefetchCodepoints(CGxString* pThis) {
 }
 
 void __fastcall MSDF::ProcessGeometry(CGxString* pThis) {
+    if (!(pThis->m_flags & 0x40000000)) return;
+
     CFontObject* fontObj = pThis->m_fontObj;
     FT_Face fontFace = fontObj->m_fontResource->fontFace;
     MSDFFont* fontHandle = MSDFFont::Get(fontFace);
@@ -259,18 +262,11 @@ int __fastcall MSDF::CGxString__InitializeTextLine_hk(CGxString* pThis, void* ed
     // 1-st pass - only collect codepoints
     // all of thes will then get sorted to ensure sequentiality
     // == minimal syscall churn @ GetGlyph -> cold cache path == less stutters
-    uint32_t highByte = (pThis->m_flags >> 24) & 0xFF;
-    bool isSet = (highByte & 0x80) != 0;
-    if (!isSet) {
-        if (pThis->m_flags & 0x40000000) return result;
-        for (char* p = pThis->m_text; *p; ++p) {
-            s_prefetchPayload.push_back(static_cast<uint8_t>(*p));
-        }
-        pThis->m_flags |= 0x40000000;
+    if (pThis->m_flags & 0x40000000) return result;
+    for (char* p = pThis->m_text; *p; ++p) {
+        s_prefetchPayload.push_back(static_cast<uint8_t>(*p));
     }
-    else {
-        ProcessGeometry(pThis);
-    }
+    pThis->m_flags |= 0x40000000;
     return result;
 }
 
@@ -549,6 +545,8 @@ int __cdecl MSDF::FreeType_Init_hk(void* memory, FT_Library* alibrary) {
             g_FontVertexShader->vertex_shader = s_cachedVS;
             g_FontVertexShader->compilation_flags = 1;
         }
+
+        s_prefetchPayload.reserve(16383);
 
         CGxDevice__InitFontIndexBuffer_orig(); // engine has already run it at this point
     }

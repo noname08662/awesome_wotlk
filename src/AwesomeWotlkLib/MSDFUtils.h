@@ -4,6 +4,11 @@
 #include <chrono>
 #include <thread>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include FT_BBOX_H
+#include FT_OUTLINE_H
+
 class ScopedFileLock {
     HANDLE hFile = INVALID_HANDLE_VALUE;
     OVERLAPPED ol{};
@@ -38,8 +43,7 @@ private:
 
         ULONGLONG start = GetTickCount64();
         do {
-            ol.Offset = 0;
-            ol.OffsetHigh = 0;
+            memset(&ol, 0, sizeof(ol));
             if (LockFileEx(hFile, flags | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ol)) {
                 locked = true;
                 return true;
@@ -88,9 +92,9 @@ public:
         v.reserve(std::max(minimumCapacity, capacityForIndex(idx)));
         return v;
     }
-    std::vector<T> AcquireSized(size_t size) {
+    std::vector<T> AcquireSized(size_t size, T init = 0) {
         auto v = Acquire(size);
-        v.resize(size);
+        v.resize(size, init);
         return v;
     }
     void Release(std::vector<T>&& v) {
@@ -240,3 +244,22 @@ struct ConsoleGuard {
         }
     }
 };
+
+template <typename F>
+struct FinalAction {
+    F clean;
+    FinalAction(F f) : clean(f) {}
+    ~FinalAction() { clean(); }
+    FinalAction(const FinalAction&) = delete;
+    FinalAction& operator=(const FinalAction&) = delete;
+};
+
+using FontHash = uint64_t;
+static FontHash HashFont(const FT_Byte* data, FT_Long size) {
+    uint64_t h = 0xcbf29ce484222325ULL;
+    for (FT_Long i = 0; i < size; ++i) {
+        h ^= data[i];
+        h *= 0x100000001b3ULL;
+    }
+    return h;
+}

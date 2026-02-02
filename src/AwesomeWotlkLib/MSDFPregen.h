@@ -9,6 +9,22 @@ public:
     static void Shutdown() noexcept;
 
 private:
+    struct ThreadLocalBatch {
+        std::vector<std::pair<uint32_t, GlyphMetrics>> glyphs;
+        std::vector<std::vector<uint8_t>> ownedBuffers;
+        std::mutex mutex;
+        size_t memoryUsed = 0;
+    };
+
+    struct PreGenRequest {
+        FT_Face face = nullptr;
+        const FT_Byte* data = nullptr;
+        FT_Long size = 0;
+        FT_Long faceIndex = 0;
+        std::string familyName;
+        std::string styleName;
+    };
+
     static void ExecutePreGeneration();
     static bool AcquirePreGenLock();
     static void ReleasePreGenLock();
