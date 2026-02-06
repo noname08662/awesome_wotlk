@@ -125,7 +125,7 @@ static int lua_UnitTokenFromGUID(lua_State* L) {
     if (checkIndexedTokens("boss", 1, 5)) return 1;
 
     int tokenId = getTokenId(guid);
-    if (tokenId > 0) {
+    if (tokenId >= 0) {
         char token[16];
         snprintf(token, sizeof(token), "nameplate%d", tokenId + 1);
         lua_pushstring(L, token);
