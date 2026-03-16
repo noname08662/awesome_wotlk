@@ -1,3 +1,6 @@
+WIP - REWRITING ALL OF THE LIB
+KIND OF SLOWLY, SORRY :<
+
 # Awesome WotLK
 ## World of Warcraft 3.3.5a 12340 Improvements Library
 ### Fork of https://github.com/FrostAtom/awesome_wotlk/
