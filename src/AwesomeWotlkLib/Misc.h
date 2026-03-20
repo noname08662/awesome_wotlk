@@ -1,5 +1,2 @@
 #pragma once
-
-namespace Misc {
-void initialize();
-}
+namespace Misc { void initialize(); }

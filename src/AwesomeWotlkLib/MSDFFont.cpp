@@ -1,6 +1,7 @@
 #include "MSDFFont.h"
 #include "MSDFCache.h"
 #include "MSDFValidator.h"
+#include "MSDFUtils.h"
 
 MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize, FT_Long faceIndex)
     : m_ftFace(face), m_msdfFont(nullptr), m_isValid(false), m_oldestPage(0), m_evictionCount(0)
@@ -14,13 +15,7 @@ MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize, FT_L
         face->family_name ? face->family_name : "Unknown", face->style_name ? face->style_name : "",
         MSDF::SDF_RENDER_SIZE, MSDF::SDF_SPREAD);
 
-    if (MSDF::IS_CJK) {
-        m_isValid = (m_cache->GetManifestSize() >= MSDF::CJK_CACHE_THRESHOLD) &&
-            (MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont));
-    }
-    else {
-        m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
-    }
+    m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
     if (m_isValid) m_glyphPool.reserve(4096);
 }
 
@@ -45,7 +40,7 @@ MSDFFont* MSDFFont::Get(FT_Face face) {
 void MSDFFont::Register(FT_Face face, const FT_Byte* data, FT_Long size, FT_Long index) {
     if (s_fontHandles.find(face) != s_fontHandles.end()) return;
     auto font = std::make_unique<MSDFFont>(face, data, size, index);
-    if (font->m_msdfFont && (MSDF::IS_PREGEN || font->m_isValid)) s_fontHandles[face] = std::move(font);
+    if (font->m_msdfFont && font->m_isValid) s_fontHandles[face] = std::move(font);
 }
 
 void MSDFFont::Unregister(FT_Face face) {

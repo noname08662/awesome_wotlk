@@ -215,30 +215,8 @@ namespace D3D {
             return oReset(device, pPP);
         }
 
-        typedef int(__thiscall* CGxDeviceD3d__DeviceSetFormat_t)(char*, const void*);
-        CGxDeviceD3d__DeviceSetFormat_t CGxDeviceD3d__DeviceSetFormat_orig = reinterpret_cast<CGxDeviceD3d__DeviceSetFormat_t>(0x006904D0);
-
-        typedef int(__thiscall* CGxDevice__DeviceCreate_t)(void*, IDirect3DDevice9*, int);
-        CGxDevice__DeviceCreate_t CGxDevice__DeviceCreate_orig = reinterpret_cast<CGxDevice__DeviceCreate_t>(0x00682CB0);
-
-        typedef int(__thiscall* CGxDeviceD3d__IDestroyD3d_t)(int*);
-        CGxDeviceD3d__IDestroyD3d_t CGxDeviceD3d__IDestroyD3d_orig = reinterpret_cast<CGxDeviceD3d__IDestroyD3d_t>(0x006903B0);
-
-        typedef int(__thiscall* CGxDeviceD3d__IReleaseD3dResources_t)(void*, int);
-        CGxDeviceD3d__IReleaseD3dResources_t CGxDeviceD3d__IReleaseD3dResources_orig = reinterpret_cast<CGxDeviceD3d__IReleaseD3dResources_t>(0x00690150);
-
-        typedef int(__thiscall* CGxDevice__NotifyOnDeviceRestored_t)(void*);
-        CGxDevice__NotifyOnDeviceRestored_t CGxDevice__NotifyOnDeviceRestored_orig = reinterpret_cast<CGxDevice__NotifyOnDeviceRestored_t>(0x006843B0);
-
-        typedef void(__thiscall* CGxDeviceD3d__IShaderCreateVertex_t)(int, ShaderData*);
-        CGxDeviceD3d__IShaderCreateVertex_t CGxDeviceD3d__IShaderCreateVertex_orig = reinterpret_cast<CGxDeviceD3d__IShaderCreateVertex_t>(0x006AA0D0);
-
-        typedef void(__thiscall* CGxDeviceD3d__IShaderCreatePixel_t)(int, ShaderData*);
-        CGxDeviceD3d__IShaderCreatePixel_t CGxDeviceD3d__IShaderCreatePixel_orig = reinterpret_cast<CGxDeviceD3d__IShaderCreatePixel_t>(0x006AA070);
-
-
-        int __fastcall CGxDevice__DeviceCreate_hk(void* pThis, void* edx, IDirect3DDevice9* device, int pCreateInfo) {
-            const int result = CGxDevice__DeviceCreate_orig(pThis, device, pCreateInfo);
+        int __fastcall CGxDevice__DeviceCreateHk(void* pThis, void* edx, IDirect3DDevice9* device, int pCreateInfo) {
+            const int result = CGxDevice::DeviceCreateFn(pThis, device, pCreateInfo);
             if (result) {
                 IDirect3DDevice9* device = GetDevice();
                 if (device) {
@@ -249,55 +227,55 @@ namespace D3D {
 
                             if (!g_presentCallbacks.empty()) {
                                 oPresent = reinterpret_cast<Present_t>(vtbl->Present);
-                                DetourAttach(&(PVOID&)oPresent, hkPresent);
+                                Hooks::Detour(&oPresent, hkPresent);
                             }
                             if (!g_beginSceneCallbacks.empty()) {
                                 oBeginScene = reinterpret_cast<BeginScene_t>(vtbl->BeginScene);
-                                DetourAttach(&(PVOID&)oBeginScene, hkBeginScene);
+                                Hooks::Detour(&oBeginScene, hkBeginScene);
                             }
                             if (!g_endSceneCallbacks.empty()) {
                                 oEndScene = reinterpret_cast<EndScene_t>(vtbl->EndScene);
-                                DetourAttach(&(PVOID&)oEndScene, hkEndScene);
+                                Hooks::Detour(&oEndScene, hkEndScene);
                             }
                             if (!g_drawPrimitiveCallbacks.empty()) {
                                 oDrawPrimitive = reinterpret_cast<DrawPrimitive_t>(vtbl->DrawPrimitive);
-                                DetourAttach(&(PVOID&)oDrawPrimitive, hkDrawPrimitive);
+                                Hooks::Detour(&oDrawPrimitive, hkDrawPrimitive);
                             }
                             if (!g_drawIndexedPrimitiveCallbacks.empty()) {
                                 oDrawIndexedPrimitive = reinterpret_cast<DrawIndexedPrimitive_t>(vtbl->DrawIndexedPrimitive);
-                                DetourAttach(&(PVOID&)oDrawIndexedPrimitive, hkDrawIndexedPrimitive);
+                                Hooks::Detour(&oDrawIndexedPrimitive, hkDrawIndexedPrimitive);
                             }
                             if (!g_setTextureCallbacks.empty()) {
                                 oSetTexture = reinterpret_cast<SetTexture_t>(vtbl->SetTexture);
-                                DetourAttach(&(PVOID&)oSetTexture, hkSetTexture);
+                                Hooks::Detour(&oSetTexture, hkSetTexture);
                             }
                             if (!g_setRenderStateCallbacks.empty()) {
                                 oSetRenderState = reinterpret_cast<SetRenderState_t>(vtbl->SetRenderState);
-                                DetourAttach(&(PVOID&)oSetRenderState, hkSetRenderState);
+                                Hooks::Detour(&oSetRenderState, hkSetRenderState);
                             }
                             if (!g_setVertexShaderCallbacks.empty()) {
                                 oSetVertexShader = reinterpret_cast<SetVertexShader_t>(vtbl->SetVertexShader);
-                                DetourAttach(&(PVOID&)oSetVertexShader, hkSetVertexShader);
+                                Hooks::Detour(&oSetVertexShader, hkSetVertexShader);
                             }
                             if (!g_setPixelShaderCallbacks.empty()) {
                                 oSetPixelShader = reinterpret_cast<SetPixelShader_t>(vtbl->SetPixelShader);
-                                DetourAttach(&(PVOID&)oSetPixelShader, hkSetPixelShader);
+                                Hooks::Detour(&oSetPixelShader, hkSetPixelShader);
                             }
                             if (!g_createTextureCallbacks.empty()) {
                                 oCreateTexture = reinterpret_cast<CreateTexture_t>(vtbl->CreateTexture);
-                                DetourAttach(&(PVOID&)oCreateTexture, hkCreateTexture);
+                                Hooks::Detour(&oCreateTexture, hkCreateTexture);
                             }
                             if (!g_setRenderTargetCallbacks.empty()) {
                                 oSetRenderTarget = reinterpret_cast<SetRenderTarget_t>(vtbl->SetRenderTarget);
-                                DetourAttach(&(PVOID&)oSetRenderTarget, hkSetRenderTarget);
+                                Hooks::Detour(&oSetRenderTarget, hkSetRenderTarget);
                             }
                             if (!g_clearCallbacks.empty()) {
                                 oClear = reinterpret_cast<Clear_t>(vtbl->Clear);
-                                DetourAttach(&(PVOID&)oClear, hkClear);
+                                Hooks::Detour(&oClear, hkClear);
                             }
                             if (!g_resetCallbacks.empty()) {
                                 oReset = reinterpret_cast<Reset_t>(vtbl->Reset);
-                                DetourAttach(&(PVOID&)oReset, hkReset);
+                                Hooks::Detour(&oReset, hkReset);
                             }
                             DetourTransactionCommit();
                         }
@@ -310,38 +288,38 @@ namespace D3D {
             return result;
         }
 
-        int __fastcall CGxDeviceD3d__IDestroyD3d_hk(int* pThis) {
+        int __fastcall CGxDeviceD3d__IDestroyD3dHk(int* pThis) {
             for (auto& cb : g_onDestroyCallbacks) cb();
-            return CGxDeviceD3d__IDestroyD3d_orig(pThis);
+            return CGxDevice::IDestroyD3dFn(pThis);
         }
 
-        int __fastcall CGxDeviceD3d__IReleaseD3dResources_hk(void* pThis, void* edx, int res) {
+        int __fastcall CGxDeviceD3d__IReleaseD3dResourcesHk(void* pThis, void* edx, int res) {
             CleanupManagedResources();
             for (auto& cb : g_onReleaseCallbacks) cb();
-            return CGxDeviceD3d__IReleaseD3dResources_orig(pThis, res);
+            return CGxDevice::IReleaseD3dResourcesFn(pThis, res);
         }
 
-        int __fastcall CGxDevice__NotifyOnDeviceRestored_hk(void* pThis) {
+        int __fastcall CGxDevice__NotifyOnDeviceRestoredHk(void* pThis) {
             RestoreManagedResources();
             for (auto& cb : g_onRestoreCallbacks) cb();
-            return CGxDevice__NotifyOnDeviceRestored_orig(pThis);
+            return CGxDevice::NotifyOnDeviceRestoredFn(pThis);
         }
 
-        int __fastcall CGxDeviceD3d__DeviceSetFormat_hk(char* lpParam, void* edx, const void* GxDeviceFormat) {
-            const int result = CGxDeviceD3d__DeviceSetFormat_orig(lpParam, GxDeviceFormat);
+        int __fastcall CGxDeviceD3d__DeviceSetFormatHk(char* lpParam, void* edx, const void* GxDeviceFormat) {
+            const int result = CGxDevice::DeviceSetFormatFn(lpParam, GxDeviceFormat);
             RestoreManagedResources();
             for (auto& cb : g_onRestoreCallbacks) cb();
             return result;
         }
 
 
-        void __fastcall CGxDeviceD3d__IShaderCreateVertex_hk(int pThis, void* edx, ShaderData* shaderData) {
-            CGxDeviceD3d__IShaderCreateVertex_orig(pThis, shaderData);
+        void __fastcall CGxDeviceD3d__IShaderCreateVertexHk(int pThis, void* edx, CGxDevice::ShaderData* shaderData) {
+            CGxDevice::IShaderCreateVertexFn(pThis, shaderData);
             for (auto& cb : g_vertexShaderCallbacks) cb(shaderData);
         }
 
-        void __fastcall CGxDeviceD3d__IShaderCreatePixel_hk(int pThis, void* edx, ShaderData* shaderData) {
-            CGxDeviceD3d__IShaderCreatePixel_orig(pThis, shaderData);
+        void __fastcall CGxDeviceD3d__IShaderCreatePixelHk(int pThis, void* edx, CGxDevice::ShaderData* shaderData) {
+            CGxDevice::IShaderCreatePixelFn(pThis, shaderData);
             for (auto& cb : g_pixelShaderCallbacks) cb(shaderData);
         }
     }
@@ -528,12 +506,11 @@ namespace D3D {
 }
 
 void D3D::initialize() {
-    DetourAttach(&(PVOID&)CGxDevice__DeviceCreate_orig, CGxDevice__DeviceCreate_hk);
-    DetourAttach(&(PVOID&)CGxDeviceD3d__DeviceSetFormat_orig, CGxDeviceD3d__DeviceSetFormat_hk);
-    DetourAttach(&(PVOID&)CGxDeviceD3d__IDestroyD3d_orig, CGxDeviceD3d__IDestroyD3d_hk);
-    DetourAttach(&(PVOID&)CGxDeviceD3d__IReleaseD3dResources_orig, CGxDeviceD3d__IReleaseD3dResources_hk);
-    DetourAttach(&(PVOID&)CGxDevice__NotifyOnDeviceRestored_orig, CGxDevice__NotifyOnDeviceRestored_hk);
-
-    DetourAttach(&(PVOID&)CGxDeviceD3d__IShaderCreateVertex_orig, CGxDeviceD3d__IShaderCreateVertex_hk);
-    DetourAttach(&(PVOID&)CGxDeviceD3d__IShaderCreatePixel_orig, CGxDeviceD3d__IShaderCreatePixel_hk);
+    Hooks::Detour(&CGxDevice::DeviceCreateFn, CGxDevice__DeviceCreateHk);
+    Hooks::Detour(&CGxDevice::NotifyOnDeviceRestoredFn, CGxDevice__NotifyOnDeviceRestoredHk);
+    Hooks::Detour(&CGxDevice::DeviceSetFormatFn, CGxDeviceD3d__DeviceSetFormatHk);
+    Hooks::Detour(&CGxDevice::IDestroyD3dFn, CGxDeviceD3d__IDestroyD3dHk);
+    Hooks::Detour(&CGxDevice::IReleaseD3dResourcesFn,CGxDeviceD3d__IReleaseD3dResourcesHk);
+    Hooks::Detour(&CGxDevice::IShaderCreateVertexFn, CGxDeviceD3d__IShaderCreateVertexHk);
+    Hooks::Detour(&CGxDevice::IShaderCreatePixelFn, CGxDeviceD3d__IShaderCreatePixelHk);
 }

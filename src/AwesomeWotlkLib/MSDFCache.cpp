@@ -138,11 +138,11 @@ bool MSDFCache::LoadManifestFromFile(const std::filesystem::path& path, Manifest
     if (ec || fsize < sizeof(ManifestHeader) || fsize > MAX_SAFE_ALLOCATION) return false;
 
     FileGuard file(CreateFileW(path.c_str(), GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
     if (!file.IsValid()) return false;
 
-    FileGuard mapping(CreateFileMappingW(file, NULL, PAGE_READONLY, 0, 0, NULL));
+    FileGuard mapping(CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr));
     if (!mapping.IsValid()) return false;
 
     ViewGuard view(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0));
@@ -194,7 +194,7 @@ bool MSDFCache::AppendManifestJournal(const std::vector<ManifestEntry>& entries)
 
     FileGuard file(CreateFileW(m_cacheManifestJournalPath.c_str(), FILE_APPEND_DATA,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL));
+        nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
     if (!file.IsValid()) return false;
     if (entries.size() > UINT32_MAX / sizeof(ManifestEntry)) return false;
 
@@ -203,7 +203,7 @@ bool MSDFCache::AppendManifestJournal(const std::vector<ManifestEntry>& entries)
     std::memcpy(buffer.data(), entries.data(), totalBytes);
 
     DWORD written = 0;
-    bool ok = WriteFile(file, buffer.data(), totalBytes, &written, NULL) && (written == totalBytes);
+    bool ok = WriteFile(file, buffer.data(), totalBytes, &written, nullptr) && (written == totalBytes);
     if (ok) {
         FlushFileBuffers(file);
         file.successful = true;
@@ -220,14 +220,14 @@ bool MSDFCache::SaveManifest(bool isLocked) {
     std::filesystem::path tmpManifest = m_cacheManifestPath;
     tmpManifest.replace_extension(".tmp");
 
-    FileGuard file(CreateFileW(tmpManifest.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL, NULL));
+    FileGuard file(CreateFileW(tmpManifest.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL, nullptr));
     if (file.handle == INVALID_HANDLE_VALUE) return false;
 
     ManifestHeader hdr{ MANIFEST_MAGIC, CACHE_VERSION, m_key, static_cast<uint32_t>(m_manifest.size()) };
     DWORD written = 0;
 
-    if (!WriteFile(file.handle, &hdr, sizeof(hdr), &written, NULL)) return false;
+    if (!WriteFile(file.handle, &hdr, sizeof(hdr), &written, nullptr)) return false;
 
     auto entries = m_mEntryPool.Acquire(m_manifest.size());
     entries.reserve(m_manifest.size());
@@ -241,7 +241,7 @@ bool MSDFCache::SaveManifest(bool isLocked) {
     }
 
     if (!entries.empty()) {
-        if (!WriteFile(file.handle, entries.data(), static_cast<DWORD>(entries.size() * sizeof(ManifestEntry)), &written, NULL)) {
+        if (!WriteFile(file.handle, entries.data(), static_cast<DWORD>(entries.size() * sizeof(ManifestEntry)), &written, nullptr)) {
             return false;
         }
     }
@@ -402,8 +402,8 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
     tmpPath.replace_extension(".tmp");
 
     {
-        FileGuard tmpFile(CreateFileW(tmpPath.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+        FileGuard tmpFile(CreateFileW(tmpPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
         if (tmpFile.handle == INVALID_HANDLE_VALUE) return false;
 
         BlockFileHeader bHdr{ BLOCK_MAGIC, CACHE_VERSION, blockId, static_cast<uint32_t>(mergedEntries.size()) };
@@ -420,19 +420,19 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
         }
 
         DWORD written;
-        if (!WriteFile(tmpFile.handle, &bHdr, sizeof(bHdr), &written, NULL) || written != sizeof(bHdr)) {
+        if (!WriteFile(tmpFile.handle, &bHdr, sizeof(bHdr), &written, nullptr) || written != sizeof(bHdr)) {
             return false;
         }
         if (!WriteFile(tmpFile.handle, mergedEntries.data(),
-            static_cast<DWORD>(mergedEntries.size() * sizeof(GlyphEntry)), &written, NULL)) {
+            static_cast<DWORD>(mergedEntries.size() * sizeof(GlyphEntry)), &written, nullptr)) {
             return false;
         }
         if (!WriteFile(tmpFile.handle, hashTable.data(),
-            static_cast<DWORD>(BLOCK_SIZE * sizeof(uint32_t)), &written, NULL)) {
+            static_cast<DWORD>(BLOCK_SIZE * sizeof(uint32_t)), &written, nullptr)) {
             return false;
         }
         if (!WriteFile(tmpFile.handle, payloadBuffer.data(),
-            static_cast<DWORD>(payloadBuffer.size()), &written, NULL)) {
+            static_cast<DWORD>(payloadBuffer.size()), &written, nullptr)) {
             return false;
         }
         FlushFileBuffers(tmpFile.handle);

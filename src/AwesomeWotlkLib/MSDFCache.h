@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "MSDF.h"
+#include "MSDFUtils.h"
 #include "ankerl/unordered_dense.h"
 #include <filesystem>
 #include <deque>

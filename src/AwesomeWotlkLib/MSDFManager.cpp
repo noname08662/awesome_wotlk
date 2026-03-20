@@ -45,9 +45,9 @@ MSDFManager::ArenaState::ArenaState() {
     slotToBlockIndex.fill(0xFFFFFFFF);
 
     const size_t totalSize = effectiveSlotSize * MAX_ARENA_SLOTS;
-    base = VirtualAlloc2(GetCurrentProcess(), NULL, totalSize,
+    base = VirtualAlloc2(GetCurrentProcess(), nullptr, totalSize,
         MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
-        PAGE_NOACCESS, NULL, 0);
+        PAGE_NOACCESS, nullptr, 0);
     if (!base) return;
 
     for (size_t i = 0; i < MAX_ARENA_SLOTS; ++i) {
@@ -101,7 +101,7 @@ void MSDFManager::ArenaState::FreeSlot(uint32_t slotIndex) {
     VirtualFreeEx(GetCurrentProcess(), slotAddr, 0, MEM_RELEASE | MEM_COALESCE_PLACEHOLDERS);
     VirtualAlloc2(GetCurrentProcess(), slotAddr, effectiveSlotSize,
         MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
-        PAGE_NOACCESS, NULL, 0);
+        PAGE_NOACCESS, nullptr, 0);
 
     freeMask |= (1ULL << slotIndex);
 
@@ -170,8 +170,8 @@ bool MSDFManager::LoadMappedBlock(MSDFCache::BlockWrap wrap, MappedBlock& outBlo
     outBlock.file.handle = CreateFileW(wrap.path.native().c_str(),
         GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        NULL, OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, NULL);
+        nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, nullptr);
     if (outBlock.file.handle == INVALID_HANDLE_VALUE) {
         s_arena.FreeSlot(slotIndex);
         return false;
@@ -200,14 +200,14 @@ bool MSDFManager::LoadMappedBlock(MSDFCache::BlockWrap wrap, MappedBlock& outBlo
 
     DWORD sizeHigh = static_cast<DWORD>(splitSize >> 32);
     DWORD sizeLow = static_cast<DWORD>(splitSize & 0xFFFFFFFF);
-    outBlock.mapping.handle = CreateFileMappingW(outBlock.file.handle, NULL, PAGE_READONLY, sizeHigh, sizeLow, NULL);
+    outBlock.mapping.handle = CreateFileMappingW(outBlock.file.handle, nullptr, PAGE_READONLY, sizeHigh, sizeLow, nullptr);
     if (!outBlock.mapping.handle) {
         s_arena.FreeSlot(slotIndex);
         return false;
     }
 
-    outBlock.view.ptr = MapViewOfFile3(outBlock.mapping.handle, NULL, slotAddr, 0, splitSize,
-        MEM_REPLACE_PLACEHOLDER, PAGE_READONLY, NULL, 0);
+    outBlock.view.ptr = MapViewOfFile3(outBlock.mapping.handle, nullptr, slotAddr, 0, splitSize,
+        MEM_REPLACE_PLACEHOLDER, PAGE_READONLY, nullptr, 0);
     if (!outBlock.view.ptr) {
         s_arena.FreeSlot(slotIndex);
         return false;

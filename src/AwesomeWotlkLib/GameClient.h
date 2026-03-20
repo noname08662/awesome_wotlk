@@ -1,905 +1,307 @@
-#pragma once
-#include <Windows.h>
-#include <cstdint>
-#include <cstdarg>
-#include <functional>
+﻿#pragma once
+#include "Types.h"
 #include <string>
-#include <algorithm>
 
-/*
-    Game client types/functions/bindings and other import
-*/
+#include <ft2build.h>
+#include <d3d9.h>
+#include FT_FREETYPE_H
 
-// Types
-struct lua_State;
-struct WorldFrame;
-struct Camera;
-struct Status;
-struct Frame;
-struct XMLObject;
-struct Object;
-struct ObjectVtbl;
-struct ObjectEntry;
-struct Unit;
-struct UnitVtbl;
-struct UnitEntry;
-struct Player;
-struct PlayerVtbl;
-struct PlayerEntry;
-using guid_t = uint64_t;
-using lua_Number = double;
+// most of the header is either copied from somewhere else or LLM-assisted estimation
+// so don't trust it blindly
 
-template <typename T> struct Vec2D { T x, y; };
-template <typename T> struct Vec3D { T x, y, z; };
-template <typename T> struct Vec4D { T x, y, z, o; };
-struct VecXYZ : Vec3D<float> {
+// ObjectMgr
+namespace ObjectMgr {
+    template <typename T>
+    using GetFuncPtr = T * (*)(guid_t, ETypeMask);
 
-    inline VecXYZ operator-(const VecXYZ& r) { return { x - r.x, y - r.y, z - r.z }; }
-
-    inline float distance(const VecXYZ& other)
-    {
-        VecXYZ diff = (*this) - other;
-        return std::sqrtf(std::powf(diff.x, 2) + std::powf(diff.y, 2) + std::powf(diff.z, 2));
+    inline int EnumObjects_internal(int(*func)(guid_t, void*), void* udata) {
+        return (reinterpret_cast<int(*)(int(*)(guid_t, void*), void*)>(0x004D4B30))(func, udata);
     }
-};
 
-struct TerrainClickEvent {
-    uint64_t GUID;
-    float x, y, z;
-    uint32_t button;
-};
-const char* idToStr[35] = {
-    "INVTYPE_NON_EQUIP",              //  0
-    "INVTYPE_HEAD",                   //  1
-    "INVTYPE_NECK",                   //  2
-    "INVTYPE_SHOULDER",               //  3
-    "INVTYPE_BODY",                   //  4
-    "INVTYPE_CHEST",                  //  5
-    "INVTYPE_WAIST",                  //  6
-    "INVTYPE_LEGS",                   //  7
-    "INVTYPE_FEET",                   //  8
-    "INVTYPE_WRIST",                  //  9
-    "INVTYPE_HAND",                   // 10
-    "INVTYPE_FINGER",                 // 11
-    "INVTYPE_TRINKET",                // 12
-    "INVTYPE_WEAPON",                 // 13
-    "INVTYPE_SHIELD",                 // 14
-    "INVTYPE_RANGED",                 // 15
-    "INVTYPE_CLOAK",                  // 16
-    "INVTYPE_2HWEAPON",               // 17
-    "INVTYPE_BAG",                    // 18
-    "INVTYPE_TABARD",                 // 19
-    "INVTYPE_ROBE",                   // 20
-    "INVTYPE_WEAPONMAINHAND",         // 21
-    "INVTYPE_WEAPONOFFHAND",          // 22
-    "INVTYPE_HOLDABLE",               // 23
-    "INVTYPE_AMMO",                   // 24
-    "INVTYPE_THROWN",                 // 25
-    "INVTYPE_RANGEDRIGHT",            // 26
-    "INVTYPE_QUIVER",                 // 27
-    "INVTYPE_RELIC",                  // 28
-    "INVTYPE_PROFESSION_TOOL",        // 29
-    "INVTYPE_PROFESSION_GEAR",        // 30
-    "INVTYPE_EQUIPABLESPELL_OFFENSIVE", // 31
-    "INVTYPE_EQUIPABLESPELL_UTILITY",   // 32
-    "INVTYPE_EQUIPABLESPELL_DEFENSIVE", // 33
-    "INVTYPE_EQUIPABLESPELL_WEAPON"     // 34
-};
+    template<typename F>
+    inline bool EnumObjects(F&& func) {
+        struct Wrapper {
+            static int __cdecl callback(uint64_t guid, void* udata) {
+                auto& f = *static_cast<F*>(udata);
+                return f(guid) ? 1 : 0;
+            }
+        };
+        return EnumObjects_internal(&Wrapper::callback, &func) != 0;
+    }
+    template <typename T>
+    inline T* Get(guid_t guid, ETypeMask flags) { return (reinterpret_cast<GetFuncPtr<T>>(0x004D4DB0))(guid, flags); }
 
-struct DBCHeader {
-    uint32_t junk[3];
-    uint32_t MaxIndex;
-    uint32_t MinIndex;
-};
+    inline guid_t HexString2Guid(const char* str) { return (reinterpret_cast<guid_t(*)(const char*)>(0x0074D120))(str); }
+    inline guid_t GetGuidByUnitID(const char* unitId) { return (reinterpret_cast<guid_t(*)(const char*)>(0x0060C1C0))(unitId); }
 
-struct ItemCacheRec {
-    uint32_t ID;
-    uint32_t ClassId;
-    uint32_t SubClassId;
-    int32_t Unk0;
-    uint32_t DisplayInfoId;
-    uint32_t gap0[5]; // ItemQuality Quality; ItemFlags TypeFlags; int32_t BuyPrice; int32_t Faction; int32_t SellPrice;
-    uint32_t InventoryType;
-    //...
-};
+    inline void Guid2HexString(guid_t guid, char* buf) { return (reinterpret_cast<void(*)(guid_t, char*)>(0x0074D0D0))(guid, buf); }
+    inline guid_t String2Guid(const char* str) {
+        if (!str) return 0;
+        if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X')) return HexString2Guid(str);
+        return GetGuidByUnitID(str);
+    }
 
-struct ItemClassRec {
-    uint32_t m_classID;
-    uint32_t m_subclassMapID;
-    uint32_t m_flags;
-    uint32_t m_className_lang;
-};
+    inline int UnitRightClickByGuid(guid_t guid) { return (reinterpret_cast<int(*)(guid_t)>(0x005277B0))(guid); }
+    inline int UnitLeftClickByGuid(guid_t guid) { return (reinterpret_cast<int(*)(guid_t)>(0x005274F0))(guid); }
 
-struct ItemSubClassRec {
-    uint32_t m_classID;
-    uint32_t m_subClassID;
-    uint32_t m_prerequisiteProficiency;
-    uint32_t m_postrequisiteProficiency;
-    uint32_t m_flags;
-    uint32_t m_displayFlags;
-    uint32_t m_weaponParrySeq;
-    uint32_t m_weaponReadySeq;
-    uint32_t m_weaponAttackSeq;
-    uint32_t m_WeaponSwingSize;
-    uint32_t m_displayName_lang;
-    //uint32_t m_verboseName_lang;
-};
+    inline void SetMouseoverByGuid(guid_t guid, guid_t prev) { return (reinterpret_cast<void(*)(guid_t, guid_t)>(0x0051F790))(guid, prev); }
 
-struct ItemDisplayInfoRec {
-    uint32_t m_ID;
-    uint32_t m_modelName[2];
-    uint32_t m_modelTexture[2];
-    uint32_t m_inventoryIcon;
-    //uint32_t m_groundModel;
-    //uint32_t m_geosetGroup[3];
-    //uint32_t m_spellVisualID;
-    //uint32_t m_groupSoundIndex;
-    //uint32_t m_helmetGeosetVisID[2];
-    //uint32_t m_texture[8];
-    //uint32_t m_itemVisual;
-};
+    inline guid_t GetTargetGuid() { return *reinterpret_cast<guid_t*>(0x00BD07B0); }
+    inline guid_t GetPlayerGuid() { return reinterpret_cast<guid_t(*)()>(0x004D3790)(); }
+}
 
-typedef uint32_t(__cdecl* GetItemIDByName_t)(const char* name);
-static GetItemIDByName_t getItemIDByName = (GetItemIDByName_t)0x00709DE0;
+// CGame
+namespace CGame {
+    inline void __stdcall SetLastError(int code) {
+        return (reinterpret_cast<void(__stdcall*)(int)>(0x00771870))(code);
+    }
+}
 
-typedef uintptr_t(__thiscall* GetItemInfoBlockByIdDelegate)(void* instance, uint32_t id, uint64_t* guid, int a4, int a5, int a6);
-static auto getItemInfoById = (GetItemInfoBlockByIdDelegate)(0x0067CA30);
-static void* itemCachePtr = (void*)(0x00C5D828);
+// CGInputControl
+namespace CGInputControl {
+    inline uint32_t* GetActive() {
+        return *reinterpret_cast<uint32_t**>(0xC24954);
+    }
+}
 
-struct Flag96 {
-    uint32_t part1;
-    uint32_t part2;
-    uint32_t part3;
-};
+// RCString
+namespace RCString {
+    inline uint32_t __stdcall hash(const char* str) {
+        return (reinterpret_cast<uint32_t(__stdcall*)(const char*)>(0x0076F640))(str);
+    }
+}
 
-struct SpellRec {
-    uint32_t Id;
-    uint32_t Category;
-    uint32_t Dispel;
-    int32_t Mechanic;
+// ClientDB
+namespace ClientDB {
+    using ClientDb_GetLocalizedRow = int(__thiscall*)(void* pThis, int index, void* rowBuffer);
+    inline const auto GetLocalizedRow = reinterpret_cast<ClientDb_GetLocalizedRow>(0x004CFD20);
 
-    uint32_t Attributes;
-    uint32_t AttributesEx;
-    uint32_t AttributesEx2;
-    uint32_t AttributesEx3;
-    uint32_t AttributesEx4;
-    uint32_t AttributesEx5;
-    uint32_t AttributesEx6;
-    uint32_t AttributesEx7;
+    using ClientDb_GetRow = int(__thiscall*)(void* pThis, int index);
+    inline const auto GetRow = reinterpret_cast<ClientDb_GetRow>(0x004BB1C0);
 
-    uint32_t Stances;
-    uint32_t unk_320_2;
-    uint32_t StancesNot;
-    uint32_t unk_320_3;
-    uint32_t Targets;
-    uint32_t TargetCreatureType;
-    uint32_t RequiresSpellFocus;
-    uint32_t FacingCasterFlags;
-    uint32_t CasterAuraState;
-    uint32_t TargetAuraState;
-    uint32_t CasterAuraStateNot;
-    uint32_t TargetAuraStateNot;
-    uint32_t casterAuraSpell;
-    uint32_t targetAuraSpell;
-    uint32_t excludeCasterAuraSpell;
-    uint32_t excludeTargetAuraSpell;
-    uint32_t CastingTimeIndex;
-    uint32_t RecoveryTime;
-    uint32_t CategoryRecoveryTime;
-    uint32_t InterruptFlags;
-    uint32_t AuraInterruptFlags;
-    uint32_t ChannelInterruptFlags;
-    uint32_t procFlags;
-    uint32_t procChance;
-    uint32_t procCharges;
-    uint32_t maxLevel;
-    uint32_t baseLevel;
-    uint32_t spellLevel;
-    uint32_t DurationIndex;
-    int32_t powerType;
-    uint32_t manaCost;
-    uint32_t manaCostPerlevel;
-    uint32_t manaPerSecond;
-    uint32_t manaPerSecondPerLevel;
-    uint32_t rangeIndex;
-    float speed;
-    uint32_t modalNextSpell;
-    uint32_t StackAmount;
-    uint32_t Totem[2];
-    int32_t Reagent[8];
-    uint32_t ReagentCount[8];
-    int32_t EquippedItemClass;
-    int32_t EquippedItemSubClassMask;
-    int32_t EquippedItemInventoryTypeMask;
+    inline uintptr_t GetDbcTable(uint32_t dbIndex) {
+        for (uintptr_t tableBase = 0x006337D0; *reinterpret_cast<uint8_t*>(tableBase) != 0xC3; tableBase += 0x11) {
+            uint32_t index = *reinterpret_cast<uint32_t*>(tableBase + 1);
+            if (index == dbIndex) {
+                uintptr_t tablePtr = *reinterpret_cast<uintptr_t*>(tableBase + 0xB) + 0x18;
+                return tablePtr;
+            }
+        }
+        return 0;
+    }
+}
 
-    int32_t Effect[3];
-    int32_t EffectDieSides[3];
-    //int32_t EffectBaseDice[3];
-    //float EffectDicePerLevel[3];
-    float EffectRealPointsPerLevel[3];
-    int32_t EffectBasePoints[3];
-    uint32_t EffectMechanic[3];
-    uint32_t EffectImplicitTargetA[3];
-    uint32_t EffectImplicitTargetB[3];
-    uint32_t EffectRadiusIndex[3];
-    uint32_t EffectApplyAuraName[3];
-    uint32_t EffectAmplitude[3];
-    float EffectMultipleValue[3];
-    uint32_t EffectChainTarget[3];
-    uint32_t EffectItemType[3];
-    int32_t EffectMiscValue[3];
-    int32_t EffectMiscValueB[3];
-    uint32_t EffectTriggerSpell[3];
-    float EffectPointsPerComboPoint[3];
-    Flag96 EffectSpellClassMask[3];
+// GameUI
+namespace CGGameUI {
+    guid_t* g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
 
-    uint32_t SpellVisual[2];
-    uint32_t SpellIconID;
-    uint32_t activeIconID;
-    uint32_t spellPriority;
+    using Target_t = void(__cdecl*)(guid_t);
+    inline auto TargetFn = reinterpret_cast<Target_t>(0x00524BF0);
 
-    uint32_t SpellNameOffset;  // string block
-    uint32_t RankOffset;
-    uint32_t DescriptionOffset;
-    uint32_t ToolTipOffset;
+    using ClearTarget_t = void(__cdecl*)(guid_t, int);
+    inline auto ClearTargetFn = reinterpret_cast<ClearTarget_t>(0x005241B0);
 
-    uint32_t ManaCostPercentage;
-    uint32_t StartRecoveryCategory;
-    uint32_t StartRecoveryTime;
-    uint32_t MaxTargetLevel;
-    uint32_t SpellFamilyName;
-    Flag96 SpellFamilyFlags;
-    uint32_t MaxAffectedTargets;
-    uint32_t DmgClass;
-    uint32_t PreventionType;
-    uint32_t StanceBarOrder;
+    using WorldCallback_t = void(__fastcall*)();
+    inline auto EnterWorldFn = reinterpret_cast<WorldCallback_t>(0x00528010);
+    inline auto LeaveWorldFn = reinterpret_cast<WorldCallback_t>(0x00528C30);
 
-    float DmgMultiplier[3];
-    uint32_t MinFactionId;
-    uint32_t MinReputation;
-    uint32_t RequiredAuraVision;
-    uint32_t TotemCategory[2];
-    int32_t AreaGroupId;
-    int32_t SchoolMask;
-    uint32_t runeCostID;
-    uint32_t spellMissileID;
-    uint32_t PowerDisplayId;
-    float unk_320_4[3];
-    uint32_t spellDescriptionVariableID;
-    uint32_t SpellDifficultyId;
-};
-static_assert(sizeof(SpellRec) == 0x2A8);
+    inline auto GetGuidByKeywordFn = reinterpret_cast<DummyCallback_t>(0x0060AFAA);
 
-enum UIFrame {
-    CurrentFrame_Ptr = 0x00B499A8,
-    CurrentFrame_Offset = 0x78,
-    UIBase = 0x00B499A8,
-    FirstFrame = 0x0CD4,
-    NextFrame = 0x0CCC,
-    UnkDivWidth = 0x00AC0CB4,
-    UnkDivHeight = 0x00AC0CB8,
-    ScreenWidth = 0x00C7D2C8,
-    ScreenHeight = 0x00C7D2C4,
-    FrameLeft = 0x68,
-    FrameRight = 0x70,
-    FrameTop = 0x6C,
-    FrameBottom = 0x64,
-    ParentPtr = 0x94,
-    EffectiveScale = 0x7C,
-    Name = 0x1C,
-    Visible = 0xE0,
-};
+    using GetKeywordsByGuid_t = char** (*)(guid_t* guid, size_t* size);
+    inline auto GetKeywordsByGuidFn = reinterpret_cast<GetKeywordsByGuid_t>(0x0060BB70);
 
-enum UnitFlags : uint32_t {
-    UNIT_FLAG_SERVER_CONTROLLED = 0x00000001,           // set only when unit movement is controlled by server - by SPLINE/MONSTER_MOVE packets, together with UNIT_FLAG_STUNNED; only set to units controlled by client; client function CGUnit_C::IsClientControlled returns false when set for owner
-    UNIT_FLAG_NON_ATTACKABLE = 0x00000002,           // not attackable, set when creature starts to cast spells with SPELL_EFFECT_SPAWN and cast time, removed when spell hits caster, original name is UNIT_FLAG_SPAWNING. Rename when it will be removed from all scripts
-    UNIT_FLAG_REMOVE_CLIENT_CONTROL = 0x00000004,           // This is a legacy flag used to disable movement player's movement while controlling other units, SMSG_CLIENT_CONTROL replaces this functionality clientside now. CONFUSED and FLEEING flags have the same effect on client movement asDISABLE_MOVE_CONTROL in addition to preventing spell casts/autoattack (they all allow climbing steeper hills and emotes while moving)
-    UNIT_FLAG_PLAYER_CONTROLLED = 0x00000008,           // controlled by player, use _IMMUNE_TO_PC instead of _IMMUNE_TO_NPC
-    UNIT_FLAG_RENAME = 0x00000010,
-    UNIT_FLAG_PREPARATION = 0x00000020,           // don't take reagents for spells with SPELL_ATTR5_NO_REAGENT_WHILE_PREP
-    UNIT_FLAG_UNK_6 = 0x00000040,
-    UNIT_FLAG_NOT_ATTACKABLE_1 = 0x00000080,           // ?? (UNIT_FLAG_PLAYER_CONTROLLED | UNIT_FLAG_NOT_ATTACKABLE_1) is NON_PVP_ATTACKABLE
-    UNIT_FLAG_IMMUNE_TO_PC = 0x00000100,           // disables combat/assistance with PlayerCharacters (PC) - see Unit::IsValidAttackTarget, Unit::IsValidAssistTarget
-    UNIT_FLAG_IMMUNE_TO_NPC = 0x00000200,           // disables combat/assistance with NonPlayerCharacters (NPC) - see Unit::IsValidAttackTarget, Unit::IsValidAssistTarget
-    UNIT_FLAG_LOOTING = 0x00000400,           // loot animation
-    UNIT_FLAG_PET_IN_COMBAT = 0x00000800,           // on player pets: whether the pet is chasing a target to attack || on other units: whether any of the unit's minions is in combat
-    UNIT_FLAG_PVP_ENABLING = 0x00001000,           // changed in 3.0.3, now UNIT_BYTES_2_OFFSET_PVP_FLAG from UNIT_FIELD_BYTES_2
-    UNIT_FLAG_SILENCED = 0x00002000,           // silenced, 2.1.1
-    UNIT_FLAG_CANT_SWIM = 0x00004000,           // TITLE Can't Swim
-    UNIT_FLAG_CAN_SWIM = 0x00008000,           // TITLE Can Swim DESCRIPTION shows swim animation in water
-    UNIT_FLAG_NON_ATTACKABLE_2 = 0x00010000,           // removes attackable icon, if on yourself, cannot assist self but can cast TARGET_SELF spells - added by SPELL_AURA_MOD_UNATTACKABLE
-    UNIT_FLAG_PACIFIED = 0x00020000,           // 3.0.3 ok
-    UNIT_FLAG_STUNNED = 0x00040000,           // 3.0.3 ok
-    UNIT_FLAG_IN_COMBAT = 0x00080000,
-    UNIT_FLAG_ON_TAXI = 0x00100000,           // disable casting at client side spell not allowed by taxi flight (mounted?), probably used with 0x4 flag
-    UNIT_FLAG_DISARMED = 0x00200000,           // 3.0.3, disable melee spells casting..., "Required melee weapon" added to melee spells tooltip.
-    UNIT_FLAG_CONFUSED = 0x00400000,
-    UNIT_FLAG_FLEEING = 0x00800000,
-    UNIT_FLAG_POSSESSED = 0x01000000,           // under direct client control by a player (possess or vehicle)
-    UNIT_FLAG_UNINTERACTIBLE = 0x02000000,
-    UNIT_FLAG_SKINNABLE = 0x04000000,
-    UNIT_FLAG_MOUNT = 0x08000000,
-    UNIT_FLAG_UNK_28 = 0x10000000,
-    UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT = 0x20000000,   // Prevent automatically playing emotes from parsing chat text, for example "lol" in /say, ending message with ? or !, or using /yell
-    UNIT_FLAG_SHEATHE = 0x40000000,
-    UNIT_FLAG_IMMUNE = 0x80000000,           // Immune to damage
+    using GetItemIDByName_t = uint32_t(__cdecl*)(const char* name);
+    inline auto GetItemIDByNameFn = reinterpret_cast<GetItemIDByName_t>(0x00709DE0);
 
-    UNIT_FLAG_DISALLOWED = (UNIT_FLAG_SERVER_CONTROLLED | UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_REMOVE_CLIENT_CONTROL |
-    UNIT_FLAG_PLAYER_CONTROLLED | UNIT_FLAG_RENAME | UNIT_FLAG_PREPARATION | /* UNIT_FLAG_UNK_6 | */
-        UNIT_FLAG_NOT_ATTACKABLE_1 | UNIT_FLAG_LOOTING | UNIT_FLAG_PET_IN_COMBAT | UNIT_FLAG_PVP_ENABLING |
-        UNIT_FLAG_SILENCED | UNIT_FLAG_NON_ATTACKABLE_2 | UNIT_FLAG_PACIFIED | UNIT_FLAG_STUNNED |
-        UNIT_FLAG_IN_COMBAT | UNIT_FLAG_ON_TAXI | UNIT_FLAG_DISARMED | UNIT_FLAG_CONFUSED | UNIT_FLAG_FLEEING |
-        UNIT_FLAG_POSSESSED | UNIT_FLAG_SKINNABLE | UNIT_FLAG_MOUNT | UNIT_FLAG_UNK_28 |
-        UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT | UNIT_FLAG_SHEATHE | UNIT_FLAG_IMMUNE), // SKIP
+    using HandleTerrainClick_t = void(__cdecl*)(TerrainClickEvent*);
+    inline auto HandleTerrainClickFn = reinterpret_cast<HandleTerrainClick_t>(0x00527830);
 
-    UNIT_FLAG_ALLOWED = (0xFFFFFFFF & ~UNIT_FLAG_DISALLOWED) // SKIP
-};
+    using SecureCmdOptionParse_t = int(__cdecl*)(lua_State* L);
+    inline auto SecureCmdOptionParseFn = reinterpret_cast<SecureCmdOptionParse_t>(0x00564AE0);
 
-enum TypeMask : uint32_t {
-    TYPEMASK_OBJECT = 0x1,
-    TYPEMASK_ITEM = 0x2,
-    TYPEMASK_CONTAINER = 0x4,
-    TYPEMASK_UNIT = 0x8,
-    TYPEMASK_PLAYER = 0x10,
-    TYPEMASK_GAMEOBJECT = 0x20,
-    TYPEMASK_DYNAMICOBJECT = 0x40,
-    TYPEMASK_CORPSE = 0x80,
-};
+    using CursorReleaseSpellTargeting_t = void(__cdecl*)();
+    inline auto CursorReleaseSpellTargetingFn = reinterpret_cast<CursorReleaseSpellTargeting_t>(0x007FCC30);
 
-enum TypeID
-{
-    TYPEID_OBJECT = 0,
-    TYPEID_ITEM = 1,
-    TYPEID_CONTAINER = 2,
-    TYPEID_UNIT = 3,
-    TYPEID_PLAYER = 4,
-    TYPEID_GAMEOBJECT = 5,
-    TYPEID_DYNAMICOBJECT = 6,
-    TYPEID_CORPSE = 7,
-    NUM_TYPEIDS = 8
-};
+    using DestroyPlatePool_t = int(__cdecl*)();
+    inline auto DestroyPlatePoolFn = reinterpret_cast<DestroyPlatePool_t>(0x009DE370);
 
-enum EObjectFields
-{
-    OBJECT_FIELD_GUID = 0x0000, // Size: 2, Type: LONG, Flags: PUBLIC
-    OBJECT_FIELD_TYPE = 0x0002, // Size: 1, Type: INT, Flags: PUBLIC
-    OBJECT_FIELD_ENTRY = 0x0003, // Size: 1, Type: INT, Flags: PUBLIC
-    OBJECT_FIELD_SCALE_X = 0x0004, // Size: 1, Type: FLOAT, Flags: PUBLIC
-    OBJECT_FIELD_PADDING = 0x0005, // Size: 1, Type: INT, Flags: NONE
-    OBJECT_END = 0x0006,
-};
+    using WipeActivePlates_t = guid_t* (__cdecl*)();
+    inline auto WipeActivePlatesFn = reinterpret_cast<WipeActivePlates_t>(0x00727130);
 
-enum EGameObjectFields
-{
-    OBJECT_FIELD_CREATED_BY = OBJECT_END + 0x0000, // Size: 2, Type: LONG, Flags: PUBLIC
-    GAMEOBJECT_DISPLAYID = OBJECT_END + 0x0002, // Size: 1, Type: INT, Flags: PUBLIC
-    GAMEOBJECT_FLAGS = OBJECT_END + 0x0003, // Size: 1, Type: INT, Flags: PUBLIC
-    GAMEOBJECT_PARENTROTATION = OBJECT_END + 0x0004, // Size: 4, Type: FLOAT, Flags: PUBLIC
-    GAMEOBJECT_DYNAMIC = OBJECT_END + 0x0008, // Size: 1, Type: TWO_SHORT, Flags: DYNAMIC
-    GAMEOBJECT_FACTION = OBJECT_END + 0x0009, // Size: 1, Type: INT, Flags: PUBLIC
-    GAMEOBJECT_LEVEL = OBJECT_END + 0x000A, // Size: 1, Type: INT, Flags: PUBLIC
-    GAMEOBJECT_BYTES_1 = OBJECT_END + 0x000B, // Size: 1, Type: BYTES, Flags: PUBLIC
-    GAMEOBJECT_END = OBJECT_END + 0x000C,
-};
+    using OsGetAsyncTimeMs_t = int(__cdecl*)();
+    inline auto OsGetAsyncTimeMsFn = reinterpret_cast<OsGetAsyncTimeMs_t>(0x0086AE20);
 
-enum GameobjectTypes
-{
-    GAMEOBJECT_TYPE_DOOR = 0,
-    GAMEOBJECT_TYPE_BUTTON = 1,
-    GAMEOBJECT_TYPE_QUESTGIVER = 2,
-    GAMEOBJECT_TYPE_CHEST = 3,
-    GAMEOBJECT_TYPE_BINDER = 4,
-    GAMEOBJECT_TYPE_GENERIC = 5,
-    GAMEOBJECT_TYPE_TRAP = 6,
-    GAMEOBJECT_TYPE_CHAIR = 7,
-    GAMEOBJECT_TYPE_SPELL_FOCUS = 8,
-    GAMEOBJECT_TYPE_TEXT = 9,
-    GAMEOBJECT_TYPE_GOOBER = 10,
-    GAMEOBJECT_TYPE_TRANSPORT = 11,
-    GAMEOBJECT_TYPE_AREADAMAGE = 12,
-    GAMEOBJECT_TYPE_CAMERA = 13,
-    GAMEOBJECT_TYPE_MAP_OBJECT = 14,
-    GAMEOBJECT_TYPE_MO_TRANSPORT = 15,
-    GAMEOBJECT_TYPE_DUEL_ARBITER = 16,
-    GAMEOBJECT_TYPE_FISHINGNODE = 17,
-    GAMEOBJECT_TYPE_SUMMONING_RITUAL = 18,
-    GAMEOBJECT_TYPE_MAILBOX = 19,
-    GAMEOBJECT_TYPE_DO_NOT_USE = 20,
-    GAMEOBJECT_TYPE_GUARDPOST = 21,
-    GAMEOBJECT_TYPE_SPELLCASTER = 22,
-    GAMEOBJECT_TYPE_MEETINGSTONE = 23,
-    GAMEOBJECT_TYPE_FLAGSTAND = 24,
-    GAMEOBJECT_TYPE_FISHINGHOLE = 25,
-    GAMEOBJECT_TYPE_FLAGDROP = 26,
-    GAMEOBJECT_TYPE_MINI_GAME = 27,
-    GAMEOBJECT_TYPE_DO_NOT_USE_2 = 28,
-    GAMEOBJECT_TYPE_CAPTURE_POINT = 29,
-    GAMEOBJECT_TYPE_AURA_GENERATOR = 30,
-    GAMEOBJECT_TYPE_DUNGEON_DIFFICULTY = 31,
-    GAMEOBJECT_TYPE_BARBER_CHAIR = 32,
-    GAMEOBJECT_TYPE_DESTRUCTIBLE_BUILDING = 33,
-    GAMEOBJECT_TYPE_GUILD_BANK = 34,
-    GAMEOBJECT_TYPE_TRAPDOOR = 35
-};
+    using TraceLine_t = uint8_t(__cdecl*)(C3Vector*, C3Vector*, C3Vector*, float*, uint32_t, uint32_t);
+    inline auto TraceLineFn = reinterpret_cast<TraceLine_t>(0x007A3B70);
 
-enum EUnitFields
-{
-    UNIT_FIELD_CHARM = OBJECT_END + 0x0000, // Size: 2, Type: LONG, Flags: PUBLIC
-    UNIT_FIELD_SUMMON = OBJECT_END + 0x0002, // Size: 2, Type: LONG, Flags: PUBLIC
-    UNIT_FIELD_CRITTER = OBJECT_END + 0x0004, // Size: 2, Type: LONG, Flags: PRIVATE
-    UNIT_FIELD_CHARMEDBY = OBJECT_END + 0x0006, // Size: 2, Type: LONG, Flags: PUBLIC
-    UNIT_FIELD_SUMMONEDBY = OBJECT_END + 0x0008, // Size: 2, Type: LONG, Flags: PUBLIC
-    UNIT_FIELD_CREATEDBY = OBJECT_END + 0x000A, // Size: 2, Type: LONG, Flags: PUBLIC
-    UNIT_FIELD_TARGET = OBJECT_END + 0x000C, // Size: 2, Type: LONG, Flags: PUBLIC
-    UNIT_FIELD_CHANNEL_OBJECT = OBJECT_END + 0x000E, // Size: 2, Type: LONG, Flags: PUBLIC
-    UNIT_CHANNEL_SPELL = OBJECT_END + 0x0010, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_BYTES_0 = OBJECT_END + 0x0011, // Size: 1, Type: BYTES, Flags: PUBLIC
-    UNIT_FIELD_HEALTH = OBJECT_END + 0x0012, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_POWER1 = OBJECT_END + 0x0013, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_POWER2 = OBJECT_END + 0x0014, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_POWER3 = OBJECT_END + 0x0015, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_POWER4 = OBJECT_END + 0x0016, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_POWER5 = OBJECT_END + 0x0017, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_POWER6 = OBJECT_END + 0x0018, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_POWER7 = OBJECT_END + 0x0019, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MAXHEALTH = OBJECT_END + 0x001A, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MAXPOWER1 = OBJECT_END + 0x001B, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MAXPOWER2 = OBJECT_END + 0x001C, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MAXPOWER3 = OBJECT_END + 0x001D, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MAXPOWER4 = OBJECT_END + 0x001E, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MAXPOWER5 = OBJECT_END + 0x001F, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MAXPOWER6 = OBJECT_END + 0x0020, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MAXPOWER7 = OBJECT_END + 0x0021, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER = OBJECT_END + 0x0022, // Size: 7, Type: FLOAT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER = OBJECT_END + 0x0029, // Size: 7, Type: FLOAT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_LEVEL = OBJECT_END + 0x0030, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_FACTIONTEMPLATE = OBJECT_END + 0x0031, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_VIRTUAL_ITEM_SLOT_ID = OBJECT_END + 0x0032, // Size: 3, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_FLAGS = OBJECT_END + 0x0035, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_FLAGS_2 = OBJECT_END + 0x0036, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_AURASTATE = OBJECT_END + 0x0037, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_BASEATTACKTIME = OBJECT_END + 0x0038, // Size: 2, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_RANGEDATTACKTIME = OBJECT_END + 0x003A, // Size: 1, Type: INT, Flags: PRIVATE
-    UNIT_FIELD_BOUNDINGRADIUS = OBJECT_END + 0x003B, // Size: 1, Type: FLOAT, Flags: PUBLIC
-    UNIT_FIELD_COMBATREACH = OBJECT_END + 0x003C, // Size: 1, Type: FLOAT, Flags: PUBLIC
-    UNIT_FIELD_DISPLAYID = OBJECT_END + 0x003D, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_NATIVEDISPLAYID = OBJECT_END + 0x003E, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MOUNTDISPLAYID = OBJECT_END + 0x003F, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_MINDAMAGE = OBJECT_END + 0x0040, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER, PARTY_LEADER
-    UNIT_FIELD_MAXDAMAGE = OBJECT_END + 0x0041, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER, PARTY_LEADER
-    UNIT_FIELD_MINOFFHANDDAMAGE = OBJECT_END + 0x0042, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER, PARTY_LEADER
-    UNIT_FIELD_MAXOFFHANDDAMAGE = OBJECT_END + 0x0043, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER, PARTY_LEADER
-    UNIT_FIELD_BYTES_1 = OBJECT_END + 0x0044, // Size: 1, Type: BYTES, Flags: PUBLIC
-    UNIT_FIELD_PETNUMBER = OBJECT_END + 0x0045, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_PET_NAME_TIMESTAMP = OBJECT_END + 0x0046, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_PETEXPERIENCE = OBJECT_END + 0x0047, // Size: 1, Type: INT, Flags: OWNER
-    UNIT_FIELD_PETNEXTLEVELEXP = OBJECT_END + 0x0048, // Size: 1, Type: INT, Flags: OWNER
-    UNIT_DYNAMIC_FLAGS = OBJECT_END + 0x0049, // Size: 1, Type: INT, Flags: DYNAMIC
-    UNIT_MOD_CAST_SPEED = OBJECT_END + 0x004A, // Size: 1, Type: FLOAT, Flags: PUBLIC
-    UNIT_CREATED_BY_SPELL = OBJECT_END + 0x004B, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_NPC_FLAGS = OBJECT_END + 0x004C, // Size: 1, Type: INT, Flags: DYNAMIC
-    UNIT_NPC_EMOTESTATE = OBJECT_END + 0x004D, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_STAT0 = OBJECT_END + 0x004E, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_STAT1 = OBJECT_END + 0x004F, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_STAT2 = OBJECT_END + 0x0050, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_STAT3 = OBJECT_END + 0x0051, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_STAT4 = OBJECT_END + 0x0052, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_POSSTAT0 = OBJECT_END + 0x0053, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_POSSTAT1 = OBJECT_END + 0x0054, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_POSSTAT2 = OBJECT_END + 0x0055, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_POSSTAT3 = OBJECT_END + 0x0056, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_POSSTAT4 = OBJECT_END + 0x0057, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_NEGSTAT0 = OBJECT_END + 0x0058, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_NEGSTAT1 = OBJECT_END + 0x0059, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_NEGSTAT2 = OBJECT_END + 0x005A, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_NEGSTAT3 = OBJECT_END + 0x005B, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_NEGSTAT4 = OBJECT_END + 0x005C, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_RESISTANCES = OBJECT_END + 0x005D, // Size: 7, Type: INT, Flags: PRIVATE, OWNER, PARTY_LEADER
-    UNIT_FIELD_RESISTANCEBUFFMODSPOSITIVE = OBJECT_END + 0x0064, // Size: 7, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_RESISTANCEBUFFMODSNEGATIVE = OBJECT_END + 0x006B, // Size: 7, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_BASE_MANA = OBJECT_END + 0x0072, // Size: 1, Type: INT, Flags: PUBLIC
-    UNIT_FIELD_BASE_HEALTH = OBJECT_END + 0x0073, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_BYTES_2 = OBJECT_END + 0x0074, // Size: 1, Type: BYTES, Flags: PUBLIC
-    UNIT_FIELD_ATTACK_POWER = OBJECT_END + 0x0075, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_ATTACK_POWER_MODS = OBJECT_END + 0x0076, // Size: 1, Type: TWO_SHORT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_ATTACK_POWER_MULTIPLIER = OBJECT_END + 0x0077, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_RANGED_ATTACK_POWER = OBJECT_END + 0x0078, // Size: 1, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_RANGED_ATTACK_POWER_MODS = OBJECT_END + 0x0079, // Size: 1, Type: TWO_SHORT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_RANGED_ATTACK_POWER_MULTIPLIER = OBJECT_END + 0x007A, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_MINRANGEDDAMAGE = OBJECT_END + 0x007B, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_MAXRANGEDDAMAGE = OBJECT_END + 0x007C, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_POWER_COST_MODIFIER = OBJECT_END + 0x007D, // Size: 7, Type: INT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_POWER_COST_MULTIPLIER = OBJECT_END + 0x0084, // Size: 7, Type: FLOAT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_MAXHEALTHMODIFIER = OBJECT_END + 0x008B, // Size: 1, Type: FLOAT, Flags: PRIVATE, OWNER
-    UNIT_FIELD_HOVERHEIGHT = OBJECT_END + 0x008C, // Size: 1, Type: FLOAT, Flags: PUBLIC
-    UNIT_FIELD_PADDING = OBJECT_END + 0x008D, // Size: 1, Type: INT, Flags: NONE
-    UNIT_END = OBJECT_END + 0x008E,
+    inline bool TraceLine(const C3Vector& start, const C3Vector& end, uint32_t hitFlags,
+        C3Vector& intersectionPoint, float& completedBeforeIntersection) {
+        completedBeforeIntersection = 1.0f;
+        intersectionPoint = { 0.0f, 0.0f, 0.0f };
 
-    PLAYER_DUEL_ARBITER = UNIT_END + 0x0000, // Size: 2, Type: LONG, Flags: PUBLIC
-    PLAYER_FLAGS = UNIT_END + 0x0002, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_GUILDID = UNIT_END + 0x0003, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_GUILDRANK = UNIT_END + 0x0004, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_BYTES = UNIT_END + 0x0005, // Size: 1, Type: BYTES, Flags: PUBLIC
-    PLAYER_BYTES_2 = UNIT_END + 0x0006, // Size: 1, Type: BYTES, Flags: PUBLIC
-    PLAYER_BYTES_3 = UNIT_END + 0x0007, // Size: 1, Type: BYTES, Flags: PUBLIC
-    PLAYER_DUEL_TEAM = UNIT_END + 0x0008, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_GUILD_TIMESTAMP = UNIT_END + 0x0009, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_QUEST_LOG_1_1 = UNIT_END + 0x000A, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_1_2 = UNIT_END + 0x000B, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_1_3 = UNIT_END + 0x000C, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_1_4 = UNIT_END + 0x000E, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_2_1 = UNIT_END + 0x000F, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_2_2 = UNIT_END + 0x0010, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_2_3 = UNIT_END + 0x0011, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_2_5 = UNIT_END + 0x0013, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_3_1 = UNIT_END + 0x0014, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_3_2 = UNIT_END + 0x0015, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_3_3 = UNIT_END + 0x0016, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_3_5 = UNIT_END + 0x0018, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_4_1 = UNIT_END + 0x0019, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_4_2 = UNIT_END + 0x001A, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_4_3 = UNIT_END + 0x001B, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_4_5 = UNIT_END + 0x001D, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_5_1 = UNIT_END + 0x001E, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_5_2 = UNIT_END + 0x001F, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_5_3 = UNIT_END + 0x0020, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_5_5 = UNIT_END + 0x0022, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_6_1 = UNIT_END + 0x0023, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_6_2 = UNIT_END + 0x0024, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_6_3 = UNIT_END + 0x0025, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_6_5 = UNIT_END + 0x0027, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_7_1 = UNIT_END + 0x0028, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_7_2 = UNIT_END + 0x0029, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_7_3 = UNIT_END + 0x002A, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_7_5 = UNIT_END + 0x002C, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_8_1 = UNIT_END + 0x002D, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_8_2 = UNIT_END + 0x002E, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_8_3 = UNIT_END + 0x002F, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_8_5 = UNIT_END + 0x0031, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_9_1 = UNIT_END + 0x0032, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_9_2 = UNIT_END + 0x0033, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_9_3 = UNIT_END + 0x0034, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_9_5 = UNIT_END + 0x0036, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_10_1 = UNIT_END + 0x0037, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_10_2 = UNIT_END + 0x0038, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_10_3 = UNIT_END + 0x0039, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_10_5 = UNIT_END + 0x003B, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_11_1 = UNIT_END + 0x003C, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_11_2 = UNIT_END + 0x003D, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_11_3 = UNIT_END + 0x003E, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_11_5 = UNIT_END + 0x0040, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_12_1 = UNIT_END + 0x0041, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_12_2 = UNIT_END + 0x0042, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_12_3 = UNIT_END + 0x0043, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_12_5 = UNIT_END + 0x0045, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_13_1 = UNIT_END + 0x0046, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_13_2 = UNIT_END + 0x0047, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_13_3 = UNIT_END + 0x0048, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_13_5 = UNIT_END + 0x004A, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_14_1 = UNIT_END + 0x004B, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_14_2 = UNIT_END + 0x004C, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_14_3 = UNIT_END + 0x004D, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_14_5 = UNIT_END + 0x004F, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_15_1 = UNIT_END + 0x0050, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_15_2 = UNIT_END + 0x0051, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_15_3 = UNIT_END + 0x0052, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_15_5 = UNIT_END + 0x0054, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_16_1 = UNIT_END + 0x0055, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_16_2 = UNIT_END + 0x0056, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_16_3 = UNIT_END + 0x0057, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_16_5 = UNIT_END + 0x0059, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_17_1 = UNIT_END + 0x005A, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_17_2 = UNIT_END + 0x005B, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_17_3 = UNIT_END + 0x005C, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_17_5 = UNIT_END + 0x005E, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_18_1 = UNIT_END + 0x005F, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_18_2 = UNIT_END + 0x0060, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_18_3 = UNIT_END + 0x0061, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_18_5 = UNIT_END + 0x0063, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_19_1 = UNIT_END + 0x0064, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_19_2 = UNIT_END + 0x0065, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_19_3 = UNIT_END + 0x0066, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_19_5 = UNIT_END + 0x0068, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_20_1 = UNIT_END + 0x0069, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_20_2 = UNIT_END + 0x006A, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_20_3 = UNIT_END + 0x006B, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_20_5 = UNIT_END + 0x006D, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_21_1 = UNIT_END + 0x006E, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_21_2 = UNIT_END + 0x006F, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_21_3 = UNIT_END + 0x0070, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_21_5 = UNIT_END + 0x0072, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_22_1 = UNIT_END + 0x0073, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_22_2 = UNIT_END + 0x0074, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_22_3 = UNIT_END + 0x0075, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_22_5 = UNIT_END + 0x0077, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_23_1 = UNIT_END + 0x0078, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_23_2 = UNIT_END + 0x0079, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_23_3 = UNIT_END + 0x007A, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_23_5 = UNIT_END + 0x007C, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_24_1 = UNIT_END + 0x007D, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_24_2 = UNIT_END + 0x007E, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_24_3 = UNIT_END + 0x007F, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_24_5 = UNIT_END + 0x0081, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_25_1 = UNIT_END + 0x0082, // Size: 1, Type: INT, Flags: PARTY_MEMBER
-    PLAYER_QUEST_LOG_25_2 = UNIT_END + 0x0083, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_25_3 = UNIT_END + 0x0084, // Size: 2, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_QUEST_LOG_25_5 = UNIT_END + 0x0086, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_VISIBLE_ITEM_1_ENTRYID = UNIT_END + 0x0087, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_1_ENCHANTMENT = UNIT_END + 0x0088, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_2_ENTRYID = UNIT_END + 0x0089, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_2_ENCHANTMENT = UNIT_END + 0x008A, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_3_ENTRYID = UNIT_END + 0x008B, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_3_ENCHANTMENT = UNIT_END + 0x008C, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_4_ENTRYID = UNIT_END + 0x008D, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_4_ENCHANTMENT = UNIT_END + 0x008E, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_5_ENTRYID = UNIT_END + 0x008F, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_5_ENCHANTMENT = UNIT_END + 0x0090, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_6_ENTRYID = UNIT_END + 0x0091, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_6_ENCHANTMENT = UNIT_END + 0x0092, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_7_ENTRYID = UNIT_END + 0x0093, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_7_ENCHANTMENT = UNIT_END + 0x0094, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_8_ENTRYID = UNIT_END + 0x0095, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_8_ENCHANTMENT = UNIT_END + 0x0096, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_9_ENTRYID = UNIT_END + 0x0097, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_9_ENCHANTMENT = UNIT_END + 0x0098, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_10_ENTRYID = UNIT_END + 0x0099, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_10_ENCHANTMENT = UNIT_END + 0x009A, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_11_ENTRYID = UNIT_END + 0x009B, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_11_ENCHANTMENT = UNIT_END + 0x009C, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_12_ENTRYID = UNIT_END + 0x009D, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_12_ENCHANTMENT = UNIT_END + 0x009E, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_13_ENTRYID = UNIT_END + 0x009F, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_13_ENCHANTMENT = UNIT_END + 0x00A0, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_14_ENTRYID = UNIT_END + 0x00A1, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_14_ENCHANTMENT = UNIT_END + 0x00A2, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_15_ENTRYID = UNIT_END + 0x00A3, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_15_ENCHANTMENT = UNIT_END + 0x00A4, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_16_ENTRYID = UNIT_END + 0x00A5, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_16_ENCHANTMENT = UNIT_END + 0x00A6, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_17_ENTRYID = UNIT_END + 0x00A7, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_17_ENCHANTMENT = UNIT_END + 0x00A8, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_18_ENTRYID = UNIT_END + 0x00A9, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_18_ENCHANTMENT = UNIT_END + 0x00AA, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_19_ENTRYID = UNIT_END + 0x00AB, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_VISIBLE_ITEM_19_ENCHANTMENT = UNIT_END + 0x00AC, // Size: 1, Type: TWO_SHORT, Flags: PUBLIC
-    PLAYER_CHOSEN_TITLE = UNIT_END + 0x00AD, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_FAKE_INEBRIATION = UNIT_END + 0x00AE, // Size: 1, Type: INT, Flags: PUBLIC
-    PLAYER_FIELD_PAD_0 = UNIT_END + 0x00AF, // Size: 1, Type: INT, Flags: NONE
-    PLAYER_FIELD_INV_SLOT_HEAD = UNIT_END + 0x00B0, // Size: 46, Type: LONG, Flags: PRIVATE
-    PLAYER_FIELD_PACK_SLOT_1 = UNIT_END + 0x00DE, // Size: 32, Type: LONG, Flags: PRIVATE
-    PLAYER_FIELD_BANK_SLOT_1 = UNIT_END + 0x00FE, // Size: 56, Type: LONG, Flags: PRIVATE
-    PLAYER_FIELD_BANKBAG_SLOT_1 = UNIT_END + 0x0136, // Size: 14, Type: LONG, Flags: PRIVATE
-    PLAYER_FIELD_VENDORBUYBACK_SLOT_1 = UNIT_END + 0x0144, // Size: 24, Type: LONG, Flags: PRIVATE
-    PLAYER_FIELD_KEYRING_SLOT_1 = UNIT_END + 0x015C, // Size: 64, Type: LONG, Flags: PRIVATE
-    PLAYER_FIELD_CURRENCYTOKEN_SLOT_1 = UNIT_END + 0x019C, // Size: 64, Type: LONG, Flags: PRIVATE
-    PLAYER_FARSIGHT = UNIT_END + 0x01DC, // Size: 2, Type: LONG, Flags: PRIVATE
-    PLAYER__FIELD_KNOWN_TITLES = UNIT_END + 0x01DE, // Size: 2, Type: LONG, Flags: PRIVATE
-    PLAYER__FIELD_KNOWN_TITLES1 = UNIT_END + 0x01E0, // Size: 2, Type: LONG, Flags: PRIVATE
-    PLAYER__FIELD_KNOWN_TITLES2 = UNIT_END + 0x01E2, // Size: 2, Type: LONG, Flags: PRIVATE
-    PLAYER_FIELD_KNOWN_CURRENCIES = UNIT_END + 0x01E4, // Size: 2, Type: LONG, Flags: PRIVATE
-    PLAYER_XP = UNIT_END + 0x01E6, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_NEXT_LEVEL_XP = UNIT_END + 0x01E7, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_SKILL_INFO_1_1 = UNIT_END + 0x01E8, // Size: 384, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_CHARACTER_POINTS1 = UNIT_END + 0x0368, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_CHARACTER_POINTS2 = UNIT_END + 0x0369, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_TRACK_CREATURES = UNIT_END + 0x036A, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_TRACK_RESOURCES = UNIT_END + 0x036B, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_BLOCK_PERCENTAGE = UNIT_END + 0x036C, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_DODGE_PERCENTAGE = UNIT_END + 0x036D, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_PARRY_PERCENTAGE = UNIT_END + 0x036E, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_EXPERTISE = UNIT_END + 0x036F, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_OFFHAND_EXPERTISE = UNIT_END + 0x0370, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_CRIT_PERCENTAGE = UNIT_END + 0x0371, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_RANGED_CRIT_PERCENTAGE = UNIT_END + 0x0372, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_OFFHAND_CRIT_PERCENTAGE = UNIT_END + 0x0373, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_SPELL_CRIT_PERCENTAGE1 = UNIT_END + 0x0374, // Size: 7, Type: FLOAT, Flags: PRIVATE
-    PLAYER_SHIELD_BLOCK = UNIT_END + 0x037B, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_SHIELD_BLOCK_CRIT_PERCENTAGE = UNIT_END + 0x037C, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_EXPLORED_ZONES_1 = UNIT_END + 0x037D, // Size: 128, Type: BYTES, Flags: PRIVATE
-    PLAYER_REST_STATE_EXPERIENCE = UNIT_END + 0x03FD, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_COINAGE = UNIT_END + 0x03FE, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_MOD_DAMAGE_DONE_POS = UNIT_END + 0x03FF, // Size: 7, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_MOD_DAMAGE_DONE_NEG = UNIT_END + 0x0406, // Size: 7, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_MOD_DAMAGE_DONE_PCT = UNIT_END + 0x040D, // Size: 7, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_MOD_HEALING_DONE_POS = UNIT_END + 0x0414, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_MOD_HEALING_PCT = UNIT_END + 0x0415, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_FIELD_MOD_HEALING_DONE_PCT = UNIT_END + 0x0416, // Size: 1, Type: FLOAT, Flags: PRIVATE
-    PLAYER_FIELD_MOD_TARGET_RESISTANCE = UNIT_END + 0x0417, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_MOD_TARGET_PHYSICAL_RESISTANCE = UNIT_END + 0x0418, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_BYTES = UNIT_END + 0x0419, // Size: 1, Type: BYTES, Flags: PRIVATE
-    PLAYER_AMMO_ID = UNIT_END + 0x041A, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_SELF_RES_SPELL = UNIT_END + 0x041B, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_PVP_MEDALS = UNIT_END + 0x041C, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_BUYBACK_PRICE_1 = UNIT_END + 0x041D, // Size: 12, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_BUYBACK_TIMESTAMP_1 = UNIT_END + 0x0429, // Size: 12, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_KILLS = UNIT_END + 0x0435, // Size: 1, Type: TWO_SHORT, Flags: PRIVATE
-    PLAYER_FIELD_TODAY_CONTRIBUTION = UNIT_END + 0x0436, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_YESTERDAY_CONTRIBUTION = UNIT_END + 0x0437, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_LIFETIME_HONORBALE_KILLS = UNIT_END + 0x0438, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_BYTES2 = UNIT_END + 0x0439, // Size: 1, Type: 6, Flags: PRIVATE
-    PLAYER_FIELD_WATCHED_FACTION_INDEX = UNIT_END + 0x043A, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_COMBAT_RATING_1 = UNIT_END + 0x043B, // Size: 25, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_ARENA_TEAM_INFO_1_1 = UNIT_END + 0x0454, // Size: 21, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_HONOR_CURRENCY = UNIT_END + 0x0469, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_ARENA_CURRENCY = UNIT_END + 0x046A, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_MAX_LEVEL = UNIT_END + 0x046B, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_DAILY_QUESTS_1 = UNIT_END + 0x046C, // Size: 25, Type: INT, Flags: PRIVATE
-    PLAYER_RUNE_REGEN_1 = UNIT_END + 0x0485, // Size: 4, Type: FLOAT, Flags: PRIVATE
-    PLAYER_NO_REAGENT_COST_1 = UNIT_END + 0x0489, // Size: 3, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_GLYPH_SLOTS_1 = UNIT_END + 0x048C, // Size: 6, Type: INT, Flags: PRIVATE
-    PLAYER_FIELD_GLYPHS_1 = UNIT_END + 0x0492, // Size: 6, Type: INT, Flags: PRIVATE
-    PLAYER_GLYPHS_ENABLED = UNIT_END + 0x0498, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_PET_SPELL_POWER = UNIT_END + 0x0499, // Size: 1, Type: INT, Flags: PRIVATE
-    PLAYER_END = UNIT_END + 0x049A,
-};
+        uint8_t result = TraceLineFn(
+            const_cast<C3Vector*>(&start),
+            const_cast<C3Vector*>(&end),
+            &intersectionPoint,
+            &completedBeforeIntersection,
+            hitFlags,
+            0
+        );
+        if (result != 0 && result != 1) return false;
 
-enum EGoFields
-{
-    GO_FLAG_NONE = 0x00000000,
-    GO_FLAG_IN_USE = 0x00000001,
-    GO_FLAG_LOCKED = 0x00000002,
-    GO_FLAG_INTERACT_COND = 0x00000004,
-    GO_FLAG_TRANSPORT = 0x00000008,
-    GO_FLAG_NOT_SELECTABLE = 0x00000010,
-    GO_FLAG_NODESPAWN = 0x00000020,
-    GO_FLAG_TRIGGERED = 0x00000040,
-    GO_FLAG_DAMAGED = 0x00000200,
-    GO_FLAG_DESTROYED = 0x00000400,
-};
+        completedBeforeIntersection *= 100.0f;
+        return static_cast<bool>(result);
+    }
+}
 
-struct C3Vector
-{
-    float X, Y, Z;
-};
+// CGlueMgr
+namespace CGlueMgr {
+    inline auto LoadGlueXMLFn = reinterpret_cast<DummyCallback_t>(0x004DA9AC);
+    inline auto LoadCharactersFn = reinterpret_cast<DummyCallback_t>(0x004E47E5);
+}
 
-enum UnitDynFlags
-{
-    UNIT_DYNFLAG_NONE = 0x0000,
-    UNIT_DYNFLAG_LOOTABLE = 0x0001,
-    UNIT_DYNFLAG_TRACK_UNIT = 0x0002,
-    UNIT_DYNFLAG_TAPPED = 0x0004,       // Lua_UnitIsTapped
-    UNIT_DYNFLAG_TAPPED_BY_PLAYER = 0x0008,       // Lua_UnitIsTappedByPlayer
-    UNIT_DYNFLAG_SPECIALINFO = 0x0010,
-    UNIT_DYNFLAG_DEAD = 0x0020,
-    UNIT_DYNFLAG_REFER_A_FRIEND = 0x0040,
-    UNIT_DYNFLAG_TAPPED_BY_ALL_THREAT_LIST = 0x0080        // Lua_UnitIsTappedByAllThreatList
-};
+// FrameScript
+namespace FrameScript {
+    struct Event {
+        uint32_t m_hash;
+        unk_t unk_04[4];
+        const char* m_name;
+        unk_t unk_18[12];
+        uint32_t m_field48;
+        uint32_t m_field4C;
+        uint32_t m_field50;
+    };
 
-struct ObjectEntry {
-    guid_t guid;
-    int type;
-    int entry;
-    float scaleX;
-    int padding;
-};
-static_assert(sizeof(ObjectEntry) == 0x18);
+    struct EventList {
+        size_t m_reserve;
+        size_t m_size;
+        Event** m_buf;
+    };
 
-struct UnitEntry : ObjectEntry {
-    guid_t charm;
-    guid_t summon;
-    guid_t critter;
-    guid_t charmedBy;
-    guid_t summonedBy;
-    guid_t createdBy;
-    guid_t target;
-    guid_t channelObject;
-    uint32_t channelSpell;
-    uint32_t bytes0;
-    uint32_t health;
-    uint32_t power[7];
-    uint32_t maxHealth;
-    uint32_t maxPower[7];
-    uint32_t powerRegenFlatModifier[7];
-    uint32_t powerRegenInterruptedFlatModifier[7];
-    uint32_t level;
-    uint32_t factionTemplate;
-    uint32_t virtualItemSlotId[3];
-    uint32_t flags;
-    uint32_t flags2;
-    float auraState;
-    uint32_t baseAttackTime[2];
-    uint32_t rangedAttackTime;
-    float boundingRadius;
-    float combatReach;
-    uint32_t displayId;
-    uint32_t nativeDisplayId;
-    uint32_t mountDisplayId;
-    float minDamage;
-    float maxDamage;
-    float minOffhandDamage;
-    float maxOffhandDamage;
-    uint32_t bytes1;
-    uint32_t petNumber;
-    uint32_t petNameTimestamp;
-    uint32_t petExperience;
-    uint32_t petNextLevelExp;
-    uint32_t dynamicFlags;
-    float modCastSpeed;
-    uint32_t createdBySpell;
-    uint32_t npc_flags;
-    char gap1[0xFE];
-};
-static_assert(sizeof(UnitEntry) == 0x250);
+    struct UnkContainer;
 
-struct PlayerQuest {
-    int a1, a2, a3, a4, a5;
-};
-static_assert(sizeof(PlayerQuest) == 0x14);
+    using FireOnUpdate_t = int(*)(int, int, int, int);
+    inline auto FireOnUpdateFn = reinterpret_cast<FireOnUpdate_t>(0x00495810);
 
-struct PlayerVisibleItem {
-    int entryId;
-    int enchant;
-};
-static_assert(sizeof(PlayerVisibleItem) == 0x8);
+    using FillEvents_t = void (*)(const char** list, size_t count);
+    auto FillEventsFn = reinterpret_cast<FillEvents_t>(0x0081B5F0);
 
-struct PlayerEntry : UnitEntry {
-    UnitEntry unit;
-    guid_t duelArbiter;
-    uint32_t flags;
-    uint32_t guildId, guildRank;
-    uint32_t bytes1, bytes2, bytes3;
-    uint32_t duelTeam;
-    uint32_t guildTimestamp;
-    PlayerQuest quests[25];
-    PlayerVisibleItem visibleItems[19];
-};
+    inline UnkContainer* GetUnkContainer() { return reinterpret_cast<UnkContainer*>(0x00D3F7A8); }
+    inline Event* __fastcall FindEvent(UnkContainer* This, void* edx, const char* eventName) { return (reinterpret_cast<Event * (__fastcall*)(UnkContainer*, void*, const char*)>(0x004BC410))(This, edx, eventName); }
+    inline EventList* GetEventList() { return reinterpret_cast<EventList*>(0x00D3F7D0); }
+    inline void FireEvent_inner(int eventId, lua_State* L, int nargs) { return (reinterpret_cast<void(*)(int, lua_State*, int)>(0x0081AA00))(eventId, L, nargs); };
+    inline void vFireEvent(int eventId, const char* format, va_list args) { return (reinterpret_cast<void(*)(int, const char*, va_list)>(0x0081AC90))(eventId, format, args); }
 
-struct ObjectVtbl {
-    DWORD gap0[11];
-    void(__thiscall* GetPosition)(Object* self, VecXYZ* pos);
-};
+    inline int GetEventIdByName(const char* eventName) {
+        EventList* eventList = GetEventList();
+        if (!eventList || eventList->m_size == 0) return -1;
 
-struct UnitVtbl {
-    DWORD gap0[11];
-    void(__thiscall* GetPosition)(Unit* self, VecXYZ* pos);
-};
+        uint32_t hashValue = RCString::hash(eventName);
+        for (size_t i = 0; i < eventList->m_size; i++) {
+            Event* event = eventList->m_buf[i];
+            if (event && event->m_hash == hashValue && (std::strcmp(event->m_name, eventName) == 0)) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
 
-struct PlayerVtbl {};
+    inline void FireEvent(const char* eventName, const char* format, ...) {
+        int eventId = GetEventIdByName(eventName);
+        if (eventId == -1) return;
 
-struct Object {
-    ObjectVtbl* vmt;
-    int field4;
-    ObjectEntry* entry;
-};
+        va_list args;
+        va_start(args, format);
+        vFireEvent(eventId, format, args);
+        va_end(args);
+    }
+}
 
-struct Unit {
-    UnitVtbl* vmt;
-    int field4;
-    UnitEntry* entry;
-    uint32_t gap[779];
-    Frame* nameplate;
+// NetClient
+namespace NetClient {
+    using Login_t = void(*)(const char*, const char*);
+    inline void Login(const char* login, const char* password) { return (reinterpret_cast<Login_t>(0x004D8A30))(login, password); }
+}
 
-    inline Object* ToObject() { return (Object*)this; }
-};
+// LoginUI
+namespace LoginUI {
+#pragma pack(push, 1)
+    struct CharData {
+        guid_t m_guid;
+        char m_name[48];
+        int m_map;
+        int m_zone;
+        int m_guildId;
+        VecXYZ m_pos;
+        int m_displayInfoId[23];
+        int m_inventoryType[23];
+        int m_enchantVisual[23];
+        int m_petDisplayId;
+        int m_petLevel;
+        int m_petFamily;
+        int m_flags;
+        int m_charCustomizeFlags;
+        char m_race;
+        char m_class;
+        char m_gender;
+        char m_skin;
+        char m_face;
+        char m_hairStyle;
+        char m_hairColor;
+        char m_facialColor;
+        char m_level;
+        char m_firstLogin;
+        char pad[6];
+    };
+#pragma pack(pop)
+    static_assert(sizeof(CharData) == 0x188);
 
-struct Player {
-    PlayerVtbl* vmt;
-    int field4;
-    PlayerEntry* entry;
+    struct CharVectorEntry {
+        CharData m_data;
+        // ...
+    };
 
-    inline Unit* ToUnit() { return (Unit*)this; }
-};
+    struct CharVector {
+        int m_reserved;
+        int m_size;
+        CharVectorEntry* m_buf;
+        int m_fieldC;
+    };
 
-// Base
+    inline CharVector* GetChars() { return reinterpret_cast<CharVector*>(0x00B6B238); }
 
+    inline void SelectCharacter(int idx) {
+        *reinterpret_cast<int*>(0x00AC436C) = idx;
+        (reinterpret_cast<void(*)()>(0x004E3CD0))();
+    }
 
-class CGObject_C // sizeof(CGObject_C) == 0xD0
-{
+    inline void EnterWorld(int idx) {
+        *reinterpret_cast<int*>(0x00B499A4) = *reinterpret_cast<int*>(0x00B1D618);
+        *reinterpret_cast<int*>(0x00AC436C) = idx;
+        (reinterpret_cast<void(*)()>(0x004D9BD0))();
+    }
+}
+
+class CSimpleTop;
+class CSimpleFrame;
+class CGNamePlate;
+class CSimpleCamera;
+
+// CGObject_C
+class CGObject_C {
 public:
-    template <typename T> T& GetValue(uint32_t index) const { return *((T*)&m_data[index]); }
+    template <typename T>
+    inline T& GetValue(uint32_t index) const {
+        return *reinterpret_cast<T*>(&reinterpret_cast<uint32_t*>(m_entry)[index]);
+    }
 
-    void SetValueBytes(uint32_t index, uint8_t offset, uint8_t value)
-    {
-        if (!m_data) return;
-        if (offset >= 4) return;
-
+    inline void SetValueBytes(uint32_t index, uint8_t offset, uint8_t value) {
+        if (!m_data || offset >= 4) return;
         uint32_t& current = m_data[index];
-
-        uint8_t currentByte = (current >> (offset * 8)) & 0xFF;
-        if (currentByte != value)
-        {
+        uint8_t currentByte = static_cast<uint8_t>((current >> (offset * 8)) & 0xFF);
+        if (currentByte != value) {
             current &= ~(0xFFu << (offset * 8));
-            current |= (uint32_t(value) << (offset * 8));
+            current |= (static_cast<uint32_t>(value) << (offset * 8));
         }
     }
 
@@ -970,14 +372,30 @@ public:
     virtual void PlaySpellVisualKit_HandleWeapons(); // 64
     virtual void PlaySpellVisualKit_DelayLightningEffects(); // 65
 
-    TypeID GetTypeID() const { return m_typeID; }
+    uint32_t* m_data;
+    ObjectEntry* m_entry;
+    uint32_t m_fieldC;
+    uint32_t m_field10;
+    ETypeID m_typeID;
+    uint32_t m_spline[29];
+    CM2Model* m_childModel;
+    unk_t unk_90;
+    float m_trueScale;
+    float m_scaleX;
+    float m_renderScale;
+    unk_t unk_A0;
+    unk_t unk_A4;
+    uint32_t m_highlightTypes;
+    float m_objectHeight;
+    uint32_t m_flags;
+    CM2Model* m_model;
+    void* m_worldObject;
+    uint32_t m_highlightMask;
 
-    float distance(CGObject_C* secObj)
-    {
-        if (!secObj)
-            return 0.0f;
+    inline float GetDistance(CGObject_C* secObj) {
+        if (!secObj) return 0.0f;
 
-        C3Vector a, b;
+        C3Vector a{}, b{};
         secObj->GetPosition(a);
         this->GetPosition(b);
 
@@ -986,615 +404,1161 @@ public:
         float dz = b.Z - a.Z;
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
+    inline ObjectEntry* GetEntry() const { return m_entry; }
+};
+
+// CGUnit_C
+class CGUnit_C : public CGObject_C {
+public:
+    unk_t unk_C0[4];                        // 0xC0
+    FactionTemplateRec* m_factionTemplate;  // 0xD0
+    unk_t unk_D4[53];                       // 0xD4
+    C44Matrix m_transform;                  // 0x1A8
+    C3Vector m_selectionCenter;             // 0x1E8
+    float m_selectionRadius;                // 0x1F4
+    unk_t unk_1F8[117];                     // 0x1F8
+    BattlegroundData* m_bgData;             // 0x3CC
+    unk_t unk_3D0[289];                     // 0x3D0
+    float m_unitHeight;                     // 0x854
+    unk_t unk_858[67];                      // 0x858
+    CreatureCache* m_creaturecache;         // 0x964
+    unk_t unk_968[78];                      // 0x968
+    float m_cameraFacing;                   // 0xAA0
+    unk_t unk_AA4[101];                     // 0xAA4
+    CGNamePlate* m_nameplate;               // 0xC38
+
+    using GetCreatureRank_t = int(__thiscall*)(const CGObject_C*);
+    inline static const auto GetCreatureRankFn = reinterpret_cast<GetCreatureRank_t>(0x00718A00);
+
+    using CanAssist_t = bool(__thiscall*)(const CGUnit_C*, const CGUnit_C*, bool ignoreFlags);
+    inline static const auto CanAssistFn = reinterpret_cast<CanAssist_t>(0x007293D0);
+
+    using UnitReaction_t = EUnitReaction(__thiscall*)(const CGUnit_C*, const CGUnit_C*);
+    inline static const auto UnitReactionFn = reinterpret_cast<UnitReaction_t>(0x007251C0);
+
+    using CanAttack_t = bool(__thiscall*)(const CGUnit_C*, const CGUnit_C*);
+    inline static const auto CanAttackFn = reinterpret_cast<CanAttack_t>(0x00729A70);
+
+    using HideNamePlate_t = CGNamePlate * (__thiscall*)(CGUnit_C*);
+    inline static auto HideNamePlateFn = reinterpret_cast<HideNamePlate_t>(0x00725840);
+
+    using UpdateReaction_t = int(__thiscall*)(CGUnit_C*, int updateAll);
+    inline static auto UpdateReactionFn = reinterpret_cast<UpdateReaction_t>(0x0071F8F0);
+
+    using SetNamePlateFocus_t = void(__cdecl*)(C3Vector* pos);
+    inline static auto SetNamePlateFocusFn = reinterpret_cast<SetNamePlateFocus_t>(0x007271D0);
+
+    inline guid_t GetGUID() const { return GetValue<guid_t>(OBJECT_FIELD_GUID); }
+    inline int GetCreatureRank() const { return GetCreatureRankFn(this); }
+    inline bool CanAttack(const CGUnit_C* unit) const { return CanAttackFn(this, unit); }
+    inline bool CanAssist(const CGUnit_C* unit, bool ignoreFlags) const { return CanAssistFn(this, unit, ignoreFlags); }
+    inline EUnitReaction UnitReaction(const CGUnit_C* unit) const { return UnitReactionFn(this, unit); }
+    inline int UpdateReaction(int updateAll) { return UpdateReactionFn(this, updateAll); }
+    inline CGNamePlate* HideNamePlate() { return HideNamePlateFn(this); }
+    inline bool IsFriendly(CGUnit_C* player = ObjectMgr::Get<CGUnit_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER)) const {
+        if (!player) return false; int reaction = player->UnitReaction(this);
+        return (reaction >= 5) || (reaction == 4 && !player->CanAttack(this));
+    }
+    inline UnitEntry* GetEntry() const { return reinterpret_cast<UnitEntry*>(m_entry); }
+    inline CGObject_C* ToObject() { return reinterpret_cast<CGObject_C*>(this); }
+
+    inline static void SetNamePlateFocus(C3Vector* pos) { return SetNamePlateFocusFn(pos); }
+};
+
+// CGGameObject_C
+class CGPlayer_C : public CGUnit_C {
+public:
+    using NotifyCombatChange_t = void(__thiscall*)(CGUnit_C*, int, int);
+    inline static auto NotifyCombatChangeFn = reinterpret_cast<NotifyCombatChange_t>(0x0055E550);
+
+    inline void NotifyCombatChange(int offs, int val) { return NotifyCombatChangeFn(this, offs, val); }
+
+    inline PlayerEntry* GetEntry() const { return reinterpret_cast<PlayerEntry*>(m_entry); }
+    inline CGUnit_C* ToUnit() { return reinterpret_cast<CGUnit_C*>(this); }
+};
+
+// CGGameObject_C
+class CGGameObject_C : public CGObject_C {
+public:
+    inline bool CanUseNow() const { return CanUseNowFn(this); }
 
 private:
-    uint32_t m_field4;        // 0x4
-    uint32_t* m_data;         // 0x8
-    uint32_t m_fieldC;        // 0xC
-    uint32_t m_field10;       // 0x10
-    TypeID m_typeID;          // 0x14
-    uint32_t m_field18[46];   // 0x18
+    inline CGObject_C* ToObject() { return reinterpret_cast<CGObject_C*>(this); }
+
+    using CanUseNow_t = bool(__thiscall*)(const CGGameObject_C*);
+    inline static const auto CanUseNowFn = reinterpret_cast<CanUseNow_t>(0x0070BA10);
 };
 
-class CGUnit_C : public CGObject_C
-{
+
+// Frame Interface
+class FrameScript_Object {
 public:
-    int GetCreatureRank() const
-    {
-        typedef int(__thiscall* GetCreatureRank_t)(const CGObject_C* thisPtr);
-        static const GetCreatureRank_t GetCreatureRankFn = reinterpret_cast<GetCreatureRank_t>(0x00718A00);
+    virtual ~FrameScript_Object();
+    virtual void unk_pure1();
+    virtual void unk_pure2();
+    virtual char* GetScriptByName(char* name, char** out);
+    virtual void unk_pure3();
 
-        return GetCreatureRankFn(this);
-    }
+    int m_field_04;
+    int m_field_08;
+    int m_field_0C;
+    int m_field_10;
 
-    bool CanAssist(const CGUnit_C* unit, bool ignoreFlags) const
-    {
-        using CanAssist_t = bool(__thiscall*)(const CGUnit_C* thisPtr, const CGUnit_C* unit, bool ignoreFlags);
-        static const CanAssist_t CanAssistFn = reinterpret_cast<CanAssist_t>(0x007293D0);
+    using RegisterScriptObject_t = void(__thiscall*)(FrameScript_Object*, const char*);
+    inline static auto RegisterScriptObjectFn = reinterpret_cast<RegisterScriptObject_t>(0x00819880);
 
-        return CanAssistFn(this, unit, ignoreFlags);
-    }
-
-    int UnitReaction(const CGUnit_C* unit) const
-    {
-        using UnitReaction_t = int(__thiscall*)(const CGUnit_C* thisPtr, const CGUnit_C* unit);
-        static const UnitReaction_t UnitReactionFn = reinterpret_cast<UnitReaction_t>(0x007251C0);
-
-        return UnitReactionFn(this, unit);
-    }
-
-    bool CanAttack(const CGUnit_C* unit) const
-    {
-        using CanAttack_t = bool(__thiscall*)(const CGUnit_C* thisPtr, const CGUnit_C* unit);
-        static const CanAttack_t CanAttackFn = reinterpret_cast<CanAttack_t>(0x00729A70);
-
-        return CanAttackFn(this, unit);
-    }
-
-    uint64_t GetGUID() const
-    {
-        return GetValue<uint64_t>(OBJECT_FIELD_GUID);
-    }
-
+    void __fastcall RegisterScriptObject(const char* type) { RegisterScriptObjectFn(this, type); }
 };
 
-class CGGameObject_C;
-
-class CGGameObject_C : public CGObject_C
-{
+class CLayoutFrame {
 public:
-    int CanUseNow() const
-    {
-        typedef bool(__thiscall* CanUseNow_t)(const CGGameObject_C* thisPtr);
-        static const CanUseNow_t CanUseNowFn = reinterpret_cast<CanUseNow_t>(0x0070BA10); //set_name(0x0070BA10, "CGGameObject_C__CanUseNow");
-
-        return CanUseNowFn(this);
-    }
-};
-
-inline HWND GetGameWindow() { return *(HWND*)0x00D41620; }
-
-namespace CGame {
-    inline void __stdcall SetLastError(int code) { return ((decltype(&SetLastError))0x00771870)(code); }
-}
-
-inline int __stdcall gc_atoi(const char** str) { return ((decltype(&gc_atoi))0x76F190)(str); }
-inline int gc_snprintf(char* buf, size_t size, const char* fmt, ...)
-{
-    if (!(buf && fmt)) {
-        CGame::SetLastError(87);
-        return 0;
-    }
-
-    va_list args;
-    va_start(args, fmt);
-    size_t size_ = size;
-    char* buf_ = buf;
-    const char* fmt_ = fmt;
-    int result;
-    _asm {
-        pushad;
-        pushfd;
-        mov eax, args;
-        mov esi, size_;
-        mov edi, buf_;
-        mov ecx, fmt_;
-        mov ebx, 0x76F010;
-        call ebx;
-        mov result, eax;
-        popad;
-        popfd;
-    }
-    return result;
-}
-
-namespace RCString {
-inline uint32_t __stdcall hash(const char* str) { return ((decltype(&hash))0x0076F640)(str); }
-}
-
-inline bool IsInWorld() { return *(char*)0x00BD0792; }
-
-inline uintptr_t GetDbcTable(uint32_t dbIndex)
-{
-    for (uintptr_t tableBase = 0x006337D0; *(uint8_t*)tableBase != 0xC3; tableBase += 0x11) {
-        uint32_t index = *(uint32_t*)(tableBase + 1);
-        if (index == dbIndex) {
-            uintptr_t tablePtr = *(uintptr_t*)(tableBase + 0xB) + 0x18;
-            return tablePtr;
-        }
-    }
-    return 0;
-}
-
-typedef int(__thiscall* ClientDb_GetLocalizedRow)(void* pThis, int index, void* rowBuffer);
-inline auto GetLocalizedRow = (ClientDb_GetLocalizedRow)(0x004CFD20);
-
-typedef int(__thiscall* ClientDb_GetRow)(void* pThis, int index);
-inline auto GetRow = (ClientDb_GetRow)(0x004BB1C0);
-// ObjectMgr
-namespace ObjectMgr {
-
-    inline int EnumObjects_internal(int(*func)(guid_t, void*), void* udata) { return ((decltype(&EnumObjects_internal))0x004D4B30)(func, udata); }
-
-    using EnumVisibleObject_func_t = std::function<bool(guid_t guid)>;
-    inline bool EnumObjects(EnumVisibleObject_func_t func)
-    {
-        struct Wrapper {
-            static int foo(guid_t guid, void* udata)
-            {
-                EnumVisibleObject_func_t& func = *(EnumVisibleObject_func_t*)udata;
-                return func(guid) ? 1 : 0;
-            }
-        };
-        return EnumObjects_internal(&Wrapper::foo, (void*)&func);
+    struct CFramePoint {
+        Vec2D<float> m_pos;
+        CLayoutFrame* m_layout;
+        uint32_t m_flags;
     };
 
-    inline Player* GetPlayer() { return ((decltype(&GetPlayer))0x004038F0)(); }
-    inline Object* Get(guid_t guid, TypeMask flags) { return ((Object * (*)(guid_t, TypeMask))0x004D4DB0)(guid, flags); }
-    inline void Guid2HexString(guid_t guid, char* buf) { return ((decltype(&Guid2HexString))0x0074D0D0)(guid, buf); }
-    inline guid_t HexString2Guid(const char* str) { return ((decltype(&HexString2Guid))0x0074D120)(str); }
-    inline guid_t GetGuidByUnitID(const char* unitId) { return ((decltype(&GetGuidByUnitID))0x0060C1C0)(unitId); }
-    inline CGObject_C* GetObjectPtr(uint64_t objectGuid, uint32_t objectTypeMask) {
-        typedef CGObject_C* (__cdecl* FuncPtr)(uint64_t, uint32_t, const char*, int);
-        return ((FuncPtr)0x004D4DB0)(objectGuid, objectTypeMask, "", 0);
+    struct CLayoutChildNode {
+        CLayoutChildNode* m_prev;
+        CLayoutChildNode* m_next;
+        CLayoutFrame* m_child;
+        unk_t unk_0C;
+    };
+
+    virtual ~CLayoutFrame();
+    virtual void LoadXML(void* node, void* status);
+    virtual void* GetLayoutParent();
+    virtual void unk_null();
+    virtual int GetPageTextID(int index);
+    virtual void SetLayoutScale(float scale, bool force);
+    virtual void SetLayoutDepth(float depth, bool force);
+    virtual void SetWidth(float width);
+    virtual void SetHeight(float height);
+    virtual void SetSize(float w, float h);
+    virtual float GetWidth();
+    virtual float GetHeight();
+    virtual void GetSize(float* w, float* h, bool skipUpdate);
+    virtual void GetClampRectInsets(float* l, float* r, float* t, float* b);
+    virtual int stub_zero();
+    virtual bool CanBeAnchorFor(CLayoutFrame* other);
+    virtual void sub151();
+    virtual int stub_one();
+    virtual void OnFrameSizeChanged(int size);
+
+    unk_t unk_04;                   // 0x04
+    unk_t unk_08;                   // 0x08
+    CFramePoint* m_framePoints[9];  // 0x0C - Anchors (Top, Bottom, Center, etc.)
+    unk_t unk_30;                   // 0x30
+    CLayoutChildNode* m_childunk;   // 0x34
+    CLayoutChildNode* m_children;   // 0x38
+    unk_t unk_3C;                   // 0x3C
+    uint32_t m_flags;               // 0x40
+    float m_bottom;                 // 0x44
+    float m_left;                   // 0x48
+    float m_top;                    // 0x4C
+    float m_right;                  // 0x50
+    float m_width;                  // 0x54
+    float m_height;                 // 0x58
+    float m_scale;                  // 0x5C
+    float m_depth;                  // 0x60
+    float m_minResizeY;             // 0x64
+    float m_minResizeX;             // 0x68
+    float m_maxResizeY;             // 0x6C
+    float m_maxResizeX;             // 0x70
+
+    using IsAtTargetPos_t = bool(__thiscall*)(CLayoutFrame*, C3Vector*);
+    inline static auto IsAtTargetPosFn = reinterpret_cast<IsAtTargetPos_t>(0x489270);
+
+    using SetPoint_t = void(__thiscall*)(CLayoutFrame*, int, CLayoutFrame*, int, float, float, int);
+    inline static auto SetPointFn = reinterpret_cast<SetPoint_t>(0x0048A260);
+
+    inline void SetPoint(int point, CLayoutFrame* relativeTo, int relativePoint, float xOffset, float yOffset, int doResize) {
+        SetPointFn(this, point, relativeTo, relativePoint, xOffset, yOffset, doResize);
     }
-    inline CGUnit_C* GetCGUnitPlayer() {
-        long long lpguid = ((long long(__cdecl*)())(0x004D3790))();
-        if (!(lpguid && ((int(__cdecl*)(long long, int))0x004D4DB0)(lpguid, 0x0010)))
-            return nullptr;
+    inline static int ResizePending() { return reinterpret_cast<int(__cdecl*)()>(0x004898B0)(); }
 
-        CGUnit_C* player = (CGUnit_C*)(ObjectMgr::GetObjectPtr(lpguid, TYPEMASK_UNIT));
-        if (!player) {
-            return nullptr;
-        }
-        return player;
+    inline bool IsAtTargetPos(C3Vector* pos, Vec2D<float> percs) const {
+        float midX = (this->m_left + this->m_right) * 0.5f; float midY = (this->m_bottom + this->m_top) * 0.5f;
+        float h_width = (this->m_width * 0.5f) * percs.x; float h_height = (this->m_height * 0.5f) * percs.y;
+        return (pos->X >= (midX - h_width) && pos->X <= (midX + h_width)) && (pos->Y >= (midY - h_height) && pos->Y <= (midY + h_height));
     }
-    inline guid_t String2Guid(const char* str)
-    {
-        if (!str) return 0;
-        if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))
-            return HexString2Guid(str);
-        else
-            return GetGuidByUnitID(str);
-    }
+};
+static_assert(sizeof(CLayoutFrame) == 0x74);
 
-    inline Object* Get(const char* str, TypeMask flags) { return Get(String2Guid(str), flags); }
-
-    inline int UnitRightClickByGuid(guid_t guid) { return ((decltype(&UnitRightClickByGuid))0x005277B0)(guid); }
-    inline int UnitLeftClickByGuid(guid_t guid) { return ((decltype(&UnitLeftClickByGuid))0x005274F0)(guid); }
-    inline void SetMouseoverByGuid(guid_t guid, guid_t prev) { return ((decltype(&SetMouseoverByGuid))0x0051F790)(guid, prev); }
-    inline guid_t GetTargetGuid() { return *(guid_t*)0x00BD07B0; }
-    inline guid_t GetPlayerGuid() { return *(guid_t*)0x004D3790; }
-
-    const uintptr_t nameStore = 0x00C5D938 + 0x8;
-    inline const char* UnitNameFromGuid(guid_t guid) {
-        CGUnit_C* unit = (CGUnit_C*)(ObjectMgr::GetObjectPtr(guid, TYPEMASK_UNIT));
-        if (!unit)
-            return "UNKNOWN";
-
-        return unit->GetObjectName();
-    }
-}
-
-namespace Console {
-enum CVarFlags : uint32_t {
-    CVarFlags_ReadOnly = 0x4,
-    CVarFlags_CheckTaint = 0x8,
-    CVarFlags_HideFromUser = 0x40,
-    CVarFlags_ReadOnlyForUser = 0x100,
-
+class CSimpleTop : public CLayoutFrame {
+public:
+    unk_t unk_74[1145];         // 0x74
 };
 
-struct CVar {
+class RCString_Object {
+public:
+    virtual int GetName();
+    virtual void unk_pure1();
+    virtual int* GetScriptByName(char* mame, const char** out);
+    virtual bool IsA(int a);
+    virtual void unk_pure2();
+    virtual bool IsA_0(char* name);
+    virtual char* GetObjectTypeName(int a);
+    unk_t unk_04;
+};
+
+class CScriptObject : public FrameScript_Object {
+public:
+    RCString_Object m_name;
+    int m_nameId;
+};
+
+class CScriptRegion : public CScriptObject, public CLayoutFrame {
+public:
+    CSimpleFrame* parent;           // 0x94
+    unk_t unk_98[2];                // 0x98
+};
+
+// CSimpleFrame
+class CSimpleFrame : public CScriptRegion {
+public:
+    struct CBackdropGenerator {
+        unk_t unk_00[27];
+    };
+
+    struct CSimpleFrameNode {
+        CSimpleFrameNode* next;
+        CSimpleFrameNode* prev;
+        CSimpleFrame* frame;
+    };
+
+    CSimpleTop* m_simpleTop;            // 0xA0
+    unk_t unk_A4;                       // 0xA4
+    CScriptRegion* m_titleRegion;       // 0xA8
+    unk_t unk_AC;                       // 0xAC
+    unk_t unk_B0;                       // 0xB0
+    EFrameState m_stateFlags;           // 0xB4
+    unk_t unk_B8;                       // 0xB8
+    uint8_t m_alpha;                    // 0xBC
+    unk_t unk_C0[5];                    // 0xC0
+    uint32_t m_frameLevel;              // 0xD4
+    uint32_t m_registeredEvents;        // 0xD8
+    unk_t unk_DC;                       // 0xDC
+    uint32_t m_isLinked;                // 0xE0
+    float m_clampInsets[4];             // 0xE4 (Left, m_top, m_right, m_bottom)
+    unk_t unk_F4[69];                   // 0xF4
+    CBackdropGenerator* m_bdGen;        // 0x208
+    unk_t unk_20C[21];                  // 0x20C
+    void* m_childrenList;               // 0x260
+    unk_t unk_264[5];                   // 0x264
+    void* m_parentListSentinel;         // 0x278
+    CSimpleFrameNode m_parentLink;      // 0x27C
+    unk_t unk_288[5];                   // 0x288
+
+    inline void SetFrameDepth(float depth, int flag) {
+        reinterpret_cast<void(__thiscall*)(CSimpleFrame*, float, int)>(0x0048F5D0)(this, depth, flag);
+    }
+    inline void SetFrameLevel(uint32_t level, int levelChildren) {
+        reinterpret_cast<void(__thiscall*)(CSimpleFrame*, uint32_t, int)>(0x004910A0)(this, level, levelChildren);
+    }
+    inline void SetAlpha(uint8_t alpha) {
+        reinterpret_cast<void(__thiscall*)(CSimpleFrame*, uint8_t)>(0x0048EA10)(this, alpha);
+    }
+    inline int Hide() { return reinterpret_cast<int(__thiscall*)(CSimpleFrame*)>(0x0048F620)(this); }
+    inline int GetRefTable() { return (reinterpret_cast<int(__thiscall*)(CSimpleFrame*)>(0x00488380))(this); }
+
+    inline static int GetObjectType() { return *reinterpret_cast<int*>(0x00B49984); }
+};
+static_assert(sizeof(CSimpleFrame) == 0x29C);
+
+class CSimpleCamera {
+public:
+    struct M2Scene {
+        unk_t unk[82];
+    };
+    static_assert(sizeof(M2Scene) == 0x148);
+
+    virtual double GetFov();
+    virtual C3Vector* GetForwardVector(C3Vector* out);
+    virtual C3Vector* GetRightVector(C3Vector* out);
+    virtual C3Vector* GetUpVector(C3Vector* out);
+
+    M2Scene* m_m2scene;     // 0x04
+    C3Vector m_pos;         // 0x08
+    C33Matrix m_matrix;     // 0x14 (fwd, right, up)
+    float m_farClip;        // 0x38
+    float m_nearClip;       // 0x3C
+    float m_fov;            // 0x40
+    float m_aspect;         // 0x44
+
+    using constructor_t = char* (__thiscall*)(CSimpleCamera*, float a2, float a3, float fov);
+    inline static auto constructorFn = reinterpret_cast<constructor_t>(0x00607C20);
+
+    inline char* constructor(float a2, float a3, float fov) { return constructorFn(this, a2, a3, fov); }
+};
+static_assert(sizeof(CSimpleCamera) == 0x48);
+
+class CGCamera : public CSimpleCamera {
+public:
+    enum ECamFlags3 : uint32_t {
+        CAM3_FOLLOW_FACING = 0x00000001,
+        CAM3_MODEL_CAMERA = 0x00000004,
+        CAM3_VIEW_LOCKED = 0x00000008,
+        CAM3_HAS_TARGET = 0x00000010,
+        CAM3_DISABLE_INPUT = 0x00000020,
+        CAM3_MOUSE_HELD = 0x00000040,
+        CAM3_CLICK_TO_MOVE = 0x00000100,
+        CAM3_FREELOOK_ACTIVE = 0x00000200,
+        CAM3_CLICK_TO_MOVE2 = 0x00000400,
+        CAM3_INHERIT_YAW = 0x00001000,
+        CAM3_DISABLE_FOLLOW = 0x00004000,
+        CAM3_DISABLE_SMOOTHING = 0x00008000,
+        CAM3_IS_MOVING = 0x00010000,
+        CAM3_CAN_PIVOT = 0x00020000,
+        CAM3_CAMERA_BELOW = 0x00100000,
+        CAM3_CAMERA_ABOVE = 0x00200000,
+        CAM3_FOV_ALT_BLEND = 0x00400000,
+        CAM3_TARGET_CHANGED = 0x00800000,
+        CAM3_TRANSITION_T2 = 0x01000000,
+        CAM3_PITCH_LIMIT_BLEND = 0x02000000,
+        CAM3_IS_COLLIDING = 0x04000000,
+        CAM3_PITCH_SMOOTH_ACTIVE = 0x08000000,
+        CAM3_SMOOTH_OVERRIDE = 0x10000000,
+        CAM3_YAW_BLEND_ACTIVE = 0x20000000,
+        CAM3_FOV_BLEND_ACTIVE = 0x40000000,
+        CAM3_TELESCOPE_ACTIVE = 0x80000000,
+    };
+
+    enum ECamMode : uint32_t {
+        CAMMODE_AUTO_INTERACT = 0x00000001,
+        CAMMODE_HAS_TARGET = 0x00000002,
+        CAMMODE_FACING_LOCKED = 0x00000004,
+        CAMMODE_ALT_ZOOM = 0x00000020,
+        CAMMODE_ZOOM_LOCKED = 0x00000040,
+    };
+
+    enum EZoomState : uint32_t {
+        CAMZOOM_ZOOM_IN_ACTIVE = 0x00000001,
+        CAMZOOM_ZOOM_IN_INTERRUPTED = 0x00000002,
+        CAMZOOM_ZOOM_OUT_ACTIVE = 0x00000004,
+        CAMZOOM_ZOOM_OUT_INTERRUPTED = 0x00000008,
+    };
+
+    struct ViewEntry {
+        float pitchLimit;
+        float zoomDist;
+        float facing;
+    };
+
+    struct CameraShake {
+        uintptr_t next;
+        uintptr_t prev;
+        int type;
+        int channel;        // axis index 0-2
+        float amplitude;
+        float param1;
+        float duration;     // lifetime
+        float phaseOffset;
+        float param4;
+        C3Vector dir;
+        uint32_t startTimeMs;
+    };
+    static_assert(sizeof(CameraShake) == 0x34);
+
+    CM2Model* m_model;                  // 0x48
+    uint32_t m_timestamp;               // 0x4C
+    uint32_t m_modelHandle;             // 0x50
+    C33Matrix m_modelCamMatrix;         // 0x54
+    C3Vector m_targetPos;               // 0x78
+    float unk_84;                       // 0x84
+    guid_t m_targetGuid;                // 0x88
+
+    uint32_t m_flags;                   // 0x90
+    uint32_t m_flags2;                  // 0x94
+    ECamFlags3 m_flags3;                // 0x98
+    ECamMode m_camModeFlags;            // 0x9C
+
+    guid_t m_relativeToGuid;            // 0xA0
+    float m_terrainTiltAngle;           // 0xA8
+    uint32_t m_targetRetainCount;       // 0xAC
+    uint32_t m_currentViewIndex;        // 0xB0
+    uint32_t m_currentViewSlot;         // 0xB4
+    float m_currentViewPitchLimit;      // 0xB8
+    float m_currentViewFacing;          // 0xBC
+    ViewEntry m_viewTable[6];           // 0xC0
+    float m_commentatorYaw;             // 0x108
+    C3Vector m_modelCamOffset;          // 0x10C - {zoom, pitch, 0}
+
+    float m_zoomDistance;               // 0x118
+    float m_facingSmooth;               // 0x11C - animated
+    float m_pitchLimitMax;              // 0x120 - animated, collision-clamped
+    float m_pitchLimitMin;              // 0x124
+    float m_yaw;                        // 0x128 - animated
+    float m_pivotAccum;                 // 0x12C
+    float m_pitchOffset;                // 0x130 - (actual pitch - m_pitchLimitMax)
+    float m_savedFirstPersonPitch;      // 0x134
+    float m_fovCorrection;              // 0x138
+    float m_fovCorrectionTarget;        // 0x13C
+    C3Vector m_shakeBias;               // 0x140
+    float m_pitchLimits[3];             // 0x14C - per-axis height bounds
+
+    unk_t unk_158[2];                   // 0x158
+    EZoomState m_zoomStateFlags;        // 0x160
+    uint32_t m_zoomStartInOutMs[2];     // 0x164
+    unk_t unk_16C;                      // 0x16C
+    unk_t unk_170[3];                   // 0x170
+    uint32_t m_zoomOutStartMs;          // 0x17C
+    uint32_t m_zoomInStartMs;           // 0x180
+    unk_t unk_184;                      // 0x184
+    unk_t unk_188[2];                   // 0x188
+    unk_t unk_190;                      // 0x190
+    uint32_t m_zoomInEnd;               // 0x194
+    uint32_t m_zoomOutEnd;              // 0x198
+    unk_t unk_19C[3];                   // 0x19C
+    float m_pendingZoomOutDelta;        // 0x1A8
+    float m_zoomSpeed[2];               // 0x1AC
+    unk_t unk_1B4[4];                   // 0x1B4
+
+    float m_cachedTargetX;              // 0x1C4
+    float m_cachedTargetY;              // 0x1C8
+    float m_cachedTargetZ;              // 0x1CC
+    float m_cachedSomething;            // 0x1D0
+    float m_cachedFacing;               // 0x1D4
+    uint32_t m_terrainTiltLastUpdateMs; // 0x1D8
+
+    float m_savedFacing;                // 0x1DC - freelook start
+
+    uint32_t m_zoomBlendStartMs;        // 0x1E0
+    float m_zoomBlendDuration;          // 0x1E4
+    float m_zoomBlendFrom;              // 0x1E8 - source 
+    float m_zoomBlendTo;                // 0x1EC - destination
+    float m_zoomLimitBlendEnd;          // 0x1F0
+    float m_zoomLimitBlendStart;        // 0x1F4
+
+    uint32_t m_smoothOverrideStartMs;   // 0x1F8
+    float m_smoothOverrideDuration;     // 0x1FC
+    float m_smoothOverrideFrom;         // 0x200
+    float m_smoothOverrideTo;           // 0x204
+    float m_smoothOverrideEnd;          // 0x208
+    float m_smoothOverrideTime;         // 0x20C
+
+    uint32_t m_yawBlendStartMs;         // 0x210
+    float m_yawBlendDuration;           // 0x214
+    float m_yawBlendFrom;               // 0x218
+    float m_yawBlendTo;                 // 0x21C
+    float m_yawBlendEnd;                // 0x220 - 1.0 default
+    float m_yawBlendStart;              // 0x224
+
+    uint32_t m_pitchLimitBlendStartMs;  // 0x228
+    float m_pitchLimitBlendDuration;    // 0x22C
+    float m_pitchLimitBlendFrom;        // 0x230
+    float m_pitchLimitBlendTo;          // 0x234
+    float m_pitchLimitBlendStart;       // 0x238
+    float m_pitchLimitBlendTime;        // 0x23C
+
+    uint32_t m_pitchBlendStartMs;       // 0x240
+    float m_pitchBlendDuration;         // 0x244
+    float m_pitchBlendFrom;             // 0x248
+    float m_pitchBlendTo;               // 0x24C
+    float m_pitchBlendEnd;              // 0x250
+    float m_pitchBlendStart;            // 0x254
+
+    uint32_t m_facingLimitBlendStartMs; // 0x258
+    float m_facingLimitBlendDuration;   // 0x25C
+    float m_facingLimitFrom;            // 0x260
+    float m_facingLimitTo;              // 0x264
+    float m_facingLimitBlendEnd;        // 0x268
+    float m_facingLimitBlendStart;      // 0x26C
+
+    uint32_t m_fovBlendStartMs;         // 0x270
+    float m_fovBlendDuration;           // 0x274
+    float m_fovBlendFrom;               // 0x278
+    float m_fovBlendTo;                 // 0x27C
+    float m_fovBlendEnd;                // 0x280
+    float m_fovBlendStart;              // 0x284
+
+    uint32_t m_freelookStartMs;         // 0x288
+    float m_freelookDuration;           // 0x28C
+    C3Vector m_freelookSnapTarget;      // 0x290
+    uint32_t m_autoRotateStartMs;       // 0x29C
+    unk_t unk_2A0;
+    unk_t unk_2A4;
+
+    uint32_t m_fovAltBlendStartMs;      // 0x2A8
+    float m_fovAltBlendDuration;        // 0x2AC
+    float m_fovBlendAltFrom;            // 0x2B0
+    float m_fovBlendAltTo;              // 0x2B4
+    float m_fovBlendAltEnd;             // 0x280
+    float m_fovBlendAltStart;           // 0x284
+
+    float m_fovOffsetScale;             // 0x2C0
+    uint32_t m_zoomProfileID;           // 0x2C4
+    float m_profileZoomDist[2];         // 0x2C8
+    unk_t unk_2D0[8];                   // 0x2D0
+
+    unk_t unk_2F0;                      // 0x2F0
+    uintptr_t m_m2sceneNode;            // 0x2F4
+    uintptr_t m_m2scenePrev;            // 0x2F8
+    uint32_t m_blendStyleInit;          // 0x2FC
+    uintptr_t m_listNext;               // 0x300
+    CameraShake* m_shakeListHead;       // 0x304
+    uintptr_t m_shakeListTail;          // 0x308
+
+    float m_savedViewIndex;             // 0x30C
+    float m_savedZoomDist;              // 0x310
+    float m_savedPitchLimit;            // 0x314
+    float m_telescopePitchOffset;       // 0x318
+    void* m_vehicleCam;                 // 0x31C
+
+    inline static auto GetActiveCameraFn = reinterpret_cast<CGCamera*(*)()>(0x004F5960);
+    inline static CGCamera* GetActiveCamera() { return GetActiveCameraFn(); }
+};
+
+class CGWorldFrame : public CSimpleFrame {
+public:
+    struct CGWorldFrameUnk {
+        unk_t unk_00[1094];
+        float m_mouseX;
+        float m_mouseY;
+    };
+
+    unk_t unk_list1[3];                 // 0x29C
+    unk_t unk_list2[3];                 // 0x2A8
+    unk_t unk_list3[3];                 // 0x2B4
+
+    uint32_t m_renderState;             // 0x2C0
+    unk_t unk_2C4[4];                   // 0x2C4
+    uint32_t m_pendingActionID;         // 0x2D4
+    int32_t m_defaultActionResult;      // 0x2D8
+    unk_t unk_2DC;                      // 0x2DC
+    float unk_2E0[2];                   // 0x2E0
+
+    uint32_t m_rollTransitionStartMs;   // 0x2E8
+    uint32_t m_rollTransitionEndMs;     // 0x2EC
+    float m_rollFrom;                   // 0x2EC
+    float m_rollTo;                     // 0x2EC
+    float m_cameraRoll;                 // 0x2F8
+    unk_t unk_2FC[5];                   // 0x2FC
+
+    float m_screenX_ndc_to_ddc;         // 0x310
+    float m_screenY_ndc_to_ddc;         // 0x314
+
+    unk_t m_unknownFlags;               // 0x318
+    uint32_t m_flags_31C;               // 0x31C
+    unk_t unk_320[4];                   // 0x320
+
+    float m_viewLeft;                   // 0x330
+    float m_viewRight;                  // 0x334
+    float m_viewTop;                    // 0x338
+    float m_viewBottom;                 // 0x33C
+    C44Matrix m_viewMatrix;             // 0x340
+
+    CGWorldFrameUnk* m_data;            // 0x380
+    uint32_t m_lightSystem[479];        // 0x384
+    unk_t unk_B00;                      // 0xB00
+    float m_lastUpdateTime;             // 0xB04
+
+    unk_t unk_B08;                      // 0xB08
+    unk_t unk_B0C;                      // 0xB0C
+    uint32_t m_renderDirtyFlags;        // 0xB10
+    float m_sceneTime;                  // 0xB14
+    uint32_t m_sceneObjectCache[7079];  // 0xB18
+
+    unk_t unk_79B4[8];                  // 0x79B4
+    uint32_t m_dataBlockUnk[275];       // 0x79D4
+
+    CSimpleCamera* camera;              // 0x7E20
+    // ...
+
+    using Intersect_t = char(__cdecl*)(C3Vector* start, C3Vector* end, C3Vector* hitPoint, float* distance, uint32_t flag, uint32_t buffer);
+    inline static auto IntersectFn = reinterpret_cast<Intersect_t>(0x0077F310);
+
+    using UpdateNamePlatePositions_t = int(__cdecl*)(CGWorldFrame*);
+    inline static auto UpdateNamePlatePositionsFn = reinterpret_cast<UpdateNamePlatePositions_t>(0x00725890);
+
+    using UpdateNamePlatePosition_t = char(__cdecl*)(int, CGNamePlate*, CGWorldFrame*, C3Vector*, int);
+    inline static auto UpdateNamePlatePositionFn = reinterpret_cast<UpdateNamePlatePosition_t>(0x00615E10);
+
+    using GetScreenCoordinates_t = bool(__thiscall*)(CGWorldFrame*, C3Vector*, Vec2D<float>*, int*);
+    inline static auto GetScreenCoordinatesFn = reinterpret_cast<GetScreenCoordinates_t>(0x004F6D20);
+
+    using To2D_t = int(__thiscall*)(CGWorldFrame*, C3Vector*, C3Vector*, uint32_t*);
+    inline static auto To2DFn = reinterpret_cast<To2D_t>(0x004F6D20);
+
+    using OnLayerTrackTerrain_t = int(__thiscall*)(CGWorldFrame*, int*);
+    inline static auto OnLayerTrackTerrainFn = reinterpret_cast<OnLayerTrackTerrain_t>(0x004F66C0);
+
+    inline int To2D(C3Vector* pos3d, C3Vector* pos2d, uint32_t* flags) { return To2DFn(this, pos3d, pos2d, flags); }
+    inline int GetScreenCoordinates(C3Vector* pos, Vec2D<float>* out, int* result) { return GetScreenCoordinatesFn(this, pos, out, result); }
+    inline int OnLayerTrackTerrain(int* a2) { return OnLayerTrackTerrainFn(this, a2); }
+    inline int UpdateNamePlatePositions() { return UpdateNamePlatePositionsFn(this); }
+    inline char UpdateNamePlatePosition(int viewportId, CGNamePlate* namePlate, C3Vector* proj, int flag) {
+        return UpdateNamePlatePositionFn(viewportId, namePlate, this, proj, flag);
+    }
+
+    inline static void PercToScreenPos(float x, float y, float* resX, float* resY) {
+        if (!resX || !resY) return;
+        float screenHeightAptitude = *reinterpret_cast<float*>(0x00AC0CBC);
+        float someVal = *reinterpret_cast<float*>(0x00AC0CB4);
+        if (std::abs(someVal) < 1e-6f) return;
+        float scale = (screenHeightAptitude * 1024.0f) / someVal;
+        *resX = x * scale; *resY = y * scale;
+    }
+    inline static int HandleNameplateLeftClick(guid_t guid) { return reinterpret_cast<int(__cdecl*)(guid_t)>(0x005274F0)(guid); }
+    inline static int HandleNameplateRightClick(guid_t guid) { return reinterpret_cast<int(__cdecl*)(guid_t)>(0x005277B0)(guid); }
+
+    inline static CGWorldFrame* GetWorldFrame() { return *reinterpret_cast<CGWorldFrame**>(0x00B7436C); }
+};
+
+class CSimpleAnim : public FrameScript_Object {
+public:
+    void* m_vmt;
+    unk_t unk_04[2];
+};
+
+class CSimpleFrameScript : public CSimpleAnim, public CLayoutFrame {
+public:
+    unk_t unk_94[3];
+};
+
+class CSimpleRender : public CSimpleFrameScript {
+public:
+    unk_t unk_A0[13];
+};
+
+struct CGxFontVertex {
+    C3Vector pos;
+    float u, v;
+};
+
+struct CGxGlyphMetrics {
+    void* m_pixelData;
+    uint32_t m_bufferSize;
+    uint32_t m_width;
+    uint32_t m_height;
+    uint32_t m_widthPadded;
+    float m_advanceX;
+    float m_horiBearingX;
+    unk_t unk_24;
+    uint32_t m_bearingY;
+    uint32_t m_verAdv;
+    float v1, u0, v0, u1;
+};
+static_assert(sizeof(CGxGlyphMetrics) == 0x38);
+
+struct CGxGlyphCacheEntry {
+    uint32_t m_codepoint;
+    CGxGlyphCacheEntry* m_hashNext;
+    CGxGlyphCacheEntry* m_hashPrev;
+    CGxGlyphCacheEntry* m_listNext;
+    CGxGlyphCacheEntry* m_listPrev;
+    unk_t unk_14;
+    unk_t unk_18;
+    unk_t unk_1C;
+    unk_t unk_20;
+    unk_t unk_24;
+    uint32_t m_texturePageIndex;
+    uint32_t m_atlasCellIndex;
+    uint32_t m_cellIndexMin;
+    uint32_t m_cellIndexMax;
+    CGxGlyphMetrics m_metrics;
+};
+static_assert(sizeof(CGxGlyphCacheEntry) == 0x70);
+
+struct CGxKernCacheEntry {
+    // guess
+    uint32_t charPairKey;
+    CGxKernCacheEntry* m_prev;
+    CGxKernCacheEntry* m_next;
+    float kerningOffset;
+};
+
+struct CGxFontTextureCache {
+    uint32_t m_rasterSizePadded;
+    uint32_t m_pageInfo;
+    uint32_t m_flags;
+    float m_scaleX;
+    float m_scaleY;
+    void* m_glyphs;
+};
+static_assert(sizeof(CGxFontTextureCache) == 0x18);
+
+struct CGxFontGeomBatch {
+    CGxFontGeomBatch* m_prev;
+    CGxFontGeomBatch* m_next;
+    TSGrowableArray<CGxFontVertex> m_verts;
+    TSGrowableArray<uint16_t> m_indices;
+};
+
+struct CGlyphTexCell {
+    uint32_t codepoint;
+    uint16_t u0, v0;
+    uint16_t u1, v1;
+    uint16_t width;
+    uint16_t height;
+    uint32_t flags;
+};
+
+struct CFontCache {
+    uint32_t m_bucketCount;
+    uint32_t m_entryCount;
+    CGlyphTexCell** m_buckets;
+    uint32_t m_mask;
+};
+
+class CGxFont {
+public:
+    CGxFont* m_prev;                                // 0x00
+    CGxFont* m_next;                                // 0x04
+    uint32_t m_refCount;                            // 0x08
+    char* m_fontName;                               // 0x0C
+    char* m_fontFamily;                             // 0x10
+    TSHashTable<CGxGlyphCacheEntry> m_glyphCache;   // 0x14
+    TSHashTable<CGxKernCacheEntry> m_kernCache;     // 0x3C
+    TSList<CGxGlyphCacheEntry> m_glyphsList;        // 0x64
+    void* m_ftWrapper;                              // 0x70
+    char m_fontPath[260];                           // 0x74
+    CGxFontTextureCache m_atlasPages[8];            // 0x178
+    float m_kerningScale;                           // 0x238
+    float m_isLoaded;                               // 0x23C
+    float m_fontHeight;                             // 0x240
+    uint32_t m_styleFlags;                          // 0x244
+    uint32_t m_effectivePixelHeight;                // 0x248
+    uint32_t m_rasterTargetSize;                    // 0x24C
+
+    using GetOrCreateGlyphEntry_t = CGxGlyphCacheEntry * (__thiscall*)(CGxFont*, uint32_t codepoint);
+    using GetBearingX_t = double(__thiscall*)(CGxFont*, CGxGlyphCacheEntry*, float flag, float scale);
+
+    inline static GetOrCreateGlyphEntry_t GetOrCreateGlyphEntryFn = reinterpret_cast<GetOrCreateGlyphEntry_t>(0x006C3FC0);
+    inline static GetBearingX_t GetBearingXFn = reinterpret_cast<GetBearingX_t>(0x006C24F0);
+
+    inline double GetBearingX(CGxGlyphCacheEntry* entry, float flag, float scale) { return GetBearingXFn(this, entry, flag, scale); }
+    inline CGxGlyphCacheEntry* GetOrCreateGlyphEntry(uint32_t codepoint) { return GetOrCreateGlyphEntryFn(this, codepoint); }
+};
+static_assert(sizeof(CGxFont) == 0x250);
+
+class CGxString {
+public:
+    CGxString* m_ll_next;                       // 0x00
+    CGxString* m_ll_prev;                       // 0x04
+    unk_t unk_08[4];                            // 0x08
+    float m_fontSize;                           // 0x18
+    float m_fontSizeMult;                       // 0x1C
+    C3Vector m_anchorPos;                       // 0x20
+    uint32_t m_textColor;                       // 0x2C
+    uint32_t m_shadowColor;                     // 0x30
+    Vec2D<float> m_shadowOffset;                // 0x34
+    float m_widthBBox;                          // 0x3C
+    float m_heightBBox;                         // 0x40
+    CGxFont* m_fontObj;                         // 0x44
+    char* m_text;                               // 0x48
+    uint32_t m_text_capacity;                   // 0x4C
+    uint32_t m_vertAlign;                       // 0x50
+    uint32_t m_horzAlign;                       // 0x54
+    float m_lineSpacing;                        // 0x58
+    uint32_t m_flags;                           // 0x5C
+    uint32_t m_bitfield;                        // 0x60
+    uint32_t m_isDirty;                         // 0x64
+    int32_t m_gradientStartChar;                // 0x68
+    int32_t m_gradientLength;                   // 0x6C
+    C3Vector m_finalPos;                        // 0x70
+    TSGrowableArray<void*> m_hyperlinks;        // 0x7C
+    TSGrowableArray<void*> m_embeddedTextures;  // 0x8C
+    unk_t unk_A0;                               // 0x9C
+    uint32_t m_hyperlinkClickCount;             // 0xA0
+    TSGrowableArray<void*> m_gradientInfo;      // 0xA4
+    CGxFontGeomBatch* m_geomBuffers[8];         // 0xB4
+    uint32_t m_timeSinceUpdate;                 // 0xD4
+
+    inline FT_Face GetFontFace() const {
+        return reinterpret_cast<FT_Face(*)(void*)>(0x006C8080)(this->m_fontObj->m_ftWrapper);
+    }
+    inline static FT_Face GetFontFace(void* ptr) {
+        return reinterpret_cast<FT_Face(*)(void*)>(0x006C8080)(ptr);
+    }
+
+    using WriteGeometry_t = void(__thiscall*)(CGxString*, int destPtr, int index, int vertIndex, int vertCount);
+    using InitializeTextLine_t = int(__thiscall*)(CGxString*, char* text, int textLength, int* a4, C3Vector* startPos, void*, int);
+    using ClearInstanceData_t = int* (__thiscall*)(CGxString*);
+    using CheckGeometry_t = bool(__thiscall*)(CGxString*);
+    using GetVertCountForPage_t = uint32_t(__thiscall*)(CGxString*, int pageIdx);
+
+    inline static WriteGeometry_t WriteGeometryFn = reinterpret_cast<WriteGeometry_t>(0x006C5E90);
+    inline static InitializeTextLine_t InitializeTextLineFn = reinterpret_cast<InitializeTextLine_t>(0x006C6CD0);
+    inline static ClearInstanceData_t ClearInstanceDataFn = reinterpret_cast<ClearInstanceData_t>(0x006C6B90);
+    inline static CheckGeometry_t CheckGeometryFn = reinterpret_cast<CheckGeometry_t>(0x006C7480);
+    inline static GetVertCountForPage_t GetVertCountForPageFn = reinterpret_cast<GetVertCountForPage_t>(0x006C63E0);
+
+    inline void WriteGeometry(int destPtr, int index, int vertIndex, int vertCount) {  WriteGeometryFn(this, destPtr, index, vertIndex, vertCount); }
+    inline int InitializeTextLine(char* text, int textLength, int* a4, C3Vector* startPos, void* a6, int a7) { return InitializeTextLineFn(this, text, textLength, a4, startPos, a6, a7); }
+    inline int* ClearInstanceData() { return ClearInstanceDataFn(this); }
+    inline bool CheckGeometry() { return CheckGeometryFn(this); }
+    inline uint32_t GetVertCountForPage(int pageIdx) { return GetVertCountForPageFn(this, pageIdx); }
+};
+static_assert(sizeof(CGxString) == 0xD8);
+
+struct TextureWrapperInternal {
+    uint32_t m_width;           // 0x00
+    uint32_t m_height;          // 0x04
+    unk_t unk_08[3];            // 0x08
+    uint32_t m_width_alt;       // 0x14
+    uint32_t m_height_alt;      // 0x18
+    unk_t  unk_1C[7];           // 0x1C
+    IDirect3DTexture9* d3dTex;  // 0x38
+    unk_t unk_3C;               // 0x3C
+};
+static_assert(sizeof(TextureWrapperInternal) == 0x40);
+
+struct TextureWrapper {
+    unk_t unk_00[17];                   // 0x00
+    TextureWrapperInternal* internal;   // 0x44
+    // ...
+};
+
+struct TextureSlot {
+    TextureWrapper* mWrapper;  // 0x00
+    unk_t unk_04[5];            // 0x04
+};
+static_assert(sizeof(TextureSlot) == 0x18);
+
+struct TextureData {
+    unk_t unk[99];                  // 0x00
+    TextureSlot m_slots[8];         // 0x18C
+    // ...
+};
+
+struct GxuFontBatchNode {
+    GxuFontBatchNode* m_next;
+    GxuFontBatchNode* m_prev;
+    uint32_t m_linkNode;
+    GxuFontBatchNode* m_nextInSubList;
+    GxuFontBatchNode* m_prevInSubList;
+    unk_t unk_14;
+    TextureData* m_texture;
+    void* m_stringListHead;
+    unk_t unk_20;
+    CGxString* m_firstString;
+    uint32_t m_linkedListOffset;
+};
+static_assert(sizeof(GxuFontBatchNode) == 0x2C);
+
+class CGxuFont {
+public:
+    void* vmt;
+    unk_t unk_04;
+    uint32_t m_flags;
+    void(__thiscall** m_nodeCleanup)(CGxuFont*, GxuFontBatchNode*);
+    uint32_t m_nodeLinkOffset;
+    unk_t unk_14;
+    GxuFontBatchNode m_head;
+
+    using RenderBatch_t = void(__thiscall*)(CGxuFont*);
+    using GetFontEffectiveWidth_t = double(__cdecl*)(int, float);
+    using GetFontEffectiveHeight_t = double(__cdecl*)(int, float);
+    using RenderGlyph_t = char(__cdecl*)(FT_Face, uint32_t, uint32_t, uint32_t, CGxGlyphMetrics*, uint32_t, uint32_t);
+
+    inline static RenderBatch_t RenderBatchFn = reinterpret_cast<RenderBatch_t>(0x006C53A0);
+    inline static GetFontEffectiveWidth_t GetFontEffectiveWidthFn = reinterpret_cast<GetFontEffectiveWidth_t>(0x006C0B60);
+    inline static GetFontEffectiveHeight_t GetFontEffectiveHeightFn = reinterpret_cast<GetFontEffectiveHeight_t>(0x006C0B20);
+    inline static RenderGlyph_t RenderGlyphFn = reinterpret_cast<RenderGlyph_t>(0x006C8CC0);
+
+    inline void RenderBatch() { RenderBatchFn(this); }
+    inline static double GetFontEffectiveWidth(int is3d, float fontSizeMult) { return GetFontEffectiveWidthFn(is3d, fontSizeMult); }
+    inline static double GetFontEffectiveHeight(int is3d, float fontSizeMult) { return GetFontEffectiveHeightFn(is3d, fontSizeMult); }
+    inline static char RenderGlyph(FT_Face face, uint32_t fontSize, uint32_t codepoint, uint32_t pageInfo, CGxGlyphMetrics* entry, uint32_t outline_flag, uint32_t pad) {
+        return RenderGlyphFn(face, fontSize, codepoint, pageInfo, entry, outline_flag, pad);
+    }
+};
+static_assert(sizeof(CGxuFont) == 0x44);
+
+class CSimpleFontString : public CSimpleRender {
+public:
+    struct CSimpleRegion {};
+
+    void* vmt;
+    unk_t unk_04[4];
+    CGxuFont* m_font;
+    float m_baseSize;
+    uint16_t m_textFlags;
+    uint16_t m_textLen;
+    char* m_text;
+    float m_effectiveSize;
+    int m_textBlockHandle;
+    float m_cachedWidth;
+    float m_cachedHeight;
+    uint32_t m_shadowColorARGB;
+    float m_shadowOffsetX;
+    float m_shadowOffsetY;
+    float m_posNudgeX;
+    float m_posNudgeY;
+    uint32_t m_wrapFlags;
+    ETextStateFlags m_flags;
+    uint32_t m_defaultColor;
+    uint32_t m_colorAlphaFlags;
+    float m_anchorX;
+    float m_anchorY;
+    float m_anchorZ;
+    uintptr_t m_regionNodeOffset;
+    CSimpleRegion* m_regionListNext;
+    CSimpleRegion* m_regionListPrev;
+};
+static_assert(sizeof(CSimpleFontString) == 0x144);
+
+class CGNamePlate : public CSimpleFrame {
+public:
+    struct CSimpleTexture {};
+
+    CGNamePlate* m_sortedPrev;          // 0x29C
+    CGNamePlate* m_sortedNext;          // 0x2A0
+    unk_t unk_2A4;                      // 0x2A4
+    guid_t m_ownerGuid;                 // 0x2A8
+
+    CLayoutFrame* m_focusFrame;         // 0x2B0
+    CSimpleTexture* m_bossIcon;         // 0x2B4
+    CSimpleTexture* m_raidMarkerIcon;   // 0x2B8
+    CSimpleFrame* m_borderFrame;        // 0x2BC
+    CSimpleTexture* m_castShield;       // 0x2C0
+    CSimpleTexture* m_castBarFlash;     // 0x2C4
+    CSimpleTexture* m_raidIcon;         // 0x2C8
+    CSimpleFontString* m_nameFS;        // 0x2CC
+    CSimpleFontString* m_levelFS;       // 0x2D0
+    CSimpleFrame* m_healthBar;          // 0x2D4
+    CSimpleFrame* m_castBar;            // 0x2D8
+    CSimpleFrame* m_statusBar;          // 0x2DC
+
+    Vec2D<float> m_NDCproj;             // 0x2E0
+    float m_depthZ;                     // 0x2E8
+
+    uint32_t m_plateColor;              // 0x2EC
+    float m_castStartTime;              // 0x2F0
+    float m_castEndTime;                // 0x2F4
+    uint32_t m_castFlags;               // 0x2F8
+
+    using Create_t = CGNamePlate* (__thiscall*)(CGNamePlate*, CSimpleFrame*);
+    inline static auto CreateFn = reinterpret_cast<Create_t>(0x0098F790);
+
+    using Initialize_t = int(__thiscall*)(CGNamePlate*, CGUnit_C*);
+    inline static auto InitializeFn = reinterpret_cast<Initialize_t>(0x0098F390);
+
+    inline CGNamePlate* Create(CSimpleFrame* parent) { return CreateFn(this, parent); }
+    inline int HasPlateState(CGUnit_C* unit) { return InitializeFn(this, unit); }
+
+    inline bool HasPlateState(EFrameState flags) {
+        return (this->m_stateFlags & flags) != 0;
+    }
+    inline void SetPlateState(EFrameState flag, bool val) {
+        if (val) this->m_stateFlags = static_cast<EFrameState>(this->m_stateFlags | flag);
+        else this->m_stateFlags = static_cast<EFrameState>(this->m_stateFlags & ~flag);
+    }
+    inline void SetPlateId(int id) {
+        this->m_stateFlags = static_cast<EFrameState>((this->m_stateFlags & ~EFrameState::NP_ID_MASK) | ((id + 1) << EFrameState::NP_ID_SHIFT));
+    }
+    inline int GetPlateId() {
+        return static_cast<int>((this->m_stateFlags & EFrameState::NP_ID_MASK) >> EFrameState::NP_ID_SHIFT) - 1;
+    }
+
+    using OnLoseFocus_t = CSimpleFrame*(__thiscall*)(CGNamePlate*);
+    inline static auto OnLoseFocusFn = reinterpret_cast<OnLoseFocus_t>(0x0098E980);
+
+    inline CSimpleFrame* OnLoseFocus() { return OnLoseFocusFn(this); }
+
+    using OnGainFocus_t = CSimpleFrame*(__thiscall*)(CGNamePlate*);
+    inline static auto OnGainFocusFn = reinterpret_cast<OnGainFocus_t>(0x0098E910);
+
+    inline CSimpleFrame* OnGainFocus() { return OnGainFocusFn(this); }
+};
+static_assert(sizeof(CGNamePlate) == 0x300);
+
+// CVar
+class CVar {
+public:
+    enum CVarFlags : uint32_t {
+        CVarFlags_ReadOnly = 0x4,
+        CVarFlags_CheckTaint = 0x8,
+        CVarFlags_HideFromUser = 0x40,
+        CVarFlags_ReadOnlyForUser = 0x100,
+    };
+
     using Handler_t = int(*)(CVar* cvar, const char* prevVal, const char* newVal, void* userData);
 
-    uint32_t hash;
-    uint32_t gap4[4];
-    const char* name;
-    uint32_t field18;
-    CVarFlags flags;
-    uint32_t field20;
-    uint32_t field24;
-    const char* vStr;
-    uint32_t field2C[5];
-    uint32_t vBool;
-    uint32_t gap44[9];
-    Handler_t handler;
-    void* userData;
+    uint32_t m_hash;
+    unk_t unk_04[4];
+    const char* m_name;
+    uint32_t m_field_18;
+    CVarFlags m_flags;
+    uint32_t m_field_20;
+    uint32_t m_field_24;
+    const char* m_str;
+    unk_t unk_2C[5];
+    uint32_t m_bool;
+    unk_t unk_44[9];
+    Handler_t m_handler;
+    void* m_userData;
+
+    inline static auto InitializeFn = reinterpret_cast<DummyCallback_t>(0x007663F0);
+
+    using InternalSet_t = void(__thiscall*)(CVar*, const char*, bool, bool, bool, bool);
+    inline static auto InternalSetFn = reinterpret_cast<InternalSet_t>(0x007667B0);
+
+    using Register_t = CVar* (*)(const char*, const char*, unsigned, const char*, CVar::Handler_t, int, int, int, int);
+    inline static auto RegisterFn = reinterpret_cast<Register_t>(0x00767FC0);
+
+    using SetValue_t = char(__thiscall*)(CVar*, const char*, int, int, int, int);
+    inline static auto SetValueFn = reinterpret_cast<SetValue_t>(0x007668C0);
+
+    inline char SetValue(const char* value, int a3, int a4, int a5, int a6) { return SetValueFn(this, value, a3, a4, a5, a6); }
+
+    template<typename T>
+    inline int Sync(const char* rawValue, T* globalVar, T minVal, T maxVal, const char* fmt) {
+        if (!rawValue || !globalVar) return 0;
+        T requested;
+        if constexpr (std::is_floating_point_v<T>) requested = static_cast<T>(std::atof(rawValue));
+        else requested = static_cast<T>(std::atoi(rawValue));
+        T clamped = std::clamp(requested, minVal, maxVal);
+        *globalVar = clamped;
+        if (requested != clamped) {
+            char buf[32];
+            if constexpr (std::is_floating_point_v<T>) snprintf(buf, sizeof(buf), fmt, static_cast<double>(clamped));
+            else snprintf(buf, sizeof(buf), fmt, clamped);
+            InternalSetFn(this, buf, true, false, false, true);
+            return 0;
+        }
+        return 1;
+    }
+
+    inline static CVar* Get(const char* name) { return (reinterpret_cast<CVar* (*)(const char*)>(0x00767460))(name); }
+    inline static CVar* Find(const char* name) { return (reinterpret_cast<CVar* (*)(const char*)>(0x00767440))(name); }
+    inline static CVar* Register(const char* name, const char* desc, unsigned flags, const char* defaultVal, CVar::Handler_t callback,
+            int a6, int a7, int a8, int a9) {
+        return RegisterFn(name, desc, flags, defaultVal, callback, a6, a7, a8, a9);
+    }
 };
 static_assert(sizeof(CVar) == 0x70);
 
-inline CVar* RegisterCVar(const char* name, const char* desc, unsigned flags, const char* defaultVal, CVar::Handler_t callback, int a6, int a7, int a8, int a9) { return ((decltype(&RegisterCVar))0x00767FC0)(name, desc, flags, defaultVal, callback, a6, a7, a8, a9); };
-inline CVar* GetCVar(const char* name) { return ((decltype(&GetCVar))0x00767460)(name); }
-inline CVar* FindCVar(const char* name) { return ((decltype(&FindCVar))0x00767440)(name); }
-inline char SetCVarValue(CVar* self, const char* value, int a3, int a4, int a5, int a6)
-{
-    return (((char(__thiscall*)(CVar*, const char*, int, int, int, int))0x007668C0))(self, value, a3, a4, a5, a6);
-}
-}
+class FreeType {
+public:
+    using Init_t = int(__cdecl*)(void* memory, FT_Library*);
+    using NewMemoryFace_t = int(__cdecl*)(FT_Library, const FT_Byte* file_base, FT_Long file_size, FT_Long face_index, FT_Face*);
+    using Done_Face_t = int(__cdecl*)(FT_Face);
+    using SetPixelSizes_t = int(__cdecl*)(FT_Face, FT_UInt pixel_width, FT_UInt pixel_height);
+    using GetCharIndex_t = FT_UInt(__cdecl*)(FT_Face, FT_ULong charcode);
+    using LoadGlyph_t = int(__cdecl*)(FT_Face, FT_ULong glyph_index, FT_Int32 load_flags);
+    using GetKerning_t = int(__cdecl*)(FT_Face, FT_UInt left_glyph, FT_UInt right_glyph, FT_UInt kern_mode, FT_Vector* akerning);
+    using Done_FreeType_t = int(__cdecl*)(FT_Library);
+    using NewFace_t = int(__cdecl*)(int* library, int face_descriptor);
 
-inline lua_State* GetLuaState() { return ((decltype(&GetLuaState))0x00817DB0)(); }
-inline int GetLuaRefErrorHandler() { return *(int*)0x00AF576C; }
-
-// CFrame
-namespace CFrame {
-inline int GetRefTable(Frame* frame) { return ((int(__thiscall*)(Frame*))0x00488380)(frame); }
-inline Frame* Create(XMLObject* xml, Frame* parent, Status* status) { return ((decltype(&Create))0x00812FA0)(xml, parent, status); }
-inline void SetFrameLevel(Frame* self, int level, int a3) { ((void(__thiscall*)(Frame*, int, int))0x004910A0)(self, level, a3); }
-}
-
-// FrameScript
-namespace FrameScript {
-struct Event {
-    uint32_t hash;
-    uint32_t gap4[4];
-    const char* name;
-    uint32_t gap18[12];
-    uint32_t field48;
-    uint32_t field4C;
-    uint32_t field50;
+    inline static auto InitFn = reinterpret_cast<Init_t>(0x00991320);
+    inline static auto NewMemoryFaceFn = reinterpret_cast<NewMemoryFace_t>(0x00993370);
+    inline static auto Done_FaceFn = reinterpret_cast<Done_Face_t>(0x00992610);
+    inline static auto SetPixelSizesFn = reinterpret_cast<SetPixelSizes_t>(0x00992780);
+    inline static auto GetCharIndexFn = reinterpret_cast<GetCharIndex_t>(0x009911A0);
+    inline static auto LoadGlyphFn = reinterpret_cast<LoadGlyph_t>(0x00992DA0);
+    inline static auto GetKerningFn = reinterpret_cast<GetKerning_t>(0x00991050);
+    inline static auto Done_FreeTypeFn = reinterpret_cast<Done_FreeType_t>(0x00992CB0);
+    inline static auto NewFaceFn = reinterpret_cast<NewFace_t>(0x009931A0);
 };
 
-struct EventList {
-    size_t reserve;
-    size_t size;
-    Event** buf;
+class CGxDevice {
+public:
+    using FlushBuffer_t = int(__cdecl*)(int* bufferHandle, int bufferSize);
+    using InitFontIndexBuffer_t = int(__cdecl*)();
+    using PoolCreate_t = void* (__thiscall*)(IDirect3DDevice9*, int flags, int pad, int size, int usage, const char* name);
+
+    inline static auto FlushBufferFn = reinterpret_cast<FlushBuffer_t>(0x006C48D0);
+    inline static auto InitFontIndexBufferFn = reinterpret_cast<InitFontIndexBuffer_t>(0x006C47B0);
+    inline static auto PoolCreateFn = reinterpret_cast<PoolCreate_t>(0x006876D0);
+
+    struct ShaderData {
+        IUnknown* base_interface;                       // 0x00
+        DWORD unknown_vtable_ptr;                       // 0x04
+        IDirect3DResource9* resource_interface_1;       // 0x08
+        IDirect3DResource9* resource_interface_2;       // 0x0C
+        IDirect3DBaseTexture9* texture_interface_1;     // 0x10
+        IDirect3DBaseTexture9* texture_interface_2;     // 0x14
+        void* additional_resource;                      // 0x18
+        DWORD reference_count;                          // 0x1C
+
+        union {                                         // 0x20
+            IDirect3DPixelShader9* pixel_shader;
+            IDirect3DVertexShader9* vertex_shader;
+        };
+
+        DWORD shader_version;                           // 0x24
+        DWORD reserved_1;                               // 0x28
+        DWORD compilation_flags;                        // 0x2C
+
+        DWORD shader_enabled;                           // 0x30
+        DWORD reserved_2;                               // 0x34
+        DWORD reserved_3;                               // 0x38
+        DWORD texture_dimension_flags;                  // 0x3C
+        DWORD constant_buffer_size;                     // 0x40
+        DWORD active_samplers;                          // 0x44
+        DWORD instruction_slots;                        // 0x48
+        DWORD bytecode_length;                          // 0x4C
+
+        void* bytecode_memory;                          // 0x50
+        DWORD reserved_4;                               // 0x54
+        DWORD creation_timestamp;                       // 0x58
+        DWORD bytecode_checksum;                        // 0x5C
+
+        void* texture_stage_state;                      // 0x60
+        void* sampler_state_block;                      // 0x64
+        DWORD active_texture_stages;                    // 0x68
+        DWORD primary_sampler_index;                    // 0x6C
+        DWORD blend_stage_enabled;                      // 0x70
+        DWORD alpha_test_enabled;                       // 0x74
+        DWORD render_state_flags;                       // 0x78
+        DWORD fog_enabled;                              // 0x7C
+
+        DWORD lighting_enabled;                         // 0x80
+        DWORD vertex_shader_constants;                  // 0x84
+        DWORD pixel_shader_constants;                   // 0x88
+        DWORD texture_filter_flags;                     // 0x8C
+        DWORD mipmap_settings;                          // 0x90
+        DWORD reserved_5;                               // 0x94
+        DWORD reserved_6;                               // 0x98
+        DWORD reserved_7;                               // 0x9C
+
+        DWORD font_antialiasing;                        // 0xA0
+        DWORD subpixel_rendering;                       // 0xA4
+        DWORD reserved_8;                               // 0xA8
+
+        char coordinate_data[20];                       // 0xAC
+
+        DWORD extended_flags_1;                         // 0xC0
+        DWORD reserved_9;                               // 0xC4
+        float unknown_float_1;                          // 0xC8
+        DWORD combined_hash;                            // 0xCC
+        DWORD validation_flag;                          // 0xD0
+
+        WORD max_texture_width;                         // 0xD4
+        WORD max_texture_height;                        // 0xD8
+        DWORD padding[8];                               // 0xDC
+        DWORD final_validation;                         // 0xFC
+    };
+
+    using DeviceCreate_t = int(__thiscall*)(void*, IDirect3DDevice9*, int);
+    using NotifyOnDeviceRestored_t = int(__thiscall*)(void*);
+
+    using DeviceSetFormat_t = int(__thiscall*)(char*, const void*);
+    using IDestroyD3d_t = int(__thiscall*)(int*);
+    using IReleaseD3dResources_t = int(__thiscall*)(void*, int);
+    using IShaderCreateVertex_t = void(__thiscall*)(int, ShaderData*);
+    using IShaderCreatePixel_t = void(__thiscall*)(int, ShaderData*);
+
+    inline static auto DeviceCreateFn = reinterpret_cast<DeviceCreate_t>(0x00682CB0);
+    inline static auto NotifyOnDeviceRestoredFn = reinterpret_cast<NotifyOnDeviceRestored_t>(0x006843B0);
+
+    inline static auto DeviceSetFormatFn = reinterpret_cast<DeviceSetFormat_t>(0x006904D0);
+    inline static auto IDestroyD3dFn = reinterpret_cast<IDestroyD3d_t>(0x006903B0);
+    inline static auto IReleaseD3dResourcesFn = reinterpret_cast<IReleaseD3dResources_t>(0x00690150);
+    inline static auto IShaderCreateVertexFn = reinterpret_cast<IShaderCreateVertex_t>(0x006AA0D0);
+    inline static auto IShaderCreatePixelFn = reinterpret_cast<IShaderCreatePixel_t>(0x006AA070);
 };
 
-struct UnkContainer;
+class DBItemCache {
+public:
+    using GetItemInfoBlockById_t = uintptr_t(__thiscall*)(DBItemCache*, uint32_t, guid_t*, int, int, int);
+    inline static const auto GetItemInfoBlockByIdFn = reinterpret_cast<GetItemInfoBlockById_t>(0x0067CA30);
 
-inline UnkContainer* GetUnkContainer() { return (UnkContainer*)0x00D3F7A8; }
-inline Event* __fastcall FindEvent(UnkContainer* This, void* edx, const char* eventName) { return ((decltype(&FindEvent))0x004BC410)(This, edx, eventName); }
-inline EventList* GetEventList() { return (EventList*)0x00D3F7D0; }
-inline void FireEvent_inner(int eventId, lua_State* L, int nargs) { return ((decltype(&FireEvent_inner))0x0081AA00)(eventId, L, nargs); };
-inline void vFireEvent(int eventId, const char* format, va_list args) { return ((decltype(&vFireEvent))0x0081AC90)(eventId, format, args); }
+    inline static DBItemCache* const WDB_CACHE_ITEM = reinterpret_cast<DBItemCache*>(0x00C5D828);
 
-inline int GetEventIdByName(const char* eventName)
-{
-    EventList* eventList = GetEventList();
-    if (eventList->size == 0)
-        return -1;
-
-    uint32_t hash = RCString::hash(eventName);
-    for (size_t i = 0; i < eventList->size; i++) {
-        Event* event = eventList->buf[i];
-        if (event && event->hash == hash && (event->name == eventName || (strcmp(event->name, eventName) == 0)))
-            return i;
+    inline uintptr_t GetItemInfoBlockById(uint32_t id, guid_t* guid, int a4, int a5, int a6) {
+        return GetItemInfoBlockByIdFn(this, id, guid, a4, a5, a6);
     }
-    return -1;
-}
-
-inline const char* GetEventNameById(unsigned idx)
-{
-    EventList* eventList = GetEventList();
-    if (eventList->size == 0 || eventList->size < idx)
-        return NULL;
-
-    Event* event = eventList->buf[idx];
-    return event ? event->name : NULL;
-}
-
-inline void FireEvent(const char* eventName, const char* format, ...)
-{
-    int eventId = GetEventIdByName(eventName);
-    if (eventId == -1) return;
-
-    va_list args;
-    va_start(args, format);
-    vFireEvent(eventId, format, args);
-}
-}
-
-// NetClient
-namespace NetClient {
-inline void Login(const char* login, const char* password) { return ((decltype(&Login))0x004D8A30)(login, password); }
-}
-
-// LoginUI
-namespace LoginUI {
-
-#pragma pack(push, 1)
-struct CharData {
-    guid_t guid;
-    char name[48];
-    int map;
-    int zone;
-    int guildId;
-    VecXYZ pos;
-    int displayInfoId[23];
-    int inventoryType[23];
-    int enchantVisual[23];
-    int petDisplayId;
-    int petLevel;
-    int petFamily;
-    int flags;
-    int charCustomizeFlags;
-    char race;
-    char class_;
-    char gender;;
-    char skin;
-    char face;
-    char hairStyle;
-    char hairColor;
-    char facialColor;
-    char level;
-    char firstLogin;
-    char gap[6];
 };
-#pragma pack(pop)
-static_assert(sizeof(CharData) == 0x188, "struct CharData corrupted");
-
-struct CharVectorEntry {
-    CharData data;
-    // Note: It's not all fields
-};
-
-struct CharVector {
-    int reserved;
-    int size;
-    CharVectorEntry* buf;
-    int fieldC;
-};
-
-inline CharVector* GetChars() { return (CharVector*)0x00B6B238; }
-inline void SelectCharacter(int idx)
-{
-    *(int*)0x00AC436C = idx;
-    ((void(*)())0x004E3CD0)();
-}
-
-inline void EnterWorld(int idx)
-{
-    //lasthardware action = current timestamp
-    *(int*)0x00B499A4 = *(int*)0x00B1D618;
-    *(int*)0x00AC436C = idx;
-    ((void(*)())0x004D9BD0)();
-}
-
-}
-
-// WorldFrame & Camera
-struct CameraVtbl;
-
-struct Camera {
-    CameraVtbl* vmt;
-    uint32_t field4;
-    VecXYZ pos;
-    uint32_t gap14[11];
-    float fovInRadians;
-    float aspect;
-};
-
-inline Camera* GetActiveCamera() { return ((decltype(&GetActiveCamera))0x004F5960)(); }
-inline WorldFrame* GetWorldFrame() { return *(WorldFrame**)0x00B7436C; }
-inline int __fastcall WorldFrame_3Dto2D(WorldFrame* This, void* edx, VecXYZ* pos3d, VecXYZ* pos2d, uint32_t* flags) { return ((decltype(&WorldFrame_3Dto2D))0x004F6D20)(This, edx, pos3d, pos2d, flags); }
-inline void WorldFrame_PercToScreenPos(float x, float y, float* resX, float* resY)
-{
-    float screenHeightAptitude = *(float*)0x00AC0CBC;
-    float someVal = *(float*)0x00AC0CB4;
-    *resX = (x * (screenHeightAptitude * 1024.f)) / someVal;
-    *resY = (y * (screenHeightAptitude * 1024.f)) / someVal;
-}
-
-// XML
-struct __declspec(novtable) XMLObject {
-    uint32_t gap0[0x38 / 4];
-
-    inline XMLObject(int a1, const char* parentName) { ((XMLObject * (__thiscall*)(XMLObject*, int, const char*))0x00814AD0)(this, a1, parentName); }
-    inline void setValue(const char* key, const char* value) { ((void(__thiscall*)(XMLObject*, const char*, const char*))0x814C40)(this, key, value); }
-};
-
-// Lua
-#define lua_pop(L,n)		lua_settop(L, -(n)-1)
-#define lua_isfunction(L,n)	(lua_type(L, (n)) == LUA_TFUNCTION)
-#define lua_istable(L,n)	(lua_type(L, (n)) == LUA_TTABLE)
-#define lua_islightuserdata(L,n)	(lua_type(L, (n)) == LUA_TLIGHTUSERDATA)
-#define lua_isuserdata(L,n) (lua_type(L,n) == LUA_TLIGHTUSERDATA) || (lua_type(L, n) == LUA_TUSERDATA)
-#define lua_isnil(L,n)		(lua_type(L, (n)) == LUA_TNIL)
-#define lua_isstring(L,n)	(lua_type(L, (n)) == LUA_TSTRING)
-#define lua_isnumber(L,n)	(lua_type(L, (n)) == LUA_TNUMBER)
-#define lua_isboolean(L,n)	(lua_type(L, (n)) == LUA_TBOOLEAN)
-#define lua_isthread(L,n)	(lua_type(L, (n)) == LUA_TTHREAD)
-#define lua_isnone(L,n)		(lua_type(L, (n)) == LUA_TNONE)
-#define lua_isnoneornil(L, n)	(lua_type(L, (n)) <= 0)
-#define lua_pushcfunction(L, f) lua_pushcclosure(L, f, 0);
-#define lua_setglobal(L,s)	lua_setfield(L, LUA_GLOBALSINDEX, (s))
-#define lua_getglobal(L,s)	lua_getfield(L, LUA_GLOBALSINDEX, (s))
-#define lua_tostring(L,i)	lua_tolstring(L, (i), NULL)
-#define lua_newtable(L) lua_createtable(L, 0, 0)
-#define luaL_checkstring(L, i) luaL_checklstring(L, i, NULL)
-
-#define LUA_TNONE		(-1)
-#define LUA_TNIL		0
-#define LUA_TBOOLEAN		1
-#define LUA_TLIGHTUSERDATA	2
-#define LUA_TNUMBER		3
-#define LUA_TSTRING		4
-#define LUA_TTABLE		5
-#define LUA_TFUNCTION		6
-#define LUA_TUSERDATA		7
-#define LUA_TTHREAD		8
-
-#define LUA_REGISTRYINDEX	(-10000)
-#define LUA_ENVIRONINDEX	(-10001)
-#define LUA_GLOBALSINDEX	(-10002)
-#define lua_upvalueindex(i)	(LUA_GLOBALSINDEX-(i))
-
-
-using lua_CFunction = int(*)(lua_State*);
-typedef struct luaL_Reg {
-    const char* name;
-    lua_CFunction func;
-} luaL_Reg;
-
-inline void luaL_checktype(lua_State* L, int idx, int t) { return ((decltype(&luaL_checktype))0x0084F960)(L, idx, t); }
-inline const char* luaL_checklstring(lua_State* L, int idx, size_t* len) { return ((decltype(&luaL_checklstring))0x0084F9F0)(L, idx, len); }
-inline lua_Number luaL_checknumber(lua_State* L, int idx) { return ((decltype(&luaL_checknumber))0x84FAB0)(L, idx); }
-inline void* lua_touserdata(lua_State* L, int idx) { return ((decltype(&lua_touserdata))0x0084E1C0)(L, idx); }
-inline double lua_tonumber(lua_State* L, int n_param) { return ((double(__cdecl*)(lua_State*, int))0x0084E030)(L, n_param); }
-inline char* lua_tostringnew(lua_State* state, int n_param){ return ((char* (__cdecl*)(lua_State*, int, int))0x0084E0E0)(state, n_param, 0); }
-inline void lua_pushstring(lua_State* L, const char* str) { return ((decltype(&lua_pushstring))0x0084E350)(L, str); }
-inline void lua_pushboolean(lua_State* L, bool b) { return ((decltype(&lua_pushboolean))0x0084E4D0)(L, b); }
-inline void lua_pushvalue(lua_State* L, int idx) { return ((decltype(&lua_pushvalue))0x0084DE50)(L, idx); }
-inline void lua_pushnumber(lua_State* L, lua_Number v) { return ((decltype(&lua_pushnumber))0x0084E2A0)(L, v); }
-inline void lua_pushcclosure(lua_State* L, lua_CFunction func, int c) { return ((decltype(&lua_pushcclosure))0x0084E400)(L, func, c); }
-inline void lua_pushnil(lua_State* L) { return ((decltype(&lua_pushnil))0x0084E280)(L); }
-inline void lua_rawseti(lua_State* L, int idx, int pos) { return ((decltype(&lua_rawseti))0x0084EA00)(L, idx, pos); }
-inline void lua_rawgeti(lua_State* L, int idx, int pos) { return ((decltype(&lua_rawgeti))0x0084E670)(L, idx, pos); }
-inline void lua_rawset(lua_State* L, int idx) { return ((decltype(&lua_rawset))0x0084E970)(L, idx); }
-inline void lua_rawget(lua_State* L, int idx) { return ((decltype(&lua_rawget))0x0084E600)(L, idx); }
-inline void lua_setfield(lua_State* L, int idx, const char* str) { return ((decltype(&lua_setfield))0x0084E900)(L, idx, str); }
-inline void lua_getfield(lua_State* L, int idx, const char* str) { return ((decltype(&lua_getfield))0x0084E590)(L, idx, str); }
-inline int lua_next(lua_State* L, int idx) { return ((decltype(&lua_next))0x0084EF50)(L, idx); }
-inline void lua_insert(lua_State* L, int idx) { return ((decltype(&lua_insert))0x0084DCC0)(L, idx); }
-inline int lua_gettop(lua_State* L) { return ((decltype(&lua_gettop))0x0084DBD0)(L); }
-inline void lua_settop(lua_State* L, int idx) { return ((decltype(&lua_settop))0x0084DBF0)(L, idx); }
-inline int lua_objlen(lua_State* L, int idx) { return ((decltype(&lua_objlen))0x0084E150)(L, idx); }
-inline int lua_type(lua_State* L, int idx) { return ((decltype(&lua_type))0x0084DEB0)(L, idx); }
-inline int lua_pcall(lua_State* L, int argn, int retn, int eh) { return ((decltype(&lua_pcall))0x0084EC50)(L, argn, retn, eh); }
-inline int lua_GetParamValue(lua_State* L, int idx, int default_) { return ((decltype(&lua_GetParamValue))0x00815500)(L, idx, default_); }
-inline void lua_createtable(lua_State* L, int narr, int nrec) { return ((decltype(&lua_createtable))0x0084E6E0)(L, narr, nrec); }
-inline void* lua_newuserdata(lua_State* L, size_t size) { return ((decltype(&lua_newuserdata))0x0084F0F0)(L, size); }
-inline int lua_setmetatable(lua_State* L, int idx) { return ((decltype(&lua_setmetatable))0x0084EA90)(L, idx); }
-
-inline void lua_wipe(lua_State* L, int idx)
-{
-    if (idx < 0) idx = lua_gettop(L) - (idx + 1);
-    lua_pushnil(L); // nil
-    while (lua_next(L, idx)) { // key, value
-        lua_pop(L, 1); // key
-        lua_pushnil(L); // key, nil
-        lua_rawset(L, idx); //
-        lua_pushnil(L); // key, nil
-    }
-}
-
-inline void lua_pushguid(lua_State* L, guid_t guid)
-{
-    char buf[24];
-    ObjectMgr::Guid2HexString(guid, buf);
-    lua_pushstring(L, buf);
-}
-
-inline Frame* lua_toframe(lua_State* L, int idx)
-{
-    __asm {
-        mov esi, L;
-        push idx;
-        mov eax, 0x004A81B0;
-        call eax;
-        ret;
-    }
-}
-
-inline Frame* lua_toframe_silent(lua_State* L, int idx)
-{
-    lua_rawgeti(L, idx, 0);
-    Frame* frame = (Frame*)lua_touserdata(L, -1);
-    lua_pop(L, 1);
-    return frame;
-}
-
-inline void lua_pushframe(lua_State* L, Frame* frame)
-{
-    lua_rawgeti(L, LUA_REGISTRYINDEX, CFrame::GetRefTable(frame));
-}
-
-
-struct MockCStatus {
-    void** vtable;
-};
-
-static bool CheckIfBindingOrHeaderExists(const char* upperName, const char* upperHeader) {
-    lua_State* L = GetLuaState();
-    if (!L) return false;
-
-    // Check Lua global: BINDING_NAME_<NAME>
-    if (upperName && upperName[0]) {
-        lua_getfield(L, LUA_GLOBALSINDEX, ("BINDING_NAME_" + std::string(upperName)).c_str());
-        if (!lua_isnil(L, -1)) {
-            lua_pop(L, 1);
-            return true;
-        }
-        lua_pop(L, 1);
-    }
-
-    // Check Lua global: BINDING_HEADER_<HEADER>
-    if (upperHeader && upperHeader[0]) {
-        lua_getfield(L, LUA_GLOBALSINDEX, ("BINDING_HEADER_" + std::string(upperHeader)).c_str());
-        if (!lua_isnil(L, -1)) {
-            lua_pop(L, 1);
-            return true;
-        }
-        lua_pop(L, 1);
-    }
-
-    // Native XML table check
-    void* root = *reinterpret_cast<void**>(0x00BEADD8);
-    void** hashTable = reinterpret_cast<void**>(root) + 3;
-
-    using SStrHashHTFn = void* (__thiscall*)(void*, const char*);
-    auto SStrHashHT = reinterpret_cast<SStrHashHTFn>(0x0055F4D0); // Double-check this address
-
-    // Check for binding name in native table
-    if (upperName && upperName[0] && SStrHashHT(hashTable, upperName)) {
-        return true;
-    }
-
-    // Check for "HEADER_<HEADER>" in native table
-    if (upperHeader && upperHeader[0]) {
-        std::string fullHeaderKey = "HEADER_" + std::string(upperHeader);
-        if (SStrHashHT(hashTable, fullHeaderKey.c_str())) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-//based on and credits to: https://github.com/leoaviana/ConsoleXP/blob/38cb2a1ece253b017b3e554a2146033e95054ae2/src/ConsoleXP/Game.cpp#L727
-static void RegisterLuaBinding(const char* bindingName, const char* bindingText, const char* bindingHeaderName, const char* bindingHeaderText, const char* luaScript)
-{
-    lua_State* L = GetLuaState();
-    if (!L) return;
-
-    std::string upperHeader(bindingHeaderName);
-    std::transform(upperHeader.begin(), upperHeader.end(), upperHeader.begin(), ::toupper);
-
-    std::string upperName(bindingName);
-    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
-
-    if (CheckIfBindingOrHeaderExists(upperName.c_str(), upperHeader.c_str())) {
-        return;
-    }
-
-    if (bindingHeaderName && bindingHeaderName[0]) {
-        lua_pushstring(L, bindingHeaderText);
-        lua_setfield(L, LUA_GLOBALSINDEX, ("BINDING_HEADER_" + upperHeader).c_str());
-    }
-
-    if (bindingName && bindingName[0]) {
-        lua_pushstring(L, bindingText);
-        lua_setfield(L, LUA_GLOBALSINDEX, ("BINDING_NAME_" + upperName).c_str());
-    }
-
-    // Build XML node
-    XMLObject node(0, "Bindings");
-    node.setValue("name", upperName.c_str());
-    node.setValue("header", bindingHeaderName ? bindingHeaderName : "");
-
-    // Inject script text
-    *reinterpret_cast<char**>(reinterpret_cast<uint8_t*>(&node) + 0x18) = const_cast<char*>(luaScript);
-
-    // Call native loader
-    void* thispointer = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(0x00BEADD8));
-    using LoadBindFn = void(__thiscall*)(void*, void*, XMLObject*, MockCStatus*);
-    auto LdBinding = reinterpret_cast<LoadBindFn>(0x00564470);
-
-    static void* dummyVtable[4] = {};
-    MockCStatus status;
-    status.vtable = dummyVtable;
-
-    char bindsName[] = "AWESOME_KEYBIND";
-    LdBinding(thispointer, bindsName, &node, &status);
-}

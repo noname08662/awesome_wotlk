@@ -1,7 +1,6 @@
 #pragma once
 #include "MSDF.h"
 #include "MSDFCache.h"
-#include <map>
 
 class MSDFFont {
     friend class MSDFCache;

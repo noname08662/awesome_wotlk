@@ -1,36 +1,45 @@
 #pragma once
 #include "GameClient.h"
+#include "Lua.h"
+#include <Detours/detours.h>
 
 namespace Hooks {
+	template <typename addr, typename detour>
+	inline LONG Detour(addr** ppPointer, detour pDetour) {
+		return DetourAttach(reinterpret_cast<PVOID*>(ppPointer), reinterpret_cast<PVOID>(pDetour));
+	}
+	template <typename addr, typename detour>
+	inline LONG Detach(addr** ppPointer, detour pDetour) {
+		return DetourDetach(reinterpret_cast<PVOID*>(ppPointer), reinterpret_cast<PVOID>(pDetour));
+	}
 
-using DummyCallback_t = void(*)();
+	namespace FrameScript {
+		using namespace ::FrameScript;
 
-namespace FrameScript {
-using TokenGuidGetter = guid_t();
-using TokenNGuidGetter = guid_t(int);
-using TokenIdGetter = bool(guid_t);
-using TokenIdNGetter = int(guid_t);
+		using TokenGuidGetter = guid_t();
+		using TokenNGuidGetter = guid_t(int);
+		using TokenIdGetter = bool(guid_t);
+		using TokenIdNGetter = int(guid_t);
 
-// Alone tokens like player, target, focus
-void registerToken(const char* token, TokenGuidGetter* getGuid, TokenIdGetter* getId);
-// One more tokens like party1, raid1, arena1
-void registerToken(const char* token, TokenNGuidGetter* getGuid, TokenIdNGetter* getId);
-void registerOnUpdate(DummyCallback_t func);
-void registerOnEnter(DummyCallback_t func);
-void registerOnLeave(DummyCallback_t func);
-}
+		// Alone tokens like player, target, focus
+		void registerToken(const char* token, TokenGuidGetter* getGuid, TokenIdGetter* getId);
+		// One more tokens like party1, raid1, arena1
+		void registerToken(const char* token, TokenNGuidGetter* getGuid, TokenIdNGetter* getId);
+		void registerOnUpdate(FunctionCallback_t func);
+		void registerOnEnter(FunctionCallback_t func);
+		void registerOnLeave(FunctionCallback_t func);
+	}
 
-namespace FrameXML {
-void registerEvent(const char* str);
-void registerCVar(Console::CVar** dst, const char* str, const char* desc, Console::CVarFlags flags, const char* initialValue, Console::CVar::Handler_t func);
-void registerLuaLib(lua_CFunction func);
-}
+	namespace FrameXML {
+		void registerEvent(const char* str);
+		void registerCVar(CVar** dst, const char* str, const char* desc, const char* initialValue, CVar::Handler_t func,
+			CVar::CVarFlags flags = static_cast<CVar::CVarFlags>(1), std::function<void(CVar*)> initCallback = nullptr);
+		void registerLuaLib(Lua::lua_CFunction func);
+	}
 
-namespace GlueXML {
-void registerPostLoad(DummyCallback_t func);
-void registerCharEnum(DummyCallback_t func);
-}
-
-void initialize();
-
+	namespace GlueXML {
+		void registerPostLoad(FunctionCallback_t func);
+		void registerCharEnum(FunctionCallback_t func);
+	}
+	void initialize();
 }
