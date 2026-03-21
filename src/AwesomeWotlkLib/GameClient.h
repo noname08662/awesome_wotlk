@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "Types.h"
 
 #include <ft2build.h>
@@ -11,7 +11,7 @@
 // ObjectMgr
 namespace ObjectMgr {
     template <typename T>
-    using GetFuncPtr = T * (*)(guid_t, ETypeMask);
+    using GetFuncPtr = T* (*)(guid_t, ETypeMask);
 
     inline int EnumObjects_internal(int(*func)(guid_t, void*), void* udata) {
         return (reinterpret_cast<int(*)(int(*)(guid_t, void*), void*)>(0x004D4B30))(func, udata);
@@ -19,12 +19,12 @@ namespace ObjectMgr {
 
     template<typename F>
     bool EnumObjects(F&& func) {
-        struct Wrapper {
-            static int __cdecl callback(uint64_t guid, void* udata) {
-                auto& f = *static_cast<F*>(udata);
-                return f(guid) ? 1 : 0;
-            }
-        };
+    	struct Wrapper {
+    		static int __cdecl callback(uint64_t guid, void* udata) {
+    			auto& f = *static_cast<std::remove_reference_t<F>*>(udata);
+    			return f(guid) ? 1 : 0;
+    		}
+    	};
         return EnumObjects_internal(&Wrapper::callback, &func) != 0;
     }
     template <typename T>
@@ -132,7 +132,7 @@ namespace CGGameUI {
     inline bool TraceLine(const C3Vector& start, const C3Vector& end, uint32_t hitFlags,
         C3Vector& intersectionPoint, float& completedBeforeIntersection) {
         completedBeforeIntersection = 1.0f;
-        intersectionPoint = { 0.0f, 0.0f, 0.0f };
+        intersectionPoint = { .X=0.0f, .Y=0.0f, .Z=0.0f };
 
         uint8_t result = TraceLineFn(
             const_cast<C3Vector*>(&start),
@@ -1260,7 +1260,7 @@ public:
     struct CSimpleRegion {};
 
     void* vmt;
-    unk_t unk_04[4];
+    unk_t unk_04_2[4];
     CGxuFont* m_font;
     float m_baseSize;
     uint16_t m_textFlags;
@@ -1276,7 +1276,7 @@ public:
     float m_posNudgeX;
     float m_posNudgeY;
     uint32_t m_wrapFlags;
-    ETextStateFlags m_flags;
+    ETextStateFlags m_flags_fs;
     uint32_t m_defaultColor;
     uint32_t m_colorAlphaFlags;
     float m_anchorX;
@@ -1324,7 +1324,7 @@ public:
     using Initialize_t = int(__thiscall*)(CGNamePlate*, CGUnit_C*);
     inline static auto InitializeFn = reinterpret_cast<Initialize_t>(0x0098F390);
 
-    CGNamePlate* Create(CSimpleFrame* parent) { return CreateFn(this, parent); }
+    CGNamePlate* Create(CSimpleFrame* p) { return CreateFn(this, p); }
     int HasPlateState(CGUnit_C* unit) { return InitializeFn(this, unit); }
 
     bool HasPlateState(EFrameState flags) const { return (this->m_stateFlags & flags) != 0; }
@@ -1335,7 +1335,7 @@ public:
     void SetPlateId(int id) {
         this->m_stateFlags = static_cast<EFrameState>((this->m_stateFlags & ~NP_ID_MASK) | ((id + 1) << NP_ID_SHIFT));
     }
-    int GetPlateId() {
+    int GetPlateId() const {
         return static_cast<int>((this->m_stateFlags & NP_ID_MASK) >> NP_ID_SHIFT) - 1;
     }
 
