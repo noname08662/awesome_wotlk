@@ -9,10 +9,10 @@ namespace {
     const auto alloc = reinterpret_cast<Alloc_t>(0x00415074);
 
     using ClipboardGetString_t = const char* (*)(HWND);
-    const char* (*Clipboard_GetStringFn)(HWND) = reinterpret_cast<ClipboardGetString_t>(0x008726F0);
+    auto(*Clipboard_GetStringFn)(HWND) = reinterpret_cast<ClipboardGetString_t>(0x008726F0);
 
     using ClipboardSetString_t = int(*)(const char*, HWND);
-    int(*Clipboard_SetStringFn)(const char*, HWND) = reinterpret_cast<ClipboardSetString_t>(0x008727E0);
+    auto(*Clipboard_SetStringFn)(const char*, HWND) = reinterpret_cast<ClipboardSetString_t>(0x008727E0);
 
     const char* Clipboard_GetStringHk(HWND hwnd) {
         std::string str = GetFromClipboardU8(hwnd);

@@ -25,21 +25,21 @@ namespace Hooks {
 		void registerToken(const char* token, TokenGuidGetter* getGuid, TokenIdGetter* getId);
 		// One more tokens like party1, raid1, arena1
 		void registerToken(const char* token, TokenNGuidGetter* getGuid, TokenIdNGetter* getId);
-		void registerOnUpdate(FunctionCallback_t func);
-		void registerOnEnter(FunctionCallback_t func);
-		void registerOnLeave(FunctionCallback_t func);
+		void registerOnUpdate(const FunctionCallback_t& func);
+		void registerOnEnter(const FunctionCallback_t& func);
+		void registerOnLeave(const FunctionCallback_t& func);
 	}
 
 	namespace FrameXML {
 		void registerEvent(const char* str);
 		void registerCVar(CVar** dst, const char* str, const char* desc, const char* initialValue, CVar::Handler_t func,
-			CVar::CVarFlags flags = static_cast<CVar::CVarFlags>(1), std::function<void(CVar*)> initCallback = nullptr);
-		void registerLuaLib(Lua::lua_CFunction func);
+			CVar::CVarFlags flags = static_cast<CVar::CVarFlags>(1), const std::function<void(CVar*)>& initCallback = nullptr);
+		void registerLuaLib(const Lua::lua_CFunction& func);
 	}
 
 	namespace GlueXML {
-		void registerPostLoad(FunctionCallback_t func);
-		void registerCharEnum(FunctionCallback_t func);
+		void registerPostLoad(const FunctionCallback_t& func);
+		void registerCharEnum(const FunctionCallback_t& func);
 	}
 	void initialize();
 }

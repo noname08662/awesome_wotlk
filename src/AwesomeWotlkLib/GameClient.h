@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include "Types.h"
-#include <string>
 
 #include <ft2build.h>
 #include <d3d9.h>
@@ -19,7 +18,7 @@ namespace ObjectMgr {
     }
 
     template<typename F>
-    inline bool EnumObjects(F&& func) {
+    bool EnumObjects(F&& func) {
         struct Wrapper {
             static int __cdecl callback(uint64_t guid, void* udata) {
                 auto& f = *static_cast<F*>(udata);
@@ -29,7 +28,7 @@ namespace ObjectMgr {
         return EnumObjects_internal(&Wrapper::callback, &func) != 0;
     }
     template <typename T>
-    inline T* Get(guid_t guid, ETypeMask flags) { return (reinterpret_cast<GetFuncPtr<T>>(0x004D4DB0))(guid, flags); }
+    T* Get(guid_t guid, ETypeMask flags) { return (reinterpret_cast<GetFuncPtr<T>>(0x004D4DB0))(guid, flags); }
 
     inline guid_t HexString2Guid(const char* str) { return (reinterpret_cast<guid_t(*)(const char*)>(0x0074D120))(str); }
     inline guid_t GetGuidByUnitID(const char* unitId) { return (reinterpret_cast<guid_t(*)(const char*)>(0x0060C1C0))(unitId); }
@@ -73,7 +72,7 @@ namespace RCString {
 
 // ClientDB
 namespace ClientDB {
-    using ClientDb_GetLocalizedRow = int(__thiscall*)(void* pThis, int index, void* rowBuffer);
+    using ClientDb_GetLocalizedRow = int(__thiscall*)(void* pThis, uint32_t index, void* rowBuffer);
     inline const auto GetLocalizedRow = reinterpret_cast<ClientDb_GetLocalizedRow>(0x004CFD20);
 
     using ClientDb_GetRow = int(__thiscall*)(void* pThis, int index);
@@ -81,11 +80,7 @@ namespace ClientDB {
 
     inline uintptr_t GetDbcTable(uint32_t dbIndex) {
         for (uintptr_t tableBase = 0x006337D0; *reinterpret_cast<uint8_t*>(tableBase) != 0xC3; tableBase += 0x11) {
-            uint32_t index = *reinterpret_cast<uint32_t*>(tableBase + 1);
-            if (index == dbIndex) {
-                uintptr_t tablePtr = *reinterpret_cast<uintptr_t*>(tableBase + 0xB) + 0x18;
-                return tablePtr;
-            }
+            if (*reinterpret_cast<uint32_t*>(tableBase + 1) == dbIndex) return *reinterpret_cast<uintptr_t*>(tableBase + 0xB) + 0x18;
         }
         return 0;
     }
@@ -93,7 +88,7 @@ namespace ClientDB {
 
 // GameUI
 namespace CGGameUI {
-    guid_t* g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
+    inline auto g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
 
     using Target_t = void(__cdecl*)(guid_t);
     inline auto TargetFn = reinterpret_cast<Target_t>(0x00524BF0);
@@ -184,7 +179,7 @@ namespace FrameScript {
     inline auto FireOnUpdateFn = reinterpret_cast<FireOnUpdate_t>(0x00495810);
 
     using FillEvents_t = void (*)(const char** list, size_t count);
-    auto FillEventsFn = reinterpret_cast<FillEvents_t>(0x0081B5F0);
+    inline auto FillEventsFn = reinterpret_cast<FillEvents_t>(0x0081B5F0);
 
     inline UnkContainer* GetUnkContainer() { return reinterpret_cast<UnkContainer*>(0x00D3F7A8); }
     inline Event* __fastcall FindEvent(UnkContainer* This, void* edx, const char* eventName) { return (reinterpret_cast<Event * (__fastcall*)(UnkContainer*, void*, const char*)>(0x004BC410))(This, edx, eventName); }
@@ -291,11 +286,18 @@ class CSimpleCamera;
 class CGObject_C {
 public:
     template <typename T>
-    inline T& GetValue(uint32_t index) const {
-        return *reinterpret_cast<T*>(&reinterpret_cast<uint32_t*>(m_entry)[index]);
-    }
+    T& GetValue(uint32_t index) const { return *reinterpret_cast<T*>(&reinterpret_cast<uintptr_t*>(m_entry)[index]); }
 
-    inline void SetValueBytes(uint32_t index, uint8_t offset, uint8_t value) {
+    template <typename T>
+    T* GetEntry() const { return reinterpret_cast<T*>(m_entry); }
+
+    template <typename T>
+    T* As() { return reinterpret_cast<T*>(this); }
+
+    template <typename T>
+    const T* As() const { return reinterpret_cast<const T*>(this); }
+
+    void SetValueBytes(uint32_t index, uint8_t offset, uint8_t value) const {
         if (!m_data || offset >= 4) return;
         uint32_t& current = m_data[index];
         uint8_t currentByte = static_cast<uint8_t>((current >> (offset * 8)) & 0xFF);
@@ -392,7 +394,7 @@ public:
     void* m_worldObject;
     uint32_t m_highlightMask;
 
-    inline float GetDistance(CGObject_C* secObj) {
+    float GetDistance(CGObject_C* secObj) {
         if (!secObj) return 0.0f;
 
         C3Vector a{}, b{};
@@ -404,7 +406,6 @@ public:
         float dz = b.Z - a.Z;
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
-    inline ObjectEntry* GetEntry() const { return m_entry; }
 };
 
 // CGUnit_C
@@ -448,43 +449,35 @@ public:
     using SetNamePlateFocus_t = void(__cdecl*)(C3Vector* pos);
     inline static auto SetNamePlateFocusFn = reinterpret_cast<SetNamePlateFocus_t>(0x007271D0);
 
-    inline guid_t GetGUID() const { return GetValue<guid_t>(OBJECT_FIELD_GUID); }
-    inline int GetCreatureRank() const { return GetCreatureRankFn(this); }
-    inline bool CanAttack(const CGUnit_C* unit) const { return CanAttackFn(this, unit); }
-    inline bool CanAssist(const CGUnit_C* unit, bool ignoreFlags) const { return CanAssistFn(this, unit, ignoreFlags); }
-    inline EUnitReaction UnitReaction(const CGUnit_C* unit) const { return UnitReactionFn(this, unit); }
-    inline int UpdateReaction(int updateAll) { return UpdateReactionFn(this, updateAll); }
-    inline CGNamePlate* HideNamePlate() { return HideNamePlateFn(this); }
-    inline bool IsFriendly(CGUnit_C* player = ObjectMgr::Get<CGUnit_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER)) const {
+    guid_t GetGUID() const { return GetValue<guid_t>(OBJECT_FIELD_GUID); }
+    int GetCreatureRank() const { return GetCreatureRankFn(this); }
+    bool CanAttack(const CGUnit_C* unit) const { return CanAttackFn(this, unit); }
+    bool CanAssist(const CGUnit_C* unit, bool ignoreFlags) const { return CanAssistFn(this, unit, ignoreFlags); }
+    EUnitReaction UnitReaction(const CGUnit_C* unit) const { return UnitReactionFn(this, unit); }
+    int UpdateReaction(int updateAll) { return UpdateReactionFn(this, updateAll); }
+    CGNamePlate* HideNamePlate() { return HideNamePlateFn(this); }
+    bool IsFriendly(const CGUnit_C* player = ObjectMgr::Get<CGUnit_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER)) const {
         if (!player) return false; int reaction = player->UnitReaction(this);
         return (reaction >= 5) || (reaction == 4 && !player->CanAttack(this));
     }
-    inline UnitEntry* GetEntry() const { return reinterpret_cast<UnitEntry*>(m_entry); }
-    inline CGObject_C* ToObject() { return reinterpret_cast<CGObject_C*>(this); }
-
-    inline static void SetNamePlateFocus(C3Vector* pos) { return SetNamePlateFocusFn(pos); }
+    static void SetNamePlateFocus(C3Vector* pos) { return SetNamePlateFocusFn(pos); }
 };
 
-// CGGameObject_C
+// CGPlayer_C
 class CGPlayer_C : public CGUnit_C {
 public:
     using NotifyCombatChange_t = void(__thiscall*)(CGUnit_C*, int, int);
     inline static auto NotifyCombatChangeFn = reinterpret_cast<NotifyCombatChange_t>(0x0055E550);
 
-    inline void NotifyCombatChange(int offs, int val) { return NotifyCombatChangeFn(this, offs, val); }
-
-    inline PlayerEntry* GetEntry() const { return reinterpret_cast<PlayerEntry*>(m_entry); }
-    inline CGUnit_C* ToUnit() { return reinterpret_cast<CGUnit_C*>(this); }
+    void NotifyCombatChange(int offs, int val) { return NotifyCombatChangeFn(this, offs, val); }
 };
 
 // CGGameObject_C
 class CGGameObject_C : public CGObject_C {
 public:
-    inline bool CanUseNow() const { return CanUseNowFn(this); }
+    bool CanUseNow() const { return CanUseNowFn(this); }
 
 private:
-    inline CGObject_C* ToObject() { return reinterpret_cast<CGObject_C*>(this); }
-
     using CanUseNow_t = bool(__thiscall*)(const CGGameObject_C*);
     inline static const auto CanUseNowFn = reinterpret_cast<CanUseNow_t>(0x0070BA10);
 };
@@ -572,12 +565,12 @@ public:
     using SetPoint_t = void(__thiscall*)(CLayoutFrame*, int, CLayoutFrame*, int, float, float, int);
     inline static auto SetPointFn = reinterpret_cast<SetPoint_t>(0x0048A260);
 
-    inline void SetPoint(int point, CLayoutFrame* relativeTo, int relativePoint, float xOffset, float yOffset, int doResize) {
+    void SetPoint(int point, CLayoutFrame* relativeTo, int relativePoint, float xOffset, float yOffset, int doResize) {
         SetPointFn(this, point, relativeTo, relativePoint, xOffset, yOffset, doResize);
     }
-    inline static int ResizePending() { return reinterpret_cast<int(__cdecl*)()>(0x004898B0)(); }
+    static int ResizePending() { return reinterpret_cast<int(__cdecl*)()>(0x004898B0)(); }
 
-    inline bool IsAtTargetPos(C3Vector* pos, Vec2D<float> percs) const {
+    bool IsAtTargetPos(const C3Vector* pos, Vec2D<float> percs) const {
         float midX = (this->m_left + this->m_right) * 0.5f; float midY = (this->m_bottom + this->m_top) * 0.5f;
         float h_width = (this->m_width * 0.5f) * percs.x; float h_height = (this->m_height * 0.5f) * percs.y;
         return (pos->X >= (midX - h_width) && pos->X <= (midX + h_width)) && (pos->Y >= (midY - h_height) && pos->Y <= (midY + h_height));
@@ -650,19 +643,19 @@ public:
     CSimpleFrameNode m_parentLink;      // 0x27C
     unk_t unk_288[5];                   // 0x288
 
-    inline void SetFrameDepth(float depth, int flag) {
+    void SetFrameDepth(float depth, int flag) {
         reinterpret_cast<void(__thiscall*)(CSimpleFrame*, float, int)>(0x0048F5D0)(this, depth, flag);
     }
-    inline void SetFrameLevel(uint32_t level, int levelChildren) {
+    void SetFrameLevel(uint32_t level, int levelChildren) {
         reinterpret_cast<void(__thiscall*)(CSimpleFrame*, uint32_t, int)>(0x004910A0)(this, level, levelChildren);
     }
-    inline void SetAlpha(uint8_t alpha) {
+    void SetAlpha(uint8_t alpha) {
         reinterpret_cast<void(__thiscall*)(CSimpleFrame*, uint8_t)>(0x0048EA10)(this, alpha);
     }
-    inline int Hide() { return reinterpret_cast<int(__thiscall*)(CSimpleFrame*)>(0x0048F620)(this); }
-    inline int GetRefTable() { return (reinterpret_cast<int(__thiscall*)(CSimpleFrame*)>(0x00488380))(this); }
+    int Hide() { return reinterpret_cast<int(__thiscall*)(CSimpleFrame*)>(0x0048F620)(this); }
+    int GetRefTable() { return (reinterpret_cast<int(__thiscall*)(CSimpleFrame*)>(0x00488380))(this); }
 
-    inline static int GetObjectType() { return *reinterpret_cast<int*>(0x00B49984); }
+    static int GetObjectType() { return *reinterpret_cast<int*>(0x00B49984); }
 };
 static_assert(sizeof(CSimpleFrame) == 0x29C);
 
@@ -689,7 +682,7 @@ public:
     using constructor_t = char* (__thiscall*)(CSimpleCamera*, float a2, float a3, float fov);
     inline static auto constructorFn = reinterpret_cast<constructor_t>(0x00607C20);
 
-    inline char* constructor(float a2, float a3, float fov) { return constructorFn(this, a2, a3, fov); }
+    char* constructor(float a2, float a3, float fov) { return constructorFn(this, a2, a3, fov); }
 };
 static_assert(sizeof(CSimpleCamera) == 0x48);
 
@@ -724,7 +717,7 @@ public:
         CAM3_TELESCOPE_ACTIVE = 0x80000000,
     };
 
-    enum ECamMode : uint32_t {
+    enum ECamMode : uint8_t {
         CAMMODE_AUTO_INTERACT = 0x00000001,
         CAMMODE_HAS_TARGET = 0x00000002,
         CAMMODE_FACING_LOCKED = 0x00000004,
@@ -732,7 +725,7 @@ public:
         CAMMODE_ZOOM_LOCKED = 0x00000040,
     };
 
-    enum EZoomState : uint32_t {
+    enum EZoomState : uint8_t {
         CAMZOOM_ZOOM_IN_ACTIVE = 0x00000001,
         CAMZOOM_ZOOM_IN_INTERRUPTED = 0x00000002,
         CAMZOOM_ZOOM_OUT_ACTIVE = 0x00000004,
@@ -1127,8 +1120,8 @@ public:
     inline static GetOrCreateGlyphEntry_t GetOrCreateGlyphEntryFn = reinterpret_cast<GetOrCreateGlyphEntry_t>(0x006C3FC0);
     inline static GetBearingX_t GetBearingXFn = reinterpret_cast<GetBearingX_t>(0x006C24F0);
 
-    inline double GetBearingX(CGxGlyphCacheEntry* entry, float flag, float scale) { return GetBearingXFn(this, entry, flag, scale); }
-    inline CGxGlyphCacheEntry* GetOrCreateGlyphEntry(uint32_t codepoint) { return GetOrCreateGlyphEntryFn(this, codepoint); }
+    double GetBearingX(CGxGlyphCacheEntry* entry, float flag, float scale) { return GetBearingXFn(this, entry, flag, scale); }
+    CGxGlyphCacheEntry* GetOrCreateGlyphEntry(uint32_t codepoint) { return GetOrCreateGlyphEntryFn(this, codepoint); }
 };
 static_assert(sizeof(CGxFont) == 0x250);
 
@@ -1165,12 +1158,8 @@ public:
     CGxFontGeomBatch* m_geomBuffers[8];         // 0xB4
     uint32_t m_timeSinceUpdate;                 // 0xD4
 
-    inline FT_Face GetFontFace() const {
-        return reinterpret_cast<FT_Face(*)(void*)>(0x006C8080)(this->m_fontObj->m_ftWrapper);
-    }
-    inline static FT_Face GetFontFace(void* ptr) {
-        return reinterpret_cast<FT_Face(*)(void*)>(0x006C8080)(ptr);
-    }
+    FT_Face GetFontFace() const { return reinterpret_cast<FT_Face(*)(void*)>(0x006C8080)(this->m_fontObj->m_ftWrapper); }
+    static FT_Face GetFontFace(void* ptr) { return reinterpret_cast<FT_Face(*)(void*)>(0x006C8080)(ptr); }
 
     using WriteGeometry_t = void(__thiscall*)(CGxString*, int destPtr, int index, int vertIndex, int vertCount);
     using InitializeTextLine_t = int(__thiscall*)(CGxString*, char* text, int textLength, int* a4, C3Vector* startPos, void*, int);
@@ -1184,11 +1173,11 @@ public:
     inline static CheckGeometry_t CheckGeometryFn = reinterpret_cast<CheckGeometry_t>(0x006C7480);
     inline static GetVertCountForPage_t GetVertCountForPageFn = reinterpret_cast<GetVertCountForPage_t>(0x006C63E0);
 
-    inline void WriteGeometry(int destPtr, int index, int vertIndex, int vertCount) {  WriteGeometryFn(this, destPtr, index, vertIndex, vertCount); }
-    inline int InitializeTextLine(char* text, int textLength, int* a4, C3Vector* startPos, void* a6, int a7) { return InitializeTextLineFn(this, text, textLength, a4, startPos, a6, a7); }
-    inline int* ClearInstanceData() { return ClearInstanceDataFn(this); }
-    inline bool CheckGeometry() { return CheckGeometryFn(this); }
-    inline uint32_t GetVertCountForPage(int pageIdx) { return GetVertCountForPageFn(this, pageIdx); }
+    void WriteGeometry(int destPtr, int index, int vertIndex, int vertCount) {  WriteGeometryFn(this, destPtr, index, vertIndex, vertCount); }
+    int InitializeTextLine(char* text, int textLength, int* a4, C3Vector* startPos, void* a6, int a7) { return InitializeTextLineFn(this, text, textLength, a4, startPos, a6, a7); }
+    int* ClearInstanceData() { return ClearInstanceDataFn(this); }
+    bool CheckGeometry() { return CheckGeometryFn(this); }
+    uint32_t GetVertCountForPage(int pageIdx) { return GetVertCountForPageFn(this, pageIdx); }
 };
 static_assert(sizeof(CGxString) == 0xD8);
 
@@ -1257,10 +1246,10 @@ public:
     inline static GetFontEffectiveHeight_t GetFontEffectiveHeightFn = reinterpret_cast<GetFontEffectiveHeight_t>(0x006C0B20);
     inline static RenderGlyph_t RenderGlyphFn = reinterpret_cast<RenderGlyph_t>(0x006C8CC0);
 
-    inline void RenderBatch() { RenderBatchFn(this); }
-    inline static double GetFontEffectiveWidth(int is3d, float fontSizeMult) { return GetFontEffectiveWidthFn(is3d, fontSizeMult); }
-    inline static double GetFontEffectiveHeight(int is3d, float fontSizeMult) { return GetFontEffectiveHeightFn(is3d, fontSizeMult); }
-    inline static char RenderGlyph(FT_Face face, uint32_t fontSize, uint32_t codepoint, uint32_t pageInfo, CGxGlyphMetrics* entry, uint32_t outline_flag, uint32_t pad) {
+    void RenderBatch() { RenderBatchFn(this); }
+    static double GetFontEffectiveWidth(int is3d, float fontSizeMult) { return GetFontEffectiveWidthFn(is3d, fontSizeMult); }
+    static double GetFontEffectiveHeight(int is3d, float fontSizeMult) { return GetFontEffectiveHeightFn(is3d, fontSizeMult); }
+    static char RenderGlyph(FT_Face face, uint32_t fontSize, uint32_t codepoint, uint32_t pageInfo, CGxGlyphMetrics* entry, uint32_t outline_flag, uint32_t pad) {
         return RenderGlyphFn(face, fontSize, codepoint, pageInfo, entry, outline_flag, pad);
     }
 };
@@ -1335,39 +1324,37 @@ public:
     using Initialize_t = int(__thiscall*)(CGNamePlate*, CGUnit_C*);
     inline static auto InitializeFn = reinterpret_cast<Initialize_t>(0x0098F390);
 
-    inline CGNamePlate* Create(CSimpleFrame* parent) { return CreateFn(this, parent); }
-    inline int HasPlateState(CGUnit_C* unit) { return InitializeFn(this, unit); }
+    CGNamePlate* Create(CSimpleFrame* parent) { return CreateFn(this, parent); }
+    int HasPlateState(CGUnit_C* unit) { return InitializeFn(this, unit); }
 
-    inline bool HasPlateState(EFrameState flags) {
-        return (this->m_stateFlags & flags) != 0;
-    }
-    inline void SetPlateState(EFrameState flag, bool val) {
+    bool HasPlateState(EFrameState flags) const { return (this->m_stateFlags & flags) != 0; }
+    void SetPlateState(EFrameState flag, bool val) {
         if (val) this->m_stateFlags = static_cast<EFrameState>(this->m_stateFlags | flag);
         else this->m_stateFlags = static_cast<EFrameState>(this->m_stateFlags & ~flag);
     }
-    inline void SetPlateId(int id) {
-        this->m_stateFlags = static_cast<EFrameState>((this->m_stateFlags & ~EFrameState::NP_ID_MASK) | ((id + 1) << EFrameState::NP_ID_SHIFT));
+    void SetPlateId(int id) {
+        this->m_stateFlags = static_cast<EFrameState>((this->m_stateFlags & ~NP_ID_MASK) | ((id + 1) << NP_ID_SHIFT));
     }
-    inline int GetPlateId() {
-        return static_cast<int>((this->m_stateFlags & EFrameState::NP_ID_MASK) >> EFrameState::NP_ID_SHIFT) - 1;
+    int GetPlateId() {
+        return static_cast<int>((this->m_stateFlags & NP_ID_MASK) >> NP_ID_SHIFT) - 1;
     }
 
     using OnLoseFocus_t = CSimpleFrame*(__thiscall*)(CGNamePlate*);
     inline static auto OnLoseFocusFn = reinterpret_cast<OnLoseFocus_t>(0x0098E980);
 
-    inline CSimpleFrame* OnLoseFocus() { return OnLoseFocusFn(this); }
+    CSimpleFrame* OnLoseFocus() { return OnLoseFocusFn(this); }
 
     using OnGainFocus_t = CSimpleFrame*(__thiscall*)(CGNamePlate*);
     inline static auto OnGainFocusFn = reinterpret_cast<OnGainFocus_t>(0x0098E910);
 
-    inline CSimpleFrame* OnGainFocus() { return OnGainFocusFn(this); }
+    CSimpleFrame* OnGainFocus() { return OnGainFocusFn(this); }
 };
 static_assert(sizeof(CGNamePlate) == 0x300);
 
 // CVar
 class CVar {
 public:
-    enum CVarFlags : uint32_t {
+    enum CVarFlags : uint16_t {
         CVarFlags_ReadOnly = 0x4,
         CVarFlags_CheckTaint = 0x8,
         CVarFlags_HideFromUser = 0x40,
@@ -1401,10 +1388,10 @@ public:
     using SetValue_t = char(__thiscall*)(CVar*, const char*, int, int, int, int);
     inline static auto SetValueFn = reinterpret_cast<SetValue_t>(0x007668C0);
 
-    inline char SetValue(const char* value, int a3, int a4, int a5, int a6) { return SetValueFn(this, value, a3, a4, a5, a6); }
+    char SetValue(const char* value, int a3, int a4, int a5, int a6) { return SetValueFn(this, value, a3, a4, a5, a6); }
 
     template<typename T>
-    inline int Sync(const char* rawValue, T* globalVar, T minVal, T maxVal, const char* fmt) {
+    int Sync(const char* rawValue, T* globalVar, T minVal, T maxVal, const char* fmt) {
         if (!rawValue || !globalVar) return 0;
         T requested;
         if constexpr (std::is_floating_point_v<T>) requested = static_cast<T>(std::atof(rawValue));
@@ -1421,9 +1408,9 @@ public:
         return 1;
     }
 
-    inline static CVar* Get(const char* name) { return (reinterpret_cast<CVar* (*)(const char*)>(0x00767460))(name); }
-    inline static CVar* Find(const char* name) { return (reinterpret_cast<CVar* (*)(const char*)>(0x00767440))(name); }
-    inline static CVar* Register(const char* name, const char* desc, unsigned flags, const char* defaultVal, CVar::Handler_t callback,
+    static CVar* Get(const char* name) { return (reinterpret_cast<CVar* (*)(const char*)>(0x00767460))(name); }
+    static CVar* Find(const char* name) { return (reinterpret_cast<CVar* (*)(const char*)>(0x00767440))(name); }
+    static CVar* Register(const char* name, const char* desc, unsigned flags, const char* defaultVal, Handler_t callback,
             int a6, int a7, int a8, int a9) {
         return RegisterFn(name, desc, flags, defaultVal, callback, a6, a7, a8, a9);
     }
@@ -1556,9 +1543,9 @@ public:
     using GetItemInfoBlockById_t = uintptr_t(__thiscall*)(DBItemCache*, uint32_t, guid_t*, int, int, int);
     inline static const auto GetItemInfoBlockByIdFn = reinterpret_cast<GetItemInfoBlockById_t>(0x0067CA30);
 
-    inline static DBItemCache* const WDB_CACHE_ITEM = reinterpret_cast<DBItemCache*>(0x00C5D828);
+    inline static const auto WDB_CACHE_ITEM = reinterpret_cast<DBItemCache*>(0x00C5D828);
 
-    inline uintptr_t GetItemInfoBlockById(uint32_t id, guid_t* guid, int a4, int a5, int a6) {
+    uintptr_t GetItemInfoBlockById(uint32_t id, guid_t* guid, int a4, int a5, int a6) {
         return GetItemInfoBlockByIdFn(this, id, guid, a4, a5, a6);
     }
 };

@@ -13,7 +13,7 @@ namespace {
         CGPlayer_C* player = ObjectMgr::Get<CGPlayer_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER);
         if (!player) return 0;
         if (idx < 0 || idx >= 19) return 0;
-        if (PlayerEntry* entry = player->GetEntry()) {
+        if (PlayerEntry* entry = player->GetEntry<PlayerEntry>()) {
             Lua::lua_pushnumber(L, entry->m_visibleItems[idx].m_entryId);
             Lua::lua_pushnumber(L, entry->m_visibleItems[idx].m_enchant);
             return 2;

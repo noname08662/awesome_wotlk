@@ -2,6 +2,7 @@
 #include "Camera.h"
 #include "GameClient.h"
 #include "Hooks.h"
+#include <ranges>
 #include <unordered_dense/include/ankerl/unordered_dense.h>
 
 #undef min
@@ -27,10 +28,9 @@ namespace {
 
         char result = CGWorldFrame::IntersectFn(playerPos, cameraPos, hitPoint, hitDistance, hitFlags + 1 + 0x8000000, reinterpret_cast<uintptr_t>(buf));
         if (result) {
-            const uint32_t* bufData = reinterpret_cast<const uint32_t*>(buf);
+            const uint32_t* bufData = static_cast<const uint32_t*>(buf);
             if ((bufData[0] == 1 || bufData[0] == 2) && bufData[1] > 0) {
-                CM2Model* modelPtr = *reinterpret_cast<CM2Model**>(reinterpret_cast<uint8_t*>(buf) + 12 + 80);
-                if (modelPtr) {
+                if (CM2Model* modelPtr = *reinterpret_cast<CM2Model**>(static_cast<uint8_t*>(buf) + 12 + 80)) {
                     g_models_current.insert(modelPtr);
                     g_models_being_faded.insert(modelPtr);
 
@@ -77,7 +77,7 @@ namespace {
             }
             ++it;
         }
-        for (auto& pair : g_models_grace_timers) pair.second++;
+    	for (auto& timer : g_models_grace_timers | std::views::values) timer++;
 
         return result;
     }

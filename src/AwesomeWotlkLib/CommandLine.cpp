@@ -64,8 +64,7 @@ namespace {
 
 void CommandLine::initialize() {
     int argc = 0;
-    wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    if (argv) {
+    if (wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc)) {
         s_commandLine.reserve(static_cast<size_t>(argc));
         for (int i = 0; i < argc; i++) {
             s_commandLine.emplace_back(u16tou8(argv[i]));

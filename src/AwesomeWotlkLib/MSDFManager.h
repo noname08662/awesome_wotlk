@@ -69,20 +69,21 @@ private:
         size_t SlotSize() const { return effectiveSlotSize; }
     };
 
-    bool LoadGlyph(MSDFCache::BlockWrap wrap, uint32_t codepoint, GlyphMetrics& outMetrics);
-    bool LoadMappedBlock(MSDFCache::BlockWrap wrap, MappedBlock& outBlock, void* slotAddr, uint32_t slotIndex);
+    static bool LoadGlyph(const MSDFCache::BlockWrap& wrap, uint32_t codepoint, GlyphMetrics& outMetrics);
 
-    MappedBlock* GetOrLoadMappedBlock(MSDFCache::BlockWrap wrap);
-    uint32_t GetSlotBlockIndex(uint32_t slotIndex) const {
+    static bool LoadMappedBlock(const MSDFCache::BlockWrap& wrap, MappedBlock& outBlock, void* slotAddr, uint32_t slotIndex);
+    static MappedBlock* GetOrLoadMappedBlock(const MSDFCache::BlockWrap& wrap);
+
+    static uint32_t GetSlotBlockIndex(uint32_t slotIndex) {
         return (slotIndex < MAX_ARENA_SLOTS) ? s_arena.slotToBlockIndex[slotIndex] : 0xFFFFFFFF;
     }
 
-    void FreeBlock(uint32_t blockIndex);
-    void FreeBlockByKey(MSDFCache::BlockKey key);
-    void FlushAll();
+    static void FreeBlock(uint32_t blockIndex);
+    static void FreeBlockByKey(MSDFCache::BlockKey key);
+    static void FlushAll();
 
-    uint32_t RegisterFont(FontHash hash);
-    FontHash GetFontHash(uint32_t fontId) const;
+    static uint32_t RegisterFont(FontHash hash);
+    static FontHash GetFontHash(uint32_t fontId);
 
     inline static std::array<MappedBlock, MAX_ARENA_SLOTS> s_mappedBlocks;
     inline static ankerl::unordered_dense::map<MSDFCache::BlockKey, uint32_t> s_blockCache;

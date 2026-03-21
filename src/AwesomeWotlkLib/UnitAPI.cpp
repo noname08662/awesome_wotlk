@@ -23,7 +23,7 @@ namespace {
 
     int unitHasFlag(lua_State* L, uint32_t flag) {
         CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(ObjectMgr::GetGuidByUnitID(Lua::luaL_checkstring(L, 1)), TYPEMASK_UNIT);
-        if (unit && (unit->GetEntry()->m_flags & flag)) {
+        if (unit && (unit->GetEntry<UnitEntry>()->m_flags & flag)) {
             Lua::lua_pushnumber(L, 1);
             return 1;
         }
@@ -78,14 +78,15 @@ namespace {
     int lua_UnitOccupations(lua_State* L) {
         CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(ObjectMgr::GetGuidByUnitID(Lua::luaL_checkstring(L, 1)), TYPEMASK_UNIT);
         if (!unit) return 0;
-        Lua::lua_pushnumber(L, unit->GetEntry()->m_npc_flags);
+        Lua::lua_pushnumber(L, unit->GetEntry<UnitEntry>()->m_npc_flags);
         return 1;
     }
 
     int lua_UnitOwner(lua_State* L) {
         CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(ObjectMgr::GetGuidByUnitID(Lua::luaL_checkstring(L, 1)), TYPEMASK_UNIT);
         if (!unit) return 0;
-        guid_t ownerGuid = unit->GetEntry()->m_summonedBy ? unit->GetEntry()->m_summonedBy : unit->GetEntry()->m_createdBy;
+        auto e = unit->GetEntry<UnitEntry>();
+        guid_t ownerGuid = e->m_summonedBy ? e->m_summonedBy : e->m_createdBy;
         if (!ownerGuid) return 0;
 
         char guidStr[32];

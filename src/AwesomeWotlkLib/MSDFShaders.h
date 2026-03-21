@@ -1,6 +1,6 @@
 #pragma once
 
-const char* vertexShaderHLSL = R"(
+inline auto* vertexShaderHLSL = R"(
 	uniform float4x4 WorldViewProj;
 	float4 control : register(c23); // font size, outline mode, spread, atlas size
 
@@ -36,7 +36,7 @@ const char* vertexShaderHLSL = R"(
 	}
 )";
 
-const char* pixelShaderHLSL = R"(
+inline auto* pixelShaderHLSL = R"(
 	sampler2D gameTexture : register(s0);
 
 	sampler2D sdfAtlas0   : register(s12);

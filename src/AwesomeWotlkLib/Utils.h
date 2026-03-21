@@ -21,7 +21,7 @@ inline std::string GetFromClipboardU8(HWND hwnd) {
         CloseClipboard();
         return {};
     }
-    const wchar_t* utf16 = (const wchar_t*)GlobalLock(hMem);
+    auto* utf16 = static_cast<const wchar_t*>(GlobalLock(hMem));
     if (!utf16) goto on_fail;
     int utf16Length = wcslen(utf16) + 1;
     int utf8Length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, utf16, utf16Length, nullptr, 0, nullptr, nullptr);
@@ -32,7 +32,7 @@ inline std::string GetFromClipboardU8(HWND hwnd) {
 
     std::string utf8;
     utf8.resize(utf8Length);
-    WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, utf16, utf16Length, &utf8[0], utf8Length, nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, utf16, utf16Length, utf8.data(), utf8Length, nullptr, nullptr);
 
     GlobalUnlock(hMem);
     CloseClipboard();
@@ -47,12 +47,12 @@ inline bool CopyToClipboardU8(const char* u8Str, HWND hwnd) {
         return result;
     }
     int u8CharsLen = strlen(u8Str) + 1;
-    int wCharsLen = MultiByteToWideChar(CP_UTF8, 0, u8Str, u8CharsLen, 0, 0);
+    int wCharsLen = MultiByteToWideChar(CP_UTF8, 0, u8Str, u8CharsLen, nullptr, 0);
 
     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, sizeof(wchar_t) * wCharsLen);
     if (!hMem) return false;
 
-    wchar_t* cbBuf = (wchar_t*)GlobalLock(hMem);
+    auto* cbBuf = static_cast<wchar_t*>(GlobalLock(hMem));
     if (!cbBuf) {
     on_fail:
         GlobalFree(hMem);
@@ -79,6 +79,13 @@ inline int __stdcall gc_atoi(const char** str) { return reinterpret_cast<gc_atoi
 
 inline HWND GetGameWindow() { return *reinterpret_cast<HWND*>(0x00D41620); }
 inline bool IsInWorld() { return *reinterpret_cast<char*>(0x00BD0792); }
+
+inline bool iequals(std::string_view lhs, std::string_view rhs) {
+    return std::ranges::equal(lhs, rhs, [](char a, char b) {
+        return std::tolower(static_cast<unsigned char>(a)) ==
+            std::tolower(static_cast<unsigned char>(b));
+        });
+}
 
 inline void dbg_printf(const char* fmt, ...) {
     char buf[512];

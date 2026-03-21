@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <functional>
 #include <algorithm>
+#include <numbers>
 
 // Types
 struct Status;
@@ -18,7 +19,7 @@ using lua_Number = double;
 using DummyCallback_t = void(*)();
 using FunctionCallback_t = std::function<void()>;
 
-constexpr double M_PI = 3.14159265358979323846;
+constexpr double M_PI = std::numbers::pi;
 
 constexpr float NDC_X = 0.80000001f;
 constexpr float NDC_Y = 0.60000002f;
@@ -56,8 +57,8 @@ template <typename T> struct Vec2D { T x, y; };
 template <typename T> struct Vec3D { T x, y, z; };
 template <typename T> struct Vec4D { T x, y, z, o; };
 struct VecXYZ : Vec3D<float> {
-    inline VecXYZ operator-(const VecXYZ& r) { return { x - r.x, y - r.y, z - r.z }; }
-    inline float distance(const VecXYZ& other) {
+    VecXYZ operator-(const VecXYZ& r) const { return { x - r.x, y - r.y, z - r.z }; }
+    float distance(const VecXYZ& other) const {
         VecXYZ diff = (*this) - other;
         return std::sqrtf(std::powf(diff.x, 2) + std::powf(diff.y, 2) + std::powf(diff.z, 2));
     }
@@ -91,7 +92,7 @@ struct TerrainClickEvent {
     uint32_t m_button;
 };
 
-const char* idToStr[35] = {
+inline const char* idToStr[35] = {
     "INVTYPE_NON_EQUIP",              //  0
     "INVTYPE_HEAD",                   //  1
     "INVTYPE_NECK",                   //  2
@@ -237,7 +238,7 @@ static_assert(sizeof(PlayerVisibleItem) == 0x8);
 
 struct PlayerEntry : UnitEntry {
     guid_t m_duelArbiter;
-    uint32_t m_flags;
+    uint32_t m_flags_player;
     uint32_t m_guildId, m_guildRank;
     Flag96 m_bytes;
     uint32_t m_duelTeam;
@@ -524,6 +525,6 @@ struct __declspec(novtable) XMLObject {
     using Constructor_t = XMLObject * (__thiscall*)(XMLObject*, int, const char*);
     using SetValue_t = void(__thiscall*)(XMLObject*, const char*, const char*);
 
-    inline XMLObject(int a1, const char* parentName) { (reinterpret_cast<Constructor_t>(0x00814AD0))(this, a1, parentName); }
-    inline void setValue(const char* key, const char* value) { (reinterpret_cast<SetValue_t>(0x00814C40))(this, key, value); }
+    XMLObject(int a1, const char* parentName) { (reinterpret_cast<Constructor_t>(0x00814AD0))(this, a1, parentName); }
+	void setValue(const char* key, const char* value) { (reinterpret_cast<SetValue_t>(0x00814C40))(this, key, value); }
 };

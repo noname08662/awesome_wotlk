@@ -53,24 +53,24 @@ namespace D3D {
     extern Clear_t oClear;
     extern Reset_t oReset;
 
-    void RegisterPresentCallback(PresentCallback callback);
-    void RegisterBeginSceneCallback(BeginSceneCallback callback);
-    void RegisterEndSceneCallback(EndSceneCallback callback);
-    void RegisterDrawPrimitiveCallback(DrawPrimitiveCallback callback);
-    void RegisterDrawIndexedPrimitiveCallback(DrawIndexedPrimitiveCallback callback);
-    void RegisterSetTextureCallback(SetTextureCallback callback);
-    void RegisterSetRenderStateCallback(SetRenderStateCallback callback);
-    void RegisterSetVertexShaderCallback(SetVertexShaderCallback callback);
-    void RegisterSetPixelShaderCallback(SetPixelShaderCallback callback);
-    void RegisterCreateTextureCallback(CreateTextureCallback callback);
-    void RegisterSetRenderTargetCallback(SetRenderTargetCallback callback);
-    void RegisterClearCallback(ClearCallback callback);
-    void RegisterResetCallback(ResetCallback callback);
+    void RegisterPresentCallback(const PresentCallback& callback);
+    void RegisterBeginSceneCallback(const BeginSceneCallback& callback);
+    void RegisterEndSceneCallback(const EndSceneCallback& callback);
+    void RegisterDrawPrimitiveCallback(const DrawPrimitiveCallback& callback);
+    void RegisterDrawIndexedPrimitiveCallback(const DrawIndexedPrimitiveCallback& callback);
+    void RegisterSetTextureCallback(const SetTextureCallback& callback);
+    void RegisterSetRenderStateCallback(const SetRenderStateCallback& callback);
+    void RegisterSetVertexShaderCallback(const SetVertexShaderCallback& callback);
+    void RegisterSetPixelShaderCallback(const SetPixelShaderCallback& callback);
+    void RegisterCreateTextureCallback(const CreateTextureCallback& callback);
+    void RegisterSetRenderTargetCallback(const SetRenderTargetCallback& callback);
+    void RegisterClearCallback(const ClearCallback& callback);
+    void RegisterResetCallback(const ResetCallback& callback);
 
-    void RegisterOnCreate(ResourceCallback callback);
-    void RegisterOnDestroy(ResourceCallback callback);
-    void RegisterOnRelease(ResourceCallback callback);
-    void RegisterOnRestore(ResourceCallback callback);
+    void RegisterOnCreate(const ResourceCallback& callback);
+    void RegisterOnDestroy(const ResourceCallback& callback);
+    void RegisterOnRelease(const ResourceCallback& callback);
+    void RegisterOnRestore(const ResourceCallback& callback);
 
 
     struct ResourceParams {
@@ -82,9 +82,9 @@ namespace D3D {
         bool lockable = false;
         HANDLE* pSharedHandle = nullptr;
 
-        std::string shaderCode = "";
+        std::string_view shaderCode;
         std::string entryPoint = "main";
-        std::string target = "";
+        std::string target;
 
         IUnknown** ppResourceAddress = nullptr;
         IDirect3DSurface9** ppSurface = nullptr;
@@ -230,11 +230,11 @@ namespace D3D {
     using VertexShaderInitCallback = std::function<void(CGxDevice::ShaderData*)>;
     using PixelShaderInitCallback = std::function<void(CGxDevice::ShaderData*)>;
 
-    void RegisterVertexShaderInit(VertexShaderInitCallback callback);
-    void RegisterPixelShaderInit(PixelShaderInitCallback callback);
+    void RegisterVertexShaderInit(const VertexShaderInitCallback& callback);
+    void RegisterPixelShaderInit(const PixelShaderInitCallback& callback);
 
-    IDirect3DVertexShader9* CompileVertexShader(ResourceParams p);
-    IDirect3DPixelShader9* CompilePixelShader(ResourceParams p);
+    IDirect3DVertexShader9* CompileVertexShader(const ResourceParams& p);
+    IDirect3DPixelShader9* CompilePixelShader(const ResourceParams& p);
 
     bool CreateTexture(IDirect3DTexture9** ppTexture, ResourceParams p);
     bool CreateRenderTarget(IDirect3DSurface9** ppSurface, ResourceParams p);

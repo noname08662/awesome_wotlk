@@ -18,7 +18,7 @@ namespace {
     int lua_GetSpellBaseCooldown(lua_State* L) {
         SpellRec spellData;
         uint32_t spellId = static_cast<uint32_t>(Lua::luaL_checknumber(L, 1));
-        void* header = reinterpret_cast<void*>(spellTablePtr - 0x18);
+        auto* header = reinterpret_cast<void*>(spellTablePtr - 0x18);
 
         if (!ClientDB::GetLocalizedRow(header, spellId, &spellData)) return 0;
 
@@ -26,10 +26,8 @@ namespace {
         uint32_t gcdTime = spellData.m_startRecoveryTime;
 
         if (cdTime == 0) {
-            for (int i = 0; i < 3; i++) {
-                uint32_t triggeredId = spellData.m_effectTriggerSpell[i];
+            for (uint32_t triggeredId : spellData.m_effectTriggerSpell) {
                 if (triggeredId == 0 || triggeredId == spellId) continue;
-
                 SpellRec triggeredData;
                 if (ClientDB::GetLocalizedRow(header, triggeredId, &triggeredData)) {
                     uint32_t trigCd = triggeredData.m_recoveryTime ? triggeredData.m_recoveryTime : triggeredData.m_categoryRecoveryTime;
@@ -39,8 +37,8 @@ namespace {
             }
         }
 
-        Lua::lua_pushnumber(L, static_cast<lua_Number>(cdTime));
-        Lua::lua_pushnumber(L, static_cast<lua_Number>(gcdTime));
+        Lua::lua_pushnumber(L,cdTime);
+        Lua::lua_pushnumber(L, gcdTime);
         return 2;
     }
 
@@ -49,7 +47,7 @@ namespace {
         if (result && Spell::IsForm(spellId)) {
             if (CGUnit_C* player = ObjectMgr::Get<CGPlayer_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER)) {
                 if (auto maybeForm = Spell::GetFormFromSpell(spellId)) {
-                    player->SetValueBytes(UNIT_FIELD_BYTES_2, OFFSET_SHAPESHIFT_FORM, static_cast<uint8_t>(*maybeForm));
+                    player->SetValueBytes(UNIT_FIELD_BYTES_2, OFFSET_SHAPESHIFT_FORM, *maybeForm);
                 }
             }
         }

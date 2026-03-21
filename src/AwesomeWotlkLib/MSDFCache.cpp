@@ -1,22 +1,20 @@
 #include "MSDFCache.h"
 #include "MSDFManager.h"
 #include <fstream>
+#include <ranges>
 
 MSDFManager MSDFCache::s_manager = MSDFManager();
 
 MSDFCache::MSDFCache(const FT_Byte* fontData, FT_Long dataSize, const char* familyName, const char* styleName,
     uint32_t sdfRenderSize, uint32_t sdfSpread)
-    : m_key{ sdfRenderSize, sdfSpread },
-    m_manifestLoaded(false),
-    m_manifest(),
-    m_fontID(0xFFFFFFFF)
+    : m_key{ .sdfRenderSize = sdfRenderSize, .sdfSpread = sdfSpread }
 {
     m_cacheBasePath = GetCacheBasePath(familyName, styleName, sdfRenderSize, sdfSpread);
     m_cacheManifestPath = m_cacheBasePath / "manifest.dat";
     m_cacheManifestLockPath = m_cacheBasePath / "manifest.lock";
     m_cacheManifestJournalPath = m_cacheBasePath / "manifest.jrn";
 
-    m_fontID = s_manager.RegisterFont(HashFont(fontData, dataSize));
+    m_fontID = MSDFManager::RegisterFont(HashFont(fontData, dataSize));
 
     std::error_code ec;
     std::filesystem::create_directories(m_cacheBasePath, ec);
@@ -25,7 +23,7 @@ MSDFCache::MSDFCache(const FT_Byte* fontData, FT_Long dataSize, const char* fami
 MSDFCache::~MSDFCache() {
     FlushPendingWrites();
     CleanupOrphans();
-    s_manager.FlushAll();
+    MSDFManager::FlushAll();
     m_vecPool.TrimAll();
     m_mEntryPool.TrimAll();
 }
@@ -76,15 +74,15 @@ bool MSDFCache::TryLoadGlyph(uint32_t codepoint, GlyphMetrics& outMetrics) {
     if (mit == m_manifest.end()) return false;
     auto bit = m_blockWrap.find(mit->second.blockId);
     if (bit != m_blockWrap.end()) {
-        return s_manager.LoadGlyph(bit->second, codepoint, outMetrics);
+        return MSDFManager::LoadGlyph(bit->second, codepoint, outMetrics);
     }
     uint32_t blockId = mit->second.blockId;
     BlockKey block(m_fontID, blockId);
     std::filesystem::path blockPath;
     BuildBlockPath(blockId, blockPath);
-    BlockWrap wrap = { block, blockPath };
+    BlockWrap wrap = { .key = block, .path = blockPath };
     m_blockWrap[mit->second.blockId] = wrap;
-    return s_manager.LoadGlyph(wrap, codepoint, outMetrics);
+    return MSDFManager::LoadGlyph(wrap, codepoint, outMetrics);
 }
 
 bool MSDFCache::StoreGlyph(GlyphMetricsToStore&& metrics) {
@@ -132,7 +130,7 @@ bool MSDFCache::LoadManifest() {
     return true;
 }
 
-bool MSDFCache::LoadManifestFromFile(const std::filesystem::path& path, ManifestMap& outMap) {
+bool MSDFCache::LoadManifestFromFile(const std::filesystem::path& path, ManifestMap& outMap) const {
     std::error_code ec;
     auto fsize = std::filesystem::file_size(path, ec);
     if (ec || fsize < sizeof(ManifestHeader) || fsize > MAX_SAFE_ALLOCATION) return false;
@@ -148,11 +146,11 @@ bool MSDFCache::LoadManifestFromFile(const std::filesystem::path& path, Manifest
     ViewGuard view(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0));
     if (!view) return false;
 
-    const auto* hdr = reinterpret_cast<const ManifestHeader*>(view.ptr);
+    const auto* hdr = static_cast<const ManifestHeader*>(view.ptr);
     if (hdr->magic == MANIFEST_MAGIC && hdr->version == CACHE_VERSION && hdr->key == m_key) {
         uint64_t expectedSize = sizeof(ManifestHeader) + static_cast<uint64_t>(hdr->entryCount) * sizeof(ManifestEntry);
         if (fsize >= expectedSize) {
-            const ManifestEntry* entries = reinterpret_cast<const ManifestEntry*>(
+            auto* entries = reinterpret_cast<const ManifestEntry*>(
                 static_cast<const uint8_t*>(view.ptr) + sizeof(ManifestHeader));
             for (uint32_t i = 0; i < hdr->entryCount; ++i) {
                 outMap.try_emplace(entries[i].codepoint, entries[i]);
@@ -224,7 +222,7 @@ bool MSDFCache::SaveManifest(bool isLocked) {
         FILE_ATTRIBUTE_NORMAL, nullptr));
     if (file.handle == INVALID_HANDLE_VALUE) return false;
 
-    ManifestHeader hdr{ MANIFEST_MAGIC, CACHE_VERSION, m_key, static_cast<uint32_t>(m_manifest.size()) };
+    ManifestHeader hdr{ .magic = MANIFEST_MAGIC, .version = CACHE_VERSION, .key = m_key, .entryCount = m_manifest.size(), .pad = 0 };
     DWORD written = 0;
 
     if (!WriteFile(file.handle, &hdr, sizeof(hdr), &written, nullptr)) return false;
@@ -237,7 +235,7 @@ bool MSDFCache::SaveManifest(bool isLocked) {
         });
 
     for (const auto& kv : m_manifest) {
-        entries.push_back(ManifestEntry{ kv.first, kv.second.blockId });
+        entries.push_back({ .codepoint =  kv.first, .blockId = kv.second.blockId });
     }
 
     if (!entries.empty()) {
@@ -276,10 +274,9 @@ bool MSDFCache::FlushPendingWrites() {
     }
     auto newEntries = m_mEntryPool.Acquire(m_pendingWrites.size());
 
-    size_t maxBlockSize = 0;
-    for (auto& kv : byBlock) {
-        maxBlockSize = std::max(maxBlockSize, kv.second.size());
-    }
+    size_t maxBlockSize = byBlock.empty() ? 0 : std::ranges::max(
+        byBlock | std::views::values | std::views::transform([](auto& v) { return v.size(); })
+    );
     auto blockEntries = m_mEntryPool.Acquire(maxBlockSize);
 
     for (auto& kv : byBlock) {
@@ -317,9 +314,7 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
     std::filesystem::path blockPath;
     BuildBlockPath(blockId, blockPath);
 
-    std::sort(pending.begin(), pending.end(), [](const GlyphMetricsToStore* a, const GlyphMetricsToStore* b) {
-        return a->codepoint < b->codepoint;
-        });
+    std::ranges::sort(pending, {}, &GlyphMetricsToStore::codepoint);
 
     auto bit = m_blockWrap.find(blockId);
     BlockWrap wrap;
@@ -328,10 +323,10 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
     }
     else {
         BlockKey block(m_fontID, blockId);
-        wrap = { block, blockPath };
+        wrap = { .key = block, .path = blockPath };
         m_blockWrap[blockId] = wrap;
     }
-    MSDFManager::MappedBlock* cachedBlock = s_manager.GetOrLoadMappedBlock(wrap);
+    MSDFManager::MappedBlock* cachedBlock = MSDFManager::GetOrLoadMappedBlock(wrap);
 
     uint32_t oldEntriesCount = cachedBlock ? cachedBlock->entryCount : 0;
     auto mergedEntries = m_gEntryPool.Acquire(oldEntriesCount + pending.size());
@@ -352,11 +347,25 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
         }   
         else if (pendingIt != pending.end() && (oldIdx == oldEntriesCount || (*pendingIt)->codepoint < cachedBlock->entries[oldIdx].codepoint)) {
             auto* p = *pendingIt++;
-            mergedEntries.push_back({ p->codepoint, p->width, p->height, p->bitmapTop, p->bitmapLeft, 0, p->dataSize });
+            mergedEntries.push_back({
+                .codepoint = p->codepoint,
+            	.width = p->width,
+            	.height = p->height,
+            	.bitmapTop = p->bitmapTop,
+            	.bitmapLeft = p->bitmapLeft,
+            	.dataOffset = 0,
+            	.dataSize = p->dataSize });
         }
         else {
             auto* p = *pendingIt++;
-            mergedEntries.push_back({ p->codepoint, p->width, p->height, p->bitmapTop, p->bitmapLeft, 0, p->dataSize });
+            mergedEntries.push_back({
+                .codepoint = p->codepoint,
+                .width = p->width,
+                .height = p->height,
+                .bitmapTop = p->bitmapTop,
+                .bitmapLeft = p->bitmapLeft,
+                .dataOffset = 0,
+                .dataSize = p->dataSize });
             oldIdx++;
         }
     }
@@ -396,7 +405,7 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
             std::memcpy(payloadBuffer.data() + ge.dataOffset, src, ge.dataSize);
         }
     }
-    s_manager.FreeBlockByKey(wrap.key);
+    MSDFManager::FreeBlockByKey(wrap.key);
 
     std::filesystem::path tmpPath = blockPath;
     tmpPath.replace_extension(".tmp");
@@ -406,10 +415,9 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
         if (tmpFile.handle == INVALID_HANDLE_VALUE) return false;
 
-        BlockFileHeader bHdr{ BLOCK_MAGIC, CACHE_VERSION, blockId, static_cast<uint32_t>(mergedEntries.size()) };
+        BlockFileHeader bHdr{ .magic = BLOCK_MAGIC, .version = CACHE_VERSION, .blockId = blockId, .entryCount = mergedEntries.size() };
         size_t dataSize = sizeof(bHdr) + (mergedEntries.size() * sizeof(GlyphEntry)) +
             (BLOCK_SIZE * sizeof(uint32_t)) + payloadBuffer.size();
-
 
         const size_t align = MSDFManager::s_si.dwAllocationGranularity;
         size_t paddedSize = ((dataSize + align - 1) / align) * align;
@@ -452,13 +460,13 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
     }
 
     for (auto* pw : pending) {
-        outEntries.push_back({ pw->codepoint, blockId });
+        outEntries.push_back({ .codepoint = pw->codepoint, .blockId = blockId });
     }
 
     return true;
 }
 
-void MSDFCache::CleanupOrphans() {
+void MSDFCache::CleanupOrphans() const {
     std::error_code ec;
     if (!std::filesystem::exists(m_cacheBasePath, ec)) return;
 

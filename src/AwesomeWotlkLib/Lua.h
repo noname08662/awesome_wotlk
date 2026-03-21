@@ -1,5 +1,7 @@
 #pragma once
 #include "GameClient.h"
+#include <string>
+#include <ranges>
 
 namespace Lua {
     inline lua_State* GetLuaState() { return reinterpret_cast<lua_State* (*)()>(0x00817DB0)(); }
@@ -81,7 +83,7 @@ namespace Lua {
     inline const char* lua_tolstring(lua_State* L, int idx, size_t* len) {
         return reinterpret_cast<fn_lua_tolstring>(0x0084E0E0)(L, idx, len);
     }
-    inline const bool lua_toboolean(lua_State* L, int idx) {
+    inline bool lua_toboolean(lua_State* L, int idx) {
         return reinterpret_cast<fn_lua_toboolean>(0x0084E0B0)(L, idx);
     }
     inline void lua_pushstring(lua_State* L, const char* str) {
@@ -194,7 +196,7 @@ namespace Lua {
 
     inline CSimpleFrame* lua_toframe_silent(lua_State* L, int idx) {
         lua_rawgeti(L, idx, 0);
-        CSimpleFrame* frame = reinterpret_cast<CSimpleFrame*>(lua_touserdata(L, -1));
+        CSimpleFrame* frame = static_cast<CSimpleFrame*>(lua_touserdata(L, -1));
         lua_pop(L, 1);
         return frame;
     }
@@ -300,10 +302,12 @@ namespace Lua {
         if (!L) return;
 
         std::string upperHeader = bindingHeaderName ? bindingHeaderName : "";
-        std::transform(upperHeader.begin(), upperHeader.end(), upperHeader.begin(), ::toupper);
+        std::ranges::transform(upperHeader, upperHeader.begin(),
+            [](unsigned char c) { return std::toupper(c); });
 
         std::string upperName = bindingName ? bindingName : "";
-        std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+        std::ranges::transform(upperName, upperName.begin(),
+            [](unsigned char c) { return std::toupper(c); });
 
         if (CheckIfBindingOrHeaderExists(upperName.c_str(), upperHeader.c_str())) return;
 
@@ -329,7 +333,6 @@ namespace Lua {
         status.vtable = dummyVtable;
 
         auto LoadBinding = reinterpret_cast<void(__thiscall*)(void*, const char*, XMLObject*, MockCStatus*)>(0x00564470);
-        void* pEngine = *reinterpret_cast<void**>(0x00BEADD8);
-        if (pEngine) LoadBinding(pEngine, bindsSet, &node, &status);
+        if (void* pEngine = *reinterpret_cast<void**>(0x00BEADD8)) LoadBinding(pEngine, bindsSet, &node, &status);
     }
 }

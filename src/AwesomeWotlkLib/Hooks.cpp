@@ -1,7 +1,6 @@
 #include "Utils.h"
 #include "Hooks.h"
 #include <unordered_dense/include/ankerl/unordered_dense.h>
-#include <Detours/detours.h>
 
 namespace Hooks {
     namespace {
@@ -192,20 +191,28 @@ namespace Hooks {
 
     void FrameXML::registerEvent(const char* str) { s_customEvents.push_back(str); }
     void FrameXML::registerCVar(CVar** dst, const char* str, const char* desc, const char* initialValue,
-            CVar::Handler_t func, CVar::CVarFlags flags, std::function<void(CVar*)> initCallback) {
-        s_customCVars.push_back({ dst, str, desc, flags, initialValue, func, initCallback });
+            CVar::Handler_t func, CVar::CVarFlags flags, const std::function<void(CVar*)>& initCallback) {
+        s_customCVars.push_back({
+           .dst = dst,
+           .name = str,
+           .desc = desc,
+           .flags = flags,
+           .initialValue = initialValue,
+           .func = func,
+           .initCallback = initCallback
+            });
     }
-    void FrameXML::registerLuaLib(Lua::lua_CFunction func) { s_customLuaLibs.push_back(func); }
+    void FrameXML::registerLuaLib(const Lua::lua_CFunction& func) { s_customLuaLibs.push_back(func); }
 
     void FrameScript::registerToken(const char* token, TokenGuidGetter* getGuid, TokenIdGetter* getId) { s_customTokens[token] = { getGuid, getId }; }
     void FrameScript::registerToken(const char* token, TokenNGuidGetter* getGuid, TokenIdNGetter* getId) { s_customTokens[token] = { getGuid, getId }; }
 
-    void FrameScript::registerOnUpdate(FunctionCallback_t func) { s_customOnUpdate.push_back(func); }
-    void FrameScript::registerOnEnter(FunctionCallback_t func) { s_customOnEnter.push_back(func); }
-    void FrameScript::registerOnLeave(FunctionCallback_t func) { s_customOnLeave.push_back(func); }
+    void FrameScript::registerOnUpdate(const FunctionCallback_t& func) { s_customOnUpdate.push_back(func); }
+    void FrameScript::registerOnEnter(const FunctionCallback_t& func) { s_customOnEnter.push_back(func); }
+    void FrameScript::registerOnLeave(const FunctionCallback_t& func) { s_customOnLeave.push_back(func); }
 
-    void GlueXML::registerPostLoad(FunctionCallback_t func) { s_glueXmlPostLoad.push_back(func); }
-    void GlueXML::registerCharEnum(FunctionCallback_t func) { s_glueXmlCharEnum.push_back(func); }
+    void GlueXML::registerPostLoad(const FunctionCallback_t& func) { s_glueXmlPostLoad.push_back(func); }
+    void GlueXML::registerCharEnum(const FunctionCallback_t& func) { s_glueXmlCharEnum.push_back(func); }
 }
 
 void Hooks::initialize() {

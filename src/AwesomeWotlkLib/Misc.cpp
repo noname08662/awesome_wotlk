@@ -2,7 +2,6 @@
 #include "GameClient.h"
 #include "Hooks.h"
 #include "Utils.h"
-#include "Camera.h"
 
 namespace {
     bool g_cursorKeywordActive = false;
@@ -14,7 +13,7 @@ namespace {
     CVar* s_cvar_interactionMode;
     CVar* s_cvar_interactionAngle;
 
-    static const std::vector<uint8_t> validTypes = {
+    const std::vector<uint8_t> validTypes = {
             GAMEOBJECT_TYPE_DOOR, GAMEOBJECT_TYPE_BUTTON, GAMEOBJECT_TYPE_QUESTGIVER,
             GAMEOBJECT_TYPE_CHEST, GAMEOBJECT_TYPE_BINDER, GAMEOBJECT_TYPE_CHAIR,
             GAMEOBJECT_TYPE_SPELL_FOCUS, GAMEOBJECT_TYPE_GOOBER, GAMEOBJECT_TYPE_FISHINGNODE,
@@ -22,8 +21,7 @@ namespace {
     };
 
     int lua_FlashWindow(lua_State* L) {
-        HWND hwnd = GetGameWindow();
-        if (hwnd) FlashWindow(hwnd, FALSE);
+        if (HWND hwnd = GetGameWindow()) FlashWindow(hwnd, FALSE);
         return 0;
     }
 
@@ -35,8 +33,7 @@ namespace {
     }
 
     int lua_FocusWindow(lua_State* L) {
-        HWND hwnd = GetGameWindow();
-        if (hwnd) SetForegroundWindow(hwnd);
+        if (HWND hwnd = GetGameWindow()) SetForegroundWindow(hwnd);
         return 0;
     }
 
@@ -49,17 +46,17 @@ namespace {
     guid_t s_requestedInteraction = 0;
     void ProcessQueuedInteraction() {
         if (!s_requestedInteraction) return;
-
-        CGObject_C* object = ObjectMgr::Get<CGObject_C>(s_requestedInteraction, static_cast<ETypeMask>(TYPEMASK_GAMEOBJECT | TYPEMASK_UNIT));
-        if (object) object->OnRightClick(); // safe internal call, no Lua taint
+        if (CGObject_C* object = ObjectMgr::Get<CGObject_C>(s_requestedInteraction, static_cast<ETypeMask>(TYPEMASK_GAMEOBJECT | TYPEMASK_UNIT))) {
+            object->OnRightClick(); // safe internal call, no Lua taint
+        }
         s_requestedInteraction = 0;
     }
 
     bool IsInteractableGameObject(uint8_t type) {
-        return std::find(validTypes.begin(), validTypes.end(), type) != validTypes.end();
+        return std::ranges::any_of(validTypes, [type](uint8_t t) { return t == type; });
     }
 
-    auto isValidObject = [&](CGObject_C* object, CGUnit_C* player) -> bool {
+    auto isValidObject = [&](CGObject_C* object, const CGUnit_C* player) -> bool {
         if (object->m_typeID == TYPEID_UNIT) {
             uint32_t dynFlags = object->GetValue<uint32_t>(UNIT_DYNAMIC_FLAGS);
             uint32_t unitFlags = object->GetValue<uint32_t>(UNIT_FIELD_FLAGS);
@@ -69,11 +66,12 @@ namespace {
             bool isSkinnable = (unitFlags & UNIT_FLAG_SKINNABLE) != 0;
             bool canAssist = player->CanAssist(reinterpret_cast<CGUnit_C*>(object), true);
 
-            return (!isLootable && !isSkinnable && (!canAssist || npcFlags == 0)) ? false : true;
+            return isLootable || isSkinnable || (canAssist && npcFlags != 0);
         }
-        else if (object->m_typeID == TYPEID_GAMEOBJECT) {
+        if (object->m_typeID == TYPEID_GAMEOBJECT) {
             uint32_t bytes = object->GetValue<uint32_t>(GAMEOBJECT_BYTES_1);
-            return (!IsInteractableGameObject((bytes >> 8) & 0xFF) || !static_cast<CGGameObject_C*>(object)->CanUseNow()) ? false : true;
+            auto* go = object->As<CGGameObject_C>();
+            return go && IsInteractableGameObject((bytes >> 8) & 0xFF) && go->CanUseNow();
         }
         return false;
         };
@@ -81,7 +79,7 @@ namespace {
     int lua_QueueInteract(lua_State* L) {
         if (!IsInWorld()) return 0;
 
-        std::string modifier = "";
+        std::string modifier;
         bool hasModifier = !Lua::lua_isnoneornil(L, 1);
 
         if (hasModifier) {
@@ -101,7 +99,7 @@ namespace {
         CGPlayer_C* player = ObjectMgr::Get<CGPlayer_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER);
         if (!player) return 0;
 
-        uint16_t angleDegrees = g_iAngle / 2;
+        int angleDegrees = g_iAngle / 2;
         bool lookInAngle = g_iMode == 1;
 
         VecXYZ posPlayer{};
@@ -129,14 +127,10 @@ namespace {
                 dy /= length;
 
                 float facing = player->GetFacing();
-
                 float fx = cosf(facing);
                 float fy = sinf(facing);
 
-                float dot = dx * fx + dy * fy;
-
-                float cosAngle = cosf(angleDegrees * (3.14159265f / 180.0f));
-                if (dot < cosAngle) return;
+                if (dx * fx + dy * fy < cosf(angleDegrees * (M_PI / 180.0f))) return;
             }
 
             candidate = guid;
@@ -149,9 +143,8 @@ namespace {
                 return true;
                 });
         }
-        else {
-            guid_t guid = ObjectMgr::GetGuidByUnitID(modifier.c_str());
-            if (guid) trySetCandidate(guid);
+        else if (guid_t guid = ObjectMgr::GetGuidByUnitID(modifier.c_str())) {
+            trySetCandidate(guid);
         }
         if (candidate != 0) s_requestedInteraction = candidate;
 
@@ -233,13 +226,11 @@ namespace {
     int CVarHandler_interactionMode(CVar* cvar, const char*, const char* value, void*) { return cvar->Sync(value, &g_iMode, 0, 1, "%d"); }
 
     bool TerrainClick(float x, float y, float z) {
-        TerrainClickEvent tc = {};
-        tc.m_guid = 0;
-        tc.m_pos.X = x;
-        tc.m_pos.Y = y;
-        tc.m_pos.Z = z;
-        tc.m_button = 1;
-
+        TerrainClickEvent tc = {
+	        .m_guid = 0,
+	        .m_pos ={.X=x, .Y=y, .Z=z},
+	        .m_button = 1
+        };
         CGGameUI::HandleTerrainClickFn(&tc);
         return true;
     }
@@ -250,12 +241,8 @@ namespace {
         if (Lua::lua_gettop(L) < 3 || !Lua::lua_isstring(L, 2) || !Lua::lua_isstring(L, 3)) return result;
 
         std::string_view parsed_target_view = Lua::lua_tostring(L, 3);
-        bool is_cursor = std::equal(parsed_target_view.begin(), parsed_target_view.end(),
-            "cursor", "cursor" + 6,
-            [](char a, char b) { return std::tolower(a) == b; });
-        bool is_playerlocation = std::equal(parsed_target_view.begin(), parsed_target_view.end(),
-            "playerlocation", "playerlocation" + 14,
-            [](char a, char b) { return std::tolower(a) == b; });
+        bool is_cursor = iequals(parsed_target_view, "cursor");
+        bool is_playerlocation = iequals(parsed_target_view, "playerlocation");
 
         if (!is_cursor && !is_playerlocation) return result;
 
@@ -287,10 +274,11 @@ namespace {
             return pThis->OnLayerTrackTerrain(a1);
         }
         if (g_cursorKeywordActive) {
+            auto* coords = reinterpret_cast<float*>(a1);
             C3Vector cursorPos = {
-                *reinterpret_cast<float*>(&a1[2]),
-                *reinterpret_cast<float*>(&a1[3]),
-                *reinterpret_cast<float*>(&a1[4])
+                .X = coords[2],
+                .Y = coords[3],
+                .Z = coords[4]
             };
             TerrainClick(cursorPos.X, cursorPos.Y, cursorPos.Z);
             g_cursorKeywordActive = false;

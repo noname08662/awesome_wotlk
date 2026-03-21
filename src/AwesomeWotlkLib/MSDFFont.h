@@ -26,7 +26,7 @@ private:
     };
 
 public:
-    MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize, FT_Long faceIndex);
+    MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize);
     ~MSDFFont();
 
     bool IsValid() const { return m_isValid; }
@@ -38,7 +38,7 @@ public:
     const GlyphMetrics* GetGlyph(uint32_t codepoint);
 
     static MSDFFont* Get(FT_Face face);
-    static void Register(FT_Face face, const FT_Byte* data, FT_Long size, FT_Long index);
+    static void Register(FT_Face face, const FT_Byte* data, FT_Long size);
     static void Unregister(FT_Face face);
     static void ClearAllCache();
     static void Shutdown();
@@ -46,14 +46,15 @@ public:
 private:
     bool CreateAtlasPage();
     bool UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint);
-    bool GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, int sdfW, int sdfH);
+    bool GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, int sdfW, int sdfH) const;
 
-    msdfgen::FontHandle* CreateMSDFHandle(const FT_Byte* data, FT_Long size);
+    static msdfgen::FontHandle* CreateMSDFHandle(const FT_Byte* data, FT_Long size);
 
     FT_Face m_ftFace;
     msdfgen::FontHandle* m_msdfFont;
-    uint32_t m_oldestPage, m_evictionCount;
     bool m_isValid;
+    uint16_t m_oldestPage;
+	uint32_t m_evictionCount;
 
     std::unique_ptr<MSDFCache> m_cache;
     std::vector<std::unique_ptr<AtlasPage>> m_atlasPages;

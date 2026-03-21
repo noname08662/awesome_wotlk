@@ -34,7 +34,7 @@ namespace D3D {
             }
         }
 
-        enum class ResourceType {
+        enum class ResourceType : uint8_t {
             Texture,
             RenderTarget,
             ShaderVertex,
@@ -87,17 +87,21 @@ namespace D3D {
             }
         }
 
-        void RegisterForCleanup(IUnknown** ppRes, ResourceType type, ResourceParams p) {
+        void RegisterForCleanup(IUnknown** ppRes, ResourceType type, const ResourceParams& p) {
             for (auto& managed : g_managedResources) {
                 if (managed.ppResource == ppRes) {
                     managed.params = p;
                     return;
                 }
             }
-            g_managedResources.push_back({ ppRes, type, p });
+            g_managedResources.push_back({
+		        .ppResource = ppRes,
+		        .type = type,
+		        .params = p
+                });
         }
 
-        static const ShaderEntry s_shaders_engine[] {
+        constexpr ShaderEntry s_shaders_engine[] {
             //{ { 0xFFFF0300, 0x0200001F, 0x8000000A, 0x900F0000 }, 76, "ps_3_0",  "float4 main() : COLOR { return float4(1, 0, 1, 1); }"}, // UI
             //{ { 0xFFFF0300, 0x05000051, 0xA00F0000, 0x3E991687 }, 128, "ps_3_0", "float4 main() : COLOR { return float4(1, 0, 0, 1); }" }, // UI
             //{ { 0xFFFF0300, 0x0200001F, 0x8000000A, 0x90080000 }, 88, "ps_3_0",  "float4 main() : COLOR { return float4(0, 1, 1, 1); }" }, // Water trails
@@ -121,7 +125,7 @@ namespace D3D {
             //{ { 0xFFFF0300, 0x05000051, 0xA00F0000, 0xC05CB08D }, 2816, "ps_3_0", "float4 main() : COLOR { return float4(0, 0, 1, 1); }" }, // Ambient glow FX 1 (characters)
             //{ { 0xFFFF0300, 0x05000051, 0xA00F0000, 0x00000000 }, 2836, "ps_3_0", "float4 main() : COLOR { return float4(0, 1, 1, 1); }" }, // Ambient glow FX 2 (characters)
 
-            { { 0xFFFF0300, 0x05000051, 0xA00F0000, 0x00000000 }, 1428, "ps_3_0" }, // Water
+            ShaderEntry{ .data={ 0xFFFF0300, 0x05000051, 0xA00F0000, 0x00000000 }, .length = 1428, .profile = "ps_3_0" }, // Water
 
             //{ { 0xFFFF0300, 0x05000051, 0xA00F0001, 0x00000000 }, 88, "ps_3_0",   "float4 main() : COLOR { return float4(0, 1, 1, 1); }" }, // White
             //{ { 0xFFFF0300, 0x05000051, 0xA00F0001, 0x00000000 }, 152, "ps_3_0",  "float4 main() : COLOR { return float4(0, 1, 0, 1); }" }, // Gray
@@ -215,14 +219,12 @@ namespace D3D {
             return oReset(device, pPP);
         }
 
-        int __fastcall CGxDevice__DeviceCreateHk(void* pThis, void* edx, IDirect3DDevice9* device, int pCreateInfo) {
-            const int result = CGxDevice::DeviceCreateFn(pThis, device, pCreateInfo);
+        int __fastcall CGxDevice__DeviceCreateHk(void* pThis, void* edx, IDirect3DDevice9* dev, int pCreateInfo) {
+            const int result = CGxDevice::DeviceCreateFn(pThis, dev, pCreateInfo);
             if (result) {
-                IDirect3DDevice9* device = GetDevice();
-                if (device) {
+                if (IDirect3DDevice9* device = GetDevice()) {
                     __try {
-                        IDirect3DDevice9Vtbl* vtbl = *reinterpret_cast<IDirect3DDevice9Vtbl**>(device);
-                        if (vtbl) {
+                        if (IDirect3DDevice9Vtbl* vtbl = *reinterpret_cast<IDirect3DDevice9Vtbl**>(device)) {
                             DetourTransactionBegin();
 
                             if (!g_presentCallbacks.empty()) {
@@ -325,84 +327,83 @@ namespace D3D {
     }
 
     std::span<const ShaderEntry> s_shaders{ s_shaders_engine };
-    const size_t s_shaders_count = sizeof(s_shaders) / sizeof(ShaderEntry);
 
 
-    void RegisterPresentCallback(PresentCallback callback) {
+    void RegisterPresentCallback(const PresentCallback& callback) {
         if (callback) g_presentCallbacks.push_back(callback);
     }
 
-    void RegisterBeginSceneCallback(BeginSceneCallback callback) {
+    void RegisterBeginSceneCallback(const BeginSceneCallback& callback) {
         if (callback) g_beginSceneCallbacks.push_back(callback);
     }
 
-    void RegisterEndSceneCallback(EndSceneCallback callback) {
+    void RegisterEndSceneCallback(const EndSceneCallback& callback) {
         if (callback) g_endSceneCallbacks.push_back(callback);
     }
 
-    void RegisterDrawPrimitiveCallback(DrawPrimitiveCallback callback) {
+    void RegisterDrawPrimitiveCallback(const DrawPrimitiveCallback& callback) {
         if (callback) g_drawPrimitiveCallbacks.push_back(callback);
     }
 
-    void RegisterDrawIndexedPrimitiveCallback(DrawIndexedPrimitiveCallback callback) {
+    void RegisterDrawIndexedPrimitiveCallback(const DrawIndexedPrimitiveCallback& callback) {
         if (callback) g_drawIndexedPrimitiveCallbacks.push_back(callback);
     }
 
-    void RegisterSetTextureCallback(SetTextureCallback callback) {
+    void RegisterSetTextureCallback(const SetTextureCallback& callback) {
         if (callback) g_setTextureCallbacks.push_back(callback);
     }
 
-    void RegisterSetRenderStateCallback(SetRenderStateCallback callback) {
+    void RegisterSetRenderStateCallback(const SetRenderStateCallback& callback) {
         if (callback) g_setRenderStateCallbacks.push_back(callback);
     }
 
-    void RegisterSetVertexShaderCallback(SetVertexShaderCallback callback) {
+    void RegisterSetVertexShaderCallback(const SetVertexShaderCallback& callback) {
         if (callback) g_setVertexShaderCallbacks.push_back(callback);
     }
 
-    void RegisterSetPixelShaderCallback(SetPixelShaderCallback callback) {
+    void RegisterSetPixelShaderCallback(const SetPixelShaderCallback& callback) {
         if (callback) g_setPixelShaderCallbacks.push_back(callback);
     }
 
-    void RegisterCreateTextureCallback(CreateTextureCallback callback) {
+    void RegisterCreateTextureCallback(const CreateTextureCallback& callback) {
         if (callback) g_createTextureCallbacks.push_back(callback);
     }
 
-    void RegisterSetRenderTargetCallback(SetRenderTargetCallback callback) {
+    void RegisterSetRenderTargetCallback(const SetRenderTargetCallback& callback) {
         if (callback) g_setRenderTargetCallbacks.push_back(callback);
     }
 
-    void RegisterClearCallback(ClearCallback callback) {
+    void RegisterClearCallback(const ClearCallback& callback) {
         if (callback) g_clearCallbacks.push_back(callback);
     }
 
-    void RegisterResetCallback(ResetCallback callback) {
+    void RegisterResetCallback(const ResetCallback& callback) {
         if (callback) g_resetCallbacks.push_back(callback);
     }
 
 
-    void RegisterOnCreate(ResourceCallback callback) {
+    void RegisterOnCreate(const ResourceCallback& callback) {
         if (callback) g_onCreateCallbacks.push_back(callback);
     }
 
-    void RegisterOnDestroy(ResourceCallback callback) {
+    void RegisterOnDestroy(const ResourceCallback& callback) {
         if (callback) g_onDestroyCallbacks.push_back(callback);
     }
 
-    void RegisterOnRelease(ResourceCallback callback) {
+    void RegisterOnRelease(const ResourceCallback& callback) {
         if (callback) g_onReleaseCallbacks.push_back(callback);
     }
 
-    void RegisterOnRestore(ResourceCallback callback) {
+    void RegisterOnRestore(const ResourceCallback& callback) {
         if (callback) g_onRestoreCallbacks.push_back(callback);
     }
 
 
-    void RegisterVertexShaderInit(VertexShaderInitCallback callback) {
+    void RegisterVertexShaderInit(const VertexShaderInitCallback& callback) {
         if (callback) g_vertexShaderCallbacks.push_back(callback);
     }
 
-    void RegisterPixelShaderInit(PixelShaderInitCallback callback) {
+    void RegisterPixelShaderInit(const PixelShaderInitCallback& callback) {
         if (callback) g_pixelShaderCallbacks.push_back(callback);
     }
 
@@ -422,49 +423,49 @@ namespace D3D {
         }
     }
 
-    IDirect3DVertexShader9* CompileVertexShader(D3D::ResourceParams p) {
+    IDirect3DVertexShader9* CompileVertexShader(const ResourceParams& p) {
         if (p.shaderCode.empty()) return nullptr;
         ID3DBlob* pCode = nullptr, * pError = nullptr;
-        HRESULT hr = D3DCompile(p.shaderCode.c_str(), p.shaderCode.length(), nullptr, nullptr,
+        HRESULT hr = D3DCompile(p.shaderCode.data(), p.shaderCode.size(), nullptr, nullptr,
             nullptr, p.entryPoint.c_str(), p.target.c_str(), 0, 0, &pCode, &pError);
         if (FAILED(hr)) { LogShaderError(pError, 1); return nullptr; }
         IDirect3DVertexShader9* shader = nullptr;
         IDirect3DDevice9* device = GetDevice();
         if (!device) { pCode->Release(); return nullptr; }
-        hr = device->CreateVertexShader(reinterpret_cast<const DWORD*>(pCode->GetBufferPointer()), &shader);
+        hr = device->CreateVertexShader(static_cast<const DWORD*>(pCode->GetBufferPointer()), &shader);
         pCode->Release();
         if (SUCCEEDED(hr)) {
             if (p.autoCleanup && p.ppResourceAddress) {
                 *p.ppResourceAddress = reinterpret_cast<IUnknown*>(shader);
-                RegisterForCleanup(reinterpret_cast<IUnknown**>(p.ppResourceAddress), ResourceType::ShaderVertex, p);
+                RegisterForCleanup(p.ppResourceAddress, ResourceType::ShaderVertex, p);
             }
             return shader;
         }
         return nullptr;
     }
 
-    IDirect3DPixelShader9* CompilePixelShader(D3D::ResourceParams p) {
+    IDirect3DPixelShader9* CompilePixelShader(const ResourceParams& p) {
         if (p.shaderCode.empty()) return nullptr;
         ID3DBlob* pCode = nullptr, * pError = nullptr;
-        HRESULT hr = D3DCompile(p.shaderCode.c_str(), p.shaderCode.length(), nullptr, nullptr,
+        HRESULT hr = D3DCompile(p.shaderCode.data(), p.shaderCode.size(), nullptr, nullptr,
             nullptr, p.entryPoint.c_str(), p.target.c_str(), 0, 0, &pCode, &pError);
         if (FAILED(hr)) { LogShaderError(pError, 0); return nullptr; }
         IDirect3DPixelShader9* shader = nullptr;
         IDirect3DDevice9* device = GetDevice();
         if (!device) { pCode->Release(); return nullptr; }
-        hr = device->CreatePixelShader(reinterpret_cast<const DWORD*>(pCode->GetBufferPointer()), &shader);
+        hr = device->CreatePixelShader(static_cast<const DWORD*>(pCode->GetBufferPointer()), &shader);
         pCode->Release();
         if (SUCCEEDED(hr)) {
             if (p.autoCleanup && p.ppResourceAddress) {
                 *p.ppResourceAddress = reinterpret_cast<IUnknown*>(shader);
-                RegisterForCleanup(reinterpret_cast<IUnknown**>(p.ppResourceAddress), ResourceType::ShaderPixel, p);
+                RegisterForCleanup(p.ppResourceAddress, ResourceType::ShaderPixel, p);
             }
             return shader;
         }
         return nullptr;
     }
 
-    bool CreateTexture(IDirect3DTexture9** ppTexture, D3D::ResourceParams p) {
+    bool CreateTexture(IDirect3DTexture9** ppTexture, ResourceParams p) {
         if (!ppTexture) return false;
         *ppTexture = nullptr; if (p.ppSurface) *p.ppSurface = nullptr;
         IDirect3DDevice9* device = GetDevice();
@@ -487,7 +488,7 @@ namespace D3D {
         return true;
     }
 
-    bool CreateRenderTarget(IDirect3DSurface9** ppSurface, D3D::ResourceParams p) {
+    bool CreateRenderTarget(IDirect3DSurface9** ppSurface, ResourceParams p) {
         if (!ppSurface) return false;
         IDirect3DDevice9* device = GetDevice();
         if (!device) return false;

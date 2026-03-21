@@ -1,6 +1,7 @@
 #include "Item.h"
 #include "Hooks.h"
 #include "GameClient.h"
+#include <string>
 
 namespace {
     uint32_t extractItemId(const char* hyperlink) {
@@ -65,7 +66,7 @@ namespace {
             itemId = CGGameUI::GetItemIDByNameFn(input);
             if (!itemId) itemId = extractItemId(input);
         }
-        if (itemId) recordPtr = DBItemCache::WDB_CACHE_ITEM->GetItemInfoBlockById(itemId, 0, 0, 0, 0);
+        if (itemId) recordPtr = DBItemCache::WDB_CACHE_ITEM->GetItemInfoBlockById(itemId, nullptr, 0, 0, 0);
         if (!recordPtr) return 0;
 
         auto* item = reinterpret_cast<ItemCacheRec*>(recordPtr);
