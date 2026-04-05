@@ -784,7 +784,6 @@ namespace {
             });
 
         g_entries.flushRemoved(); // bulk flush now to ensure callbacks recieve a complete gapless snapshot of the previous frame
-        //const auto& buf = g_entries.get();
         const auto& buf = g_entries.get();
         if (buf.empty()) {
             g_entries.clearPending();
