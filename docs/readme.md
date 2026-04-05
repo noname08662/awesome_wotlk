@@ -2,7 +2,7 @@
 ## World of Warcraft 3.3.5a 12340 Improvements Library
 ### Fork of https://github.com/FrostAtom/awesome_wotlk/
 
-## [Details](#details) - [Installation](#installation) - [Docs](https://github.com/someweirdhuman/awesome_wotlk/blob/main/docs/api_reference.md) - [3rd Party Libraries](#3rd-party-libraries)
+## [Details](#details) - [Installation](#installation) - [Docs](https://github.com/noname08662/awesome_wotlk/blob/main/docs/api_reference.md) - [3rd Party Libraries](#3rd-party-libraries)
 
 ___
 
@@ -26,8 +26,8 @@ ___
   - `C_NamePlate.GetNamePlateForUnit`
   - `C_NamePlate.GetNamePlateByGUID`
   - `C_NamePlate.GetNamePlateTokenByGUID`
-  - `GetStackingEnabled nameplate method`
-  - `SetStackingEnabled nameplate method`
+  - `GetStackingEnabled` nameplate method
+  - `SetStackingEnabled` nameplate method
 - **C_VoiceChat (TTS):**
   - `C_VoiceChat.SpeakText`
   - `C_VoiceChat.StopSpeakingText`
@@ -124,18 +124,18 @@ A new keybind for smart interaction with the game world:
 New nameplate stacking system to prevent overlapping:
 - Enable stacking: `/console nameplateStacking 1`
 - **Important:** If using [this WeakAura](https://wago.io/AQdGXNEBH), delete it and restart the client before using this feature
-- See [Docs](https://github.com/someweirdhuman/awesome_wotlk/blob/main/docs/api_reference.md) for detailed CVar information
+- See [Docs](https://github.com/noname08662/awesome_wotlk/blob/main/docs/api_reference.md) for detailed CVar information
 - All settings are configurable in-game via `/awesome` command (requires AwesomeCVar addon)
 
 **Recommended:** Use the AwesomeCVar addon and the `/awesome` command to configure all CVars through an intuitive in-game interface.
 
 ### AwesomeCVar Addon
-![AwesomeCVar Preview](https://raw.githubusercontent.com/someweirdhuman/awesome_wotlk/refs/heads/main/docs/assets/preview.png)
+![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/preview.png)
 
 ___
 
 ## Installation
-1. Download the latest [release](https://github.com/someweirdhuman/awesome_wotlk/releases)
+1. Download the latest [release](https://github.com/noname08662/awesome_wotlk/releases)
 2. Extract all files to your game's root folder
 3. Run `AwesomeWotlkPatch.exe` (you should see a confirmation message), or drag `Wow.exe` onto `AwesomeWotlkPatch.exe`
 4. To update, simply download the new version and replace the DLL file
