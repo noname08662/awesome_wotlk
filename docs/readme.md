@@ -130,7 +130,7 @@ New nameplate stacking system to prevent overlapping:
 **Recommended:** Use the AwesomeCVar addon and the `/awesome` command to configure all CVars through an intuitive in-game interface.
 
 ### AwesomeCVar Addon
-![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/preview.png)
+![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/preview_v2.png)
 
 ___
 
