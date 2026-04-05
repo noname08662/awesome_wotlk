@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Types.h"
 
 #include <ft2build.h>
@@ -186,6 +186,7 @@ namespace FrameScript {
     inline EventList* GetEventList() { return reinterpret_cast<EventList*>(0x00D3F7D0); }
     inline void FireEvent_inner(int eventId, lua_State* L, int nargs) { return (reinterpret_cast<void(*)(int, lua_State*, int)>(0x0081AA00))(eventId, L, nargs); };
     inline void vFireEvent(int eventId, const char* format, va_list args) { return (reinterpret_cast<void(*)(int, const char*, va_list)>(0x0081AC90))(eventId, format, args); }
+    inline char* GetText(const char* key, int pluralIdx, int gender) { return (reinterpret_cast<char*(*)(const char*, int, int)>(0x00819D40))(key, pluralIdx, gender); }
 
     inline int GetEventIdByName(const char* eventName) {
         EventList* eventList = GetEventList();
@@ -428,7 +429,7 @@ public:
     unk_t unk_AA4[101];                     // 0xAA4
     CGNamePlate* m_nameplate;               // 0xC38
 
-    using GetCreatureRank_t = int(__thiscall*)(const CGObject_C*);
+    using GetCreatureRank_t = ECreatureRank(__thiscall*)(const CGObject_C*);
     inline static const auto GetCreatureRankFn = reinterpret_cast<GetCreatureRank_t>(0x00718A00);
 
     using CanAssist_t = bool(__thiscall*)(const CGUnit_C*, const CGUnit_C*, bool ignoreFlags);
@@ -440,7 +441,7 @@ public:
     using CanAttack_t = bool(__thiscall*)(const CGUnit_C*, const CGUnit_C*);
     inline static const auto CanAttackFn = reinterpret_cast<CanAttack_t>(0x00729A70);
 
-    using HideNamePlate_t = CGNamePlate * (__thiscall*)(CGUnit_C*);
+    using HideNamePlate_t = CGNamePlate*(__thiscall*)(CGUnit_C*);
     inline static auto HideNamePlateFn = reinterpret_cast<HideNamePlate_t>(0x00725840);
 
     using UpdateReaction_t = int(__thiscall*)(CGUnit_C*, int updateAll);
@@ -449,8 +450,12 @@ public:
     using SetNamePlateFocus_t = void(__cdecl*)(C3Vector* pos);
     inline static auto SetNamePlateFocusFn = reinterpret_cast<SetNamePlateFocus_t>(0x007271D0);
 
+    using GetName_t = const char*(__thiscall*)(CGUnit_C*, void*, int);
+    inline static auto GetNameFn = reinterpret_cast<GetName_t>(0x0072A000);
+
     guid_t GetGUID() const { return GetValue<guid_t>(OBJECT_FIELD_GUID); }
-    int GetCreatureRank() const { return GetCreatureRankFn(this); }
+    const char* GetName(void* ptr, int flag) { return GetNameFn(this, ptr, flag); }
+    ECreatureRank GetCreatureRank() const { return GetCreatureRankFn(this); }
     bool CanAttack(const CGUnit_C* unit) const { return CanAttackFn(this, unit); }
     bool CanAssist(const CGUnit_C* unit, bool ignoreFlags) const { return CanAssistFn(this, unit, ignoreFlags); }
     EUnitReaction UnitReaction(const CGUnit_C* unit) const { return UnitReactionFn(this, unit); }
@@ -615,8 +620,8 @@ public:
     };
 
     struct CSimpleFrameNode {
-        CSimpleFrameNode* next;
         CSimpleFrameNode* prev;
+        CSimpleFrameNode* next;
         CSimpleFrame* frame;
     };
 
@@ -631,7 +636,7 @@ public:
     unk_t unk_C0[5];                    // 0xC0
     uint32_t m_frameLevel;              // 0xD4
     uint32_t m_registeredEvents;        // 0xD8
-    unk_t unk_DC;                       // 0xDC
+	uint32_t m_isShown;                 // 0xDC
     uint32_t m_isLinked;                // 0xE0
     float m_clampInsets[4];             // 0xE4 (Left, m_top, m_right, m_bottom)
     unk_t unk_F4[69];                   // 0xF4
@@ -643,6 +648,15 @@ public:
     CSimpleFrameNode m_parentLink;      // 0x27C
     unk_t unk_288[5];                   // 0x288
 
+	template <typename F>
+	void EnumerateChildren(F callback) {
+		CSimpleFrameNode* current = this->m_parentLink.next;
+		while (current && (reinterpret_cast<uintptr_t>(current) & 1) == 0) {
+			if (current->frame) callback(current->frame);
+			current = current->next;
+		}
+	}
+	
     void SetFrameDepth(float depth, int flag) {
         reinterpret_cast<void(__thiscall*)(CSimpleFrame*, float, int)>(0x0048F5D0)(this, depth, flag);
     }

@@ -1,5 +1,4 @@
-﻿// ReSharper disable CppDeclaratorNeverUsed
-#include "NamePlates.h"
+﻿#include "NamePlates.h"
 #include <format>
 #include <bit>
 #include <algorithm>
@@ -31,7 +30,6 @@ namespace {
     CVar* s_cvar_nameplateRaiseSpeed;
     CVar* s_cvar_nameplateLowerSpeed;
     CVar* s_cvar_nameplatePullSpeed;
-    CVar* s_cvar_nameplateMomentum;
     CVar* s_cvar_nameplateRaiseDistance;
     CVar* s_cvar_nameplatePullDistance;
     CVar* s_cvar_nameplateOcclusionAlpha;
@@ -42,8 +40,9 @@ namespace {
 
     enum EStackingMode : uint8_t {
         S_DISABLED = 0,
-        S_ENEMY = 1,
-        S_FRIENDLY = 2,
+        S_ALL = 1,
+        S_ENEMY = 2,
+        S_FRIENDLY = 3,
     };
 
     enum EClampMode : uint8_t {
@@ -78,22 +77,21 @@ namespace {
     };
 
     EStackingMode g_stackingMode = EStackingMode::S_DISABLED;
-    EMouseMode g_mouseMode = EMouseMode::M_DISABLED;
+    EMouseMode g_mouseOverMode = EMouseMode::M_DISABLED;
     EClampMode g_clampTop = EClampMode::C_DISABLED;
-    float g_bandX = 0.7f; 
+    float g_bandX = 0.7f;
     float g_bandY = 1.0f;
     float g_hitWidthE = 1.0f;
     float g_hitHeightE = 1.0f;
     float g_hitWidthF = 1.0f;
     float g_hitHeightF = 1.0f;
     float g_placement = 0.0f;
-    float g_speedRaise = 8.0f;
-    float g_speedLower = 8.0f;
-    float g_speedPull = 8.0f;
+    float g_speedRaise = 100.0f;
+    float g_speedLower = 100.0f;
+    float g_speedPull = 50.0f;
     float g_maxPull = 0.25f;
-    float g_maxRaise = 6.0f;
-    float g_momMult = 1.25f;
-    float g_clampTopOffset = 0.15f;
+    float g_maxRaise = 8.0f;
+    float g_clampTopOffset = 0.1f;
     float g_nonTargetAlpha = 0.5f;
     float g_occlusionAlpha = 1.0f;
     float g_alphaSpd = 0.25f;
@@ -112,6 +110,7 @@ namespace {
             IS_FRIENDLY = 0x4,
             IS_TRANSIENT = 0x8,
             IS_FRESH = 0x10,
+            IS_ACTIVE = 0x20,
         };
 
         bool hasState(IEState flag) const { return (static_cast<uint32_t>(state) & static_cast<uint32_t>(flag)) != 0; }
@@ -120,18 +119,16 @@ namespace {
             else state = static_cast<IEState>(static_cast<uint32_t>(state) & ~static_cast<uint32_t>(flag));
         }
 
-        CGUnit_C* unit = nullptr;
         CGNamePlate* ptr = nullptr;
         CDataChunk* chunk = nullptr;
         guid_t guid = 0;
         uint16_t block = 0;
-
-        int sortKey = -1;
+        ECreatureRank classification = RANK_NORMAL;
 
         float momentumY = 0.0f;
         float momentumX = 0.0f;
-        float lastNDCy = 0.0f;
-        float lastNDCx = 0.0f;
+
+        int pushCount = 0;
 
         float commitTargetX = 0.0f;
         float commitTargetY = 0.0f;
@@ -142,85 +139,72 @@ namespace {
         float stackOffsetX = 0.0f;
         float stackOffsetY = 0.0f;
 
+        float stableNDCY = 0.0f;
+        float stableNDCX = 0.0f;
+        float velocityX = 0.0f;
+        float velocityY = 0.0f;
+        float lastStableNDCX = 0.0f;
+        float lastStableNDCY = 0.0f;
+
         IEState state = IEState::NONE;
-
-        struct YieldNode {
-            Entry* entry = nullptr;
-            YieldNode* next = nullptr;
-            YieldNode* prev = nullptr;
-            bool heap = false;
-            bool committed = false;
-        };
-
-        int yieldCount = 0;
-        YieldNode yieldNodes[64];
-        YieldNode* yieldHead = nullptr;
-        YieldNode* yieldTail = nullptr;
 
         uint32_t activeCollisions[MAX_PLATES / 32];
 
         void freshState() {
             targetOffsetY = 0.0f;
             targetOffsetX = 0.0f;
-            yieldHead = nullptr;
-            yieldTail = nullptr;
-            yieldCount = 0;
+            pushCount = 0;
         }
 
         void clearState() {
-            freshState();
-            unit = nullptr;
-            commitTargetX = 0.0f;
             commitTargetY = 0.0f;
+            commitTargetX = 0.0f;
+            targetOffsetY = 0.0f;
+            targetOffsetX = 0.0f;
             stackOffsetY = 0.0f;
             stackOffsetX = 0.0f;
             smoothTargetX = 0.0f;
             smoothTargetY = 0.0f;
-            state = IEState::IS_FRESH;
-            sortKey = -1;
             momentumX = 0.0f;
             momentumY = 0.0f;
-            lastNDCx = 0.0f;
-            lastNDCy = 0.0f;
+            stableNDCY = ptr->m_NDCproj.y;
+            stableNDCX = ptr->m_NDCproj.x;
+            velocityX = 0.0f;
+            velocityY = 0.0f;
+            lastStableNDCX = 0.0f;
+            lastStableNDCY = 0.0f;
+            state = IEState::IS_FRESH;
         }
 
         void setActiveCollision(int id) { activeCollisions[id >> 5] |= (1u << (id & 31)); }
         void setInactiveCollision(int id) { activeCollisions[id >> 5] &= ~(1u << (id & 31)); }
 
-        YieldNode* getYieldHead() const { return yieldHead; }
-        YieldNode* getYieldTail() const { return yieldTail; }
-
-        void appendYield(Entry* e) {
-            bool heap = (yieldCount >= 64);
-            YieldNode* node = heap ? new YieldNode() : &yieldNodes[yieldCount++];
-            node->entry = e; node->next = nullptr; node->prev = yieldTail;
-            node->heap = heap; node->committed = false;
-            if (!yieldHead) { yieldHead = node; yieldTail = node; }
-            else { yieldTail->next = node; yieldTail = node; }
-        }
-
-        bool isAtX(float x, bool clamp = false) {
-            if (std::abs(stackOffsetX - x) < EPS) { if (clamp) stackOffsetX = x; return true; }
-            return false;
-        }
-        bool isAtY(float y, bool clamp = false) {
-            if (std::abs(stackOffsetY - y) < EPS) { if (clamp) stackOffsetY = y; return true; }
-            return false;
-        }
-        bool isAt(float x, float y, bool clamp = false) { return isAtX(x, clamp) && isAtY(y, clamp); }
-
-        float getTopNDC(float perc = 1.0f) const { return ptr->m_NDCproj.y + ptr->m_height * 0.5f * perc; }
-        float getBotNDC(float perc = 1.0f) const { return ptr->m_NDCproj.y - ptr->m_height * 0.5f * perc; }
+        float getTopNDC(float perc = 1.0f) const { return stableNDCY + ptr->m_height * 0.5f * perc; }
+        float getBotNDC(float perc = 1.0f) const { return stableNDCY - ptr->m_height * 0.5f * perc; }
         float getAvgWFor(const Entry* e, float perc = 1.0f) const { return (ptr->m_width + e->ptr->m_width) * 0.5f * perc; }
         float getAvgHFor(const Entry* e, float perc = 1.0f) const { return (ptr->m_height + e->ptr->m_height) * 0.5f * perc; }
-        float getReqYFor(const Entry* e, float perc = 1.0f) const { return ptr->m_NDCproj.y + targetOffsetY + getAvgHFor(e, perc) - e->ptr->m_NDCproj.y; }
-        float getReqXFor(const Entry* e) const { return (ptr->m_NDCproj.x + targetOffsetX) - (e->ptr->m_NDCproj.x + e->targetOffsetX); }
-        float getReqDXFor(const Entry* e) const { return std::abs((ptr->m_NDCproj.x + targetOffsetX) - (e->ptr->m_NDCproj.x + e->targetOffsetX)); }
+        float getReqYFor(const Entry* e, float perc = 1.0f) const { return stableNDCY + targetOffsetY + getAvgHFor(e, perc) - e->stableNDCY; }
+        float getReqXFor(const Entry* e) const { return (stableNDCX + commitTargetX) - (e->stableNDCX + e->commitTargetX); }
+        float getReqDXFor(const Entry* e) const { return std::abs((stableNDCX + commitTargetX) - (e->stableNDCX + e->commitTargetX)); }
+        float getReqDYFor(const Entry* e) const { return std::abs((stableNDCY + commitTargetY) - (e->stableNDCY + e->commitTargetY)); }
+        float getProximity(const Entry* e, float bx = 1.0f, float by = 1.0f) const {
+            return std::clamp(std::min(getReqDXFor(e) / getAvgWFor(e, bx), getReqDYFor(e) / getAvgHFor(e, by)), 0.0f, 1.0f);
+        }
+        int getRankWeight() const {
+            switch (classification) {
+            case RANK_TRIVIAL: return 0;
+            case RANK_NORMAL: return 1;
+            case RANK_RARE: return 2;
+            case RANK_ELITE: return 3;
+            case RANK_RAREELITE: return 4;
+            case RANK_WORLDBOSS: return 5;
+            default: return 0;
+            }
+        }
 
-        float resolvePush(const Entry* e, float sep, float hyst) const {
-            float reqY = getReqYFor(e, sep); // min vertical space required
-            if (reqY <= 0.0f || reqY < e->targetOffsetY) return 0.0f; // e2 is too high/-er already
-            return (e->getTarY() > getBotNDC(hyst) + targetOffsetY) && (e->getTarY() < getTopNDC(hyst) + targetOffsetY) ? reqY : 0.0f;
+        bool resolvePush(const Entry* e, float sep, float hyst) const {
+            return ((e->getTarY() > getBotNDC(sep * (hyst + 1.0f)) + targetOffsetY) && (e->getTarY() < getTopNDC(sep * (hyst + 1.0f)) + targetOffsetY)
+                || (e->getBotNDC() + e->stackOffsetY > getTopNDC() + targetOffsetY && e->getBotNDC() + e->targetOffsetY < getTopNDC() + targetOffsetY));
         }
 
         float getVisY() const { return ptr->m_NDCproj.y + stackOffsetY; }
@@ -229,48 +213,66 @@ namespace {
         float getTarY() const { return ptr->m_NDCproj.y + targetOffsetY; }
         float getTarX() const { return ptr->m_NDCproj.x + targetOffsetX; }
 
-        void updVis(const float spdY, const float spdX, const float momMult, const float delta, const float maxY, const float ceilY) {
+        void updStableAnchor(float delta) {
+            float t = 1.0f - std::exp(-5.0f * delta);
+            stableNDCX += (ptr->m_NDCproj.x - stableNDCX) * t;
+            stableNDCY += (ptr->m_NDCproj.y - stableNDCY) * t;
+            velocityX = (stableNDCX - lastStableNDCX) / delta;
+            velocityY = (stableNDCY - lastStableNDCY) / delta;
+            lastStableNDCX = stableNDCX;
+            lastStableNDCY = stableNDCY;
+        }
+
+        bool isAtX(float x) const { return std::abs(stackOffsetX - x) < EPS; }
+        bool isAtY(float y) const { return std::abs(stackOffsetY - y) < EPS; }
+        bool isAt(float x, float y) const { return isAtX(x) && isAtY(y); }
+
+        void updVis(const float spdY, const float spdX, const float delta, const float maxY, const float ceilY) {
             float maxPull = ptr->m_width * g_maxPull;
             float maxRaise = (hasState(IEState::SHOULD_CLAMP)
                 ? std::min(ptr->m_height * maxY, NDC_Y - ceilY - getTopNDC())
                 : ptr->m_height * maxY);
 
-            // momentum = inertia
-            // targetOffset = final position, volatile
-            // smoothTarget = effective target, smoothed final position
-            // stackOffset = current visual target this frame
-
-            float ndcDeltaY = std::abs(ptr->m_NDCproj.y - lastNDCy);
-            lastNDCy = ptr->m_NDCproj.y;
-            float ndcScaleY = std::clamp(ndcDeltaY / NDC_Y, 0.0f, 1.0f);
-            float shiftRateY = momMult * (1.0f + ndcScaleY * 2.5f);
-
             float gapY = targetOffsetY - commitTargetY;
-            float dirY = (gapY > EPS) ? 1.0f : (gapY < -EPS) ? -1.0f : 0.0f;
-            momentumY += (dirY - momentumY) * std::clamp(shiftRateY * delta, 0.0f, 1.0f) * momMult;
-
-            float ndcDeltaX = std::abs(ptr->m_NDCproj.x - lastNDCx);
-            lastNDCx = ptr->m_NDCproj.x;
-            float ndcScaleX = std::clamp(ndcDeltaX / NDC_X, 0.0f, 1.0f);
-            float shiftRateX = momMult * (1.0f + ndcScaleX * 2.5f);
-
             float gapX = targetOffsetX - commitTargetX;
-            float dirX = (gapX > EPS) ? 1.0f : (gapX < -EPS) ? -1.0f : 0.0f;
-            momentumX += (dirX - momentumX) * std::clamp(shiftRateX * delta, 0.0f, 1.0f) * momMult;
 
-            float absMomY = std::abs(momentumY);
-            float absMomX = std::abs(momentumX);
-            smoothTargetY += (commitTargetY - smoothTargetY) * (1.0f - std::exp(-spdY * absMomY * delta));
-            smoothTargetX += (commitTargetX - smoothTargetX) * (1.0f - std::exp(-spdX * absMomX * delta));
+            float wantMomY = std::abs(gapY) > EPS ? (gapY > 0.0f ? 1.0f : -1.0f) : 0.0f;
+            float wantMomX = std::abs(gapX) > EPS ? (gapX > 0.0f ? 1.0f : -1.0f) : 0.0f;
 
-            float a2y = std::pow(std::clamp(spdY * delta, 0.0f, 1.0f), 1.5f) * (absMomY * absMomY * absMomY);
-            float a2x = std::pow(std::clamp(spdX * delta, 0.0f, 1.0f), 1.5f) * (absMomX * absMomX * absMomX);
+            float rateY = (wantMomY * momentumY < 0.0f) ? 1.0f : spdY * 0.025f;
+            float rateX = (wantMomX * momentumX < 0.0f) ? 1.0f : spdX * 0.025f;
+
+            momentumY += (wantMomY - momentumY) * std::clamp(rateY * delta, 0.0f, 1.0f);
+            momentumX += (wantMomX - momentumX) * std::clamp(rateX * delta, 0.0f, 1.0f);
+
+            if (!isAt(targetOffsetX, targetOffsetY)) {
+                float commitAlpha = std::clamp(4.0f * std::abs(momentumY) * delta, 0.0f, 1.0f);
+                commitTargetY += (targetOffsetY - commitTargetY) * commitAlpha;
+                commitAlpha = std::clamp(4.0f * std::abs(momentumX) * delta, 0.0f, 1.0f);
+                commitTargetX += (targetOffsetX - commitTargetX) * commitAlpha;
+            }
+            else {
+                commitTargetY = targetOffsetY;
+                commitTargetX = targetOffsetX;
+                momentumY *= 0.1f;
+                momentumX *= 0.1f;
+            }
+            float sAlphaY = 1.0f - std::exp(-spdY * std::abs(momentumY) * delta);
+            float sAlphaX = 1.0f - std::exp(-spdX * std::abs(momentumX) * delta);
+            smoothTargetY += (commitTargetY - smoothTargetY) * sAlphaY;
+            smoothTargetX += (commitTargetX - smoothTargetX) * sAlphaX;
+
+            float a2y = std::pow(std::clamp(spdY * delta, 0.0f, 1.0f), 1.5f) * std::abs(momentumY * momentumY * momentumY);
+            float a2x = std::pow(std::clamp(spdX * delta, 0.0f, 1.0f), 1.5f) * std::abs(momentumX * momentumX * momentumX);
             float dy = smoothTargetY - stackOffsetY;
             float dx = smoothTargetX - stackOffsetX;
-            float stOY = stackOffsetY + std::copysign(std::min(std::abs(dy) * a2y, std::abs(dy)), dy);
-            float stOX = stackOffsetX + std::copysign(std::min(std::abs(dx) * a2x, std::abs(dx)), dx);
-            stackOffsetY = maxRaise < 0.0f ? maxRaise : std::min(stOY, maxRaise);
-            stackOffsetX = std::clamp(stOX, -maxPull, maxPull);
+            if (std::abs(dy) > EPS) stackOffsetY += dy * std::clamp(a2y, 0.0f, 1.0f);
+            else stackOffsetY = smoothTargetY;
+            if (std::abs(dx) > EPS) stackOffsetX += dx * std::clamp(a2x, 0.0f, 1.0f);
+            else stackOffsetX = smoothTargetX;
+
+            stackOffsetY = maxRaise < 0.0f ? maxRaise : std::min(stackOffsetY, maxRaise);
+            stackOffsetX = std::clamp(stackOffsetX, -maxPull, maxPull);
         }
     };
 
@@ -314,18 +316,59 @@ namespace {
 
         class PairsManager {
             friend class EntryManager;
-            struct alignas(16) PairState {
+            struct alignas(32) PairState {
                 uint64_t timestamp = 0;
+
+                int hystSteps = 0;
+                float hystDecay = 0.0f;
                 float hysteresis = 1.0f;
 
+                uint64_t proximate = 0;
+
+                const Entry* e1 = nullptr;
+                const Entry* e2 = nullptr;
+
                 bool isStale(uint64_t ms) const { return timestamp < ms; }
+                bool isApart(uint64_t ms) const { return proximate < ms; }
                 void commit(uint64_t ms, float hyst) {
+                    if (hystDecay > 0.0f && timestamp == 0) {
+                        hystSteps++;
+                        hystDecay = 1.0f;
+                    }
+                    else if (timestamp == 0) {
+                        hystDecay = 1.0f;
+                    }
                     timestamp = ms;
                     hysteresis = hyst;
                 }
-                void reset() {
+                void cooldown(uint64_t ms, float delta) {
+                    if (!e1 || !e2) {
+                        hystDecay = 0.0f;
+                        hystSteps = 0;
+                        return;
+                    }
+                    if (hystDecay > 0.0f) {
+                        hystDecay -= (e1->getProximity(e2) * 0.15f) * delta;
+                        if (hystDecay <= 0.0f) {
+                            hystDecay = 0.0f;
+                            hystSteps = 0;
+                        }
+                    }
+                }
+                void seed(uint64_t ms, const Entry* e1_, const Entry* e2_) {
+                    proximate = ms;
+                	if (!e1 || !e2) { e1 = e1_; e2 = e2_; }
+                }
+                void reset(bool full = false) {
                     hysteresis = 1.0f;
                     timestamp = 0;
+                    if (full) {
+                        proximate = 0;
+                        hystDecay = 0.0f;
+                        hystSteps = 0;
+                        e1 = nullptr;
+                        e2 = nullptr;
+                    }
                 }
             };
             // inline pool for the speed
@@ -345,7 +388,7 @@ namespace {
         enum class IESortMode : uint8_t { DEFAULT, TARGET, FOCUS, TARGET_FOCUS };
         template <IESortMode mode, bool out>
         void sort(guid_t targetGuid = 0, CGNamePlate* focus = nullptr) {
-            std::stable_sort(entries.begin(), entries.end(), [targetGuid, focus](const Entry* a, const Entry* b) {
+            std::sort(entries.begin(), entries.end(), [this, targetGuid, focus](const Entry* a, const Entry* b) {
                 if constexpr (mode == IESortMode::TARGET || mode == IESortMode::TARGET_FOCUS) {
                     bool isT_a = (a->guid == targetGuid);
                     bool isT_b = (b->guid == targetGuid);
@@ -357,9 +400,10 @@ namespace {
                     if (isF_a != isF_b) return isF_a;
                 }
                 if constexpr (out) return a->ptr->m_depthZ < b->ptr->m_depthZ;
-                // sortkeys frozen while both are lerping, new entries get to resolve their pos unconditionally
-                int keyA = a->sortKey; int keyB = b->sortKey;
-                return (keyA > 0 && keyB > 0) ? (keyA < keyB) : (a->ptr->m_depthZ < b->ptr->m_depthZ);
+                if (std::abs((a->stableNDCY + a->targetOffsetY) - (b->stableNDCY + b->targetOffsetY)) > EPS) {
+                    return (a->stableNDCY + a->targetOffsetY) < (b->stableNDCY + b->targetOffsetY);
+                }
+                return a->getRankWeight() > b->getRankWeight();
                 });
         }
 
@@ -369,14 +413,14 @@ namespace {
             Lua::lua_pushframe(L, plate);
             Lua::lua_pushlightuserdata(L, this);
             Lua::lua_pushcclosure(L, [](lua_State* L) -> int {
-                auto* self = static_cast<EntryManager*>(Lua::lua_touserdata(L, -10003));
+                auto* self = static_cast<EntryManager*>(Lua::lua_touserdata(L, Lua::upvalueindex(1)));
                 if (!self) return 0;
                 Lua::lua_rawgeti(L, 1, 0);
                 // toframe doesn't seem to work/I'm doing it wrong
                 void* frame = Lua::lua_touserdata(L, -1);
                 Lua::lua_settop(L, -2);
                 if (frame) {
-                    CGNamePlate* plate = static_cast<CGNamePlate*>(frame);
+                    auto* plate = static_cast<CGNamePlate*>(frame);
                     if (const int index = plate->GetPlateId(); index >= 0 && index < std::ssize(self->byId) && self->byId[index].ptr == plate) {
                         auto& e = self->byId[index];
                         e.setState(Entry::IEState::IS_TRANSIENT, !Lua::lua_toboolean(L, 2));
@@ -388,7 +432,7 @@ namespace {
             Lua::lua_setfield(L, -2, "SetStackingEnabled");
             Lua::lua_pushlightuserdata(L, this);
             Lua::lua_pushcclosure(L, [](lua_State* L) -> int {
-                auto* self = static_cast<EntryManager*>(Lua::lua_touserdata(L, -10003));
+                auto* self = static_cast<EntryManager*>(Lua::lua_touserdata(L, Lua::upvalueindex(1)));
                 if (!self) return 0;
                 Lua::lua_rawgeti(L, 1, 0);
                 void* frame = Lua::lua_touserdata(L, -1);
@@ -410,45 +454,47 @@ namespace {
 
     public:
         std::vector<Entry*>& get() { return entries; }
-        size_t getTotalSize() const { return byId.size(); }
+        int getTotalSize() const { return std::ssize(byId); }
 
-        int allPlaced = 0;
-
-        float getHystPair(const Entry* e1, const Entry* e2) {
-            const int id1 = e1->ptr->GetPlateId(); const int id2 = e2->ptr->GetPlateId();
-            return pairsMgr.get(id1, id2)->hysteresis;
+        PairsManager::PairState* getPair(const Entry* e1, const Entry* e2) {
+            return pairsMgr.get(e1->ptr->GetPlateId(), e2->ptr->GetPlateId());
         }
 
-        void commitPair(Entry* e1, Entry* e2, uint64_t ms, float delta, float by, float bx) {
+        void commitPair(const Entry* e1, const Entry* e2, uint64_t ms, float delta, float by, float bx) {
             // set bits, update hysteresis
-            const int id1 = e1->ptr->GetPlateId(); const int id2 = e2->ptr->GetPlateId();
-            auto* ps = pairsMgr.get(id1, id2);
-            float weight = 1.5f + std::clamp((std::abs(e1->ptr->m_depthZ - e2->ptr->m_depthZ) - 1.0f) / 99.0f, 0.0f, 1.0f);
+            auto* ps = pairsMgr.get(e1->ptr->GetPlateId(), e2->ptr->GetPlateId());
+            float decayFloor = 1.25f + std::min(ps->hystSteps * 0.15f, 0.75f);
             if ((e1->getTopNDC() + e1->targetOffsetY + e1->getAvgHFor(e2, by)) > (e2->getBotNDC() + e2->targetOffsetY)
                 && e1->getReqDXFor(e2) < e1->getAvgWFor(e2, bx)) {
-                ps->commit(ms, weight);
+                ps->commit(ms, decayFloor); // still overlapping naturally
             }
             else {
-                float decayed = ps->hysteresis + (1.0f - ps->hysteresis) * (1.0f - std::exp(-2.0f * delta));
-                if (std::abs(decayed - weight) < EPS) ps->commit(ms, weight);
-                else ps->commit(ms, decayed);
+                // bboxes no longer overlap — compute separation-scaled decay rate
+                ps->commit(ms, std::max(1.0f, ps->hysteresis - (e1->getProximity(e2) * 0.05f) * delta));
             }
+        }
+
+        void seedPair(Entry* e1, Entry* e2, uint64_t ms) {
+            const int id1 = e1->ptr->GetPlateId(); const int id2 = e2->ptr->GetPlateId();
+            pairsMgr.get(id1, id2)->seed(ms, e1, e2);
             e1->setActiveCollision(id2); e2->setActiveCollision(id1);
         }
 
         void resolvePairs(Entry* e, uint64_t ms, float delta) {
             // cleanup
             const int id1 = e->ptr->GetPlateId();
-            const int n = ((static_cast<int>(getTotalSize()) + 31) >> 5);
+            const int n = (getTotalSize() + 31) >> 5;
             for (int w = 0; w < n; ++w) {
                 uint32_t mask = e->activeCollisions[w];
                 while (mask) {
                     int id2 = (w << 5) | (std::countr_zero(mask));
                     auto* ps = pairsMgr.get(id1, id2);
+                    bool apart = ps->isApart(ms);
                     if (ps->isStale(ms)) {
-                        e->setInactiveCollision(id2);
-                        ps->reset();
+                        ps->reset(apart);
+                        ps->cooldown(ms, delta);
                     }
+                    if (apart) e->setInactiveCollision(id2);
                     mask &= mask - 1;
                 }
             }
@@ -458,7 +504,7 @@ namespace {
             if (type & ESortType::ST_OUT) {
                 if (guid_t targetGuid = ObjectMgr::GetTargetGuid()) {
                     CGNamePlate* focus = *g_nameplateFocus;
-                    if (focus && (g_mouseMode & EMouseMode::M_OVER_ALWAYS || (g_mouseMode & EMouseMode::M_OVER_COMBAT && g_inCombat))) {
+                    if (focus && (g_mouseOverMode & EMouseMode::M_OVER_ALWAYS || (g_mouseOverMode & EMouseMode::M_OVER_COMBAT && g_inCombat))) {
                         sort<IESortMode::TARGET_FOCUS, true>(targetGuid, focus);
                     }
                     else {
@@ -467,7 +513,7 @@ namespace {
                     return;
                 }
                 else if (CGNamePlate* focus = *g_nameplateFocus) {
-                    if (g_mouseMode & EMouseMode::M_OVER_ALWAYS || (g_mouseMode & EMouseMode::M_OVER_COMBAT && g_inCombat)) {
+                    if (g_mouseOverMode & EMouseMode::M_OVER_ALWAYS || (g_mouseOverMode & EMouseMode::M_OVER_COMBAT && g_inCombat)) {
                         sort<IESortMode::FOCUS, true>(targetGuid, focus);
                         return;
                     }
@@ -479,8 +525,10 @@ namespace {
         }
 
         static void applyReaction(Entry* e) {
-            e->setState(Entry::IEState::IS_FRIENDLY, e->unit->IsFriendly());
-            applyStackingState(e);
+            if (CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(e->ptr->m_ownerGuid, TYPEMASK_UNIT)) {
+                e->setState(Entry::IEState::IS_FRIENDLY, unit->IsFriendly());
+                applyStackingState(e);
+            }
         }
 
         static void applyStackingState(Entry* e) {
@@ -499,32 +547,24 @@ namespace {
         }
 
         static void applyClampingState(Entry* e) {
-            e->setState(Entry::IEState::SHOULD_CLAMP, g_clampTop == EClampMode::C_ALL
-                || (g_clampTop == EClampMode::C_BOSS && e->unit->GetCreatureRank() == ECreatureRank::RANK_WORLDBOSS));
+            if (CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(e->ptr->m_ownerGuid, TYPEMASK_UNIT)) {
+                e->setState(Entry::IEState::SHOULD_CLAMP, g_clampTop == EClampMode::C_ALL
+                    || (g_clampTop == EClampMode::C_BOSS && unit->GetCreatureRank() == ECreatureRank::RANK_WORLDBOSS));
+            }
         }
 
         void flushAdded() {
             lua_State* L = Lua::GetLuaState();
-            const int n = std::size(pending);
+            const int n = (std::ssize(byId) + 63) / 64;
             for (int w = 0; w < n; ++w) {
                 uint64_t word = pending[w];
                 while (word) {
                     const int bit = std::countr_zero(word);
                     const int index = w * 64 + bit;
                     Entry* e = &byId[index];
-                    if (e->unit->m_nameplate) {
-                        uint64_t newGuid = e->unit->m_nameplate->m_ownerGuid;
-                        // evict any non-pending slot that claims this guid
-                        for (Entry* o : entries) {
-                            if (o->guid == newGuid && o != e) {
-                                const int oi = o->ptr->GetPlateId();
-                                if ((pending[oi / 64] & (1ULL << (oi % 64))) == 0) {
-                                    o->guid = 0;
-                                }
-                                break;
-                            }
-                        }
-                        e->guid = newGuid;
+                    const CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(e->ptr->m_ownerGuid, TYPEMASK_UNIT);
+                    if (unit && unit->m_nameplate) {
+                        e->guid = unit->m_nameplate->m_ownerGuid;
                         Lua::lua_pushframe(L, e->ptr);
                         Lua::lua_pushstring(L, tokenCache[index]);
                         Lua::lua_setfield(L, -2, "unit");
@@ -537,41 +577,11 @@ namespace {
         }
 
         void flushRemoved() {
-            const int n = std::size(pending);
-            for (int w = 0; w < n; ++w) {
-                uint64_t word = pending[w];
-                while (word) {
-                    const int index = w * 64 + std::countr_zero(word);
-                    Entry* e = &byId[index];
-                    if (e->guid != 0 && (!e->unit->m_nameplate || e->unit->m_nameplate->m_ownerGuid != e->guid)) {
-                        FrameScript::FireEvent(NAME_PLATE_UNIT_REMOVED, "%s", tokenCache[index]);
-                    }
-                    word &= word - 1;
+            std::erase_if(entries, [](Entry* e) {
+                if (!e->hasState(Entry::IEState::IS_ACTIVE)) {
+                    e->guid = 0; return true;
                 }
-            }
-            for (int w = 0; w < n; ++w) {
-                uint64_t word = pending[w];
-                while (word) {
-                    const int bit = std::countr_zero(word);
-                    const int index = w * 64 + bit;
-                    Entry* e = &byId[index];
-                    if (e->guid != 0 && (!e->unit->m_nameplate || e->unit->m_nameplate->m_ownerGuid != e->guid)) {
-                        if (!e->unit->m_nameplate) {
-                            // gone
-                            e->guid = 0;
-                            pending[w] &= ~(1ULL << bit);
-                        }
-                        else {
-                            // swapped
-                            e->guid = e->unit->m_nameplate->m_ownerGuid;
-                        }
-                    }
-                    word &= word - 1;
-                }
-            }
-            std::erase_if(entries, [this](const Entry* e) {
-                const int index = e->ptr->GetPlateId();
-                return e->guid == 0 && ((pending[index / 64] & (1ULL << (index % 64))) == 0);
+                return false;
                 });
         }
 
@@ -579,28 +589,23 @@ namespace {
             const int index = e->ptr->GetPlateId();
             if (index < 0 || index >= std::ssize(byId)) return;
             pending[index / 64] |= (1ULL << (index % 64));
-            if (std::ranges::find(entries, e) == entries.end()) entries.push_back(e);
+            if (!e->hasState(Entry::IEState::IS_ACTIVE)) {
+                e->setState(Entry::IEState::IS_ACTIVE, true);
+                entries.push_back(e);
+            }
         }
 
         void appendAdded(int index) {
             if (index < 0 || index >= std::ssize(byId)) return;
             pending[index / 64] |= (1ULL << (index % 64));
-            if (auto* e = &byId[index]; std::ranges::find(entries, e) == entries.end()) entries.push_back(e);
-        }
-
-        void appendRemoved(const Entry* e) {
-            const int index = e->ptr->GetPlateId();
-            if (index < 0 || index >= std::ssize(byId)) return;
-            pending[index / 64] |= (1ULL << (index % 64));
-        }
-
-        void appendRemoved(int index) {
-            if (index < 0 || index >= std::ssize(byId)) return;
-            pending[index / 64] |= (1ULL << (index % 64));
+            if (auto* e = &byId[index]; !e->hasState(Entry::IEState::IS_ACTIVE)) {
+                e->setState(Entry::IEState::IS_ACTIVE, true);
+                entries.push_back(e);
+            }
         }
 
         void clearPending() {
-            std::memset(pending, 0, sizeof(pending));
+            std::memset(pending, 0, ((std::ssize(byId) + 63) / 64) * sizeof(uint64_t));
         }
 
         guid_t getTokenGuid(int index) const {
@@ -608,12 +613,12 @@ namespace {
             return byId[index].guid;
         }
 
-    	int getTokenId(guid_t guid) const {
-        	if (!guid) return -1;
-        	for (int i = 0; i < std::ssize(byId); ++i) {
-        		if (byId[i].guid == guid) return i;
-        	}
-        	return -1;
+        int getTokenId(guid_t guid) const {
+            if (!guid) return -1;
+            for (int i = 0; i < std::ssize(byId); ++i) {
+                if (byId[i].guid == guid) return i;
+            }
+            return -1;
         }
 
         Entry* getEntry(guid_t guid) {
@@ -652,11 +657,11 @@ namespace {
             return index < 0 || index >= std::ssize(byId) ? nullptr : &byId[index];
         }
 
-    	const char* getToken(guid_t guid) const {
-        	for (const Entry& e : byId) {
-        		if (e.guid == guid) return tokenCache[e.ptr->GetPlateId()];
-        	}
-        	return "none"; // this one is a valid unitId
+        const char* getToken(guid_t guid) const {
+            for (const Entry& e : byId) {
+                if (e.guid == guid) return tokenCache[e.ptr->GetPlateId()];
+            }
+            return "none"; // this one is a valid unitId
         }
 
         const char* getToken(int index) const {
@@ -698,9 +703,6 @@ namespace {
     auto(*CSimpleFrame__SetFrameAlpha_site)() = reinterpret_cast<DummyCallback_t>(0x0098EAA7);
     constexpr uintptr_t CSimpleFrame__SetFrameAlpha_site_jmpback = 0x0098EAD2;
 
-    auto(*CGNamePlate__Initialize_site)() = reinterpret_cast<DummyCallback_t>(0x00725766);
-    auto(*CSimpleFrame__Hide_site)() = reinterpret_cast<DummyCallback_t>(0x0072587D);
-
     auto(*CGUnit_C__ShouldShowNamePlate_site)() = reinterpret_cast<DummyCallback_t>(0x0072B2BD);
     constexpr uintptr_t CGUnit_C__ShouldShowNamePlate_site_jmpback = 0x0072B2C7;
     constexpr uintptr_t CGUnit_C__ShouldShowNamePlate_site_pass = 0x0072B247;
@@ -717,7 +719,7 @@ namespace {
 
             // original logic, clamped search boundaries
             const bool isFriendly = e->hasState(Entry::IEState::IS_FRIENDLY);
-            const Vec2D hitBox = isFriendly ? Vec2D{ .x=g_hitWidthF, .y=g_hitHeightF } : Vec2D{ .x=g_hitWidthE, .y=g_hitHeightE };
+            const Vec2D hitBox = isFriendly ? Vec2D{ .x = g_hitWidthF, .y = g_hitHeightF } : Vec2D{ .x = g_hitWidthE, .y = g_hitHeightE };
 
             if (e->ptr->IsAtTargetPos(pos, hitBox)) {
                 if (!prio) prio = e->ptr;
@@ -735,37 +737,61 @@ namespace {
         }
     }
 
-    void __fastcall CGNamePlate__Initialize_siteWrapper(CGUnit_C* parent) {
-        if (CGNamePlate* plate = parent->m_nameplate) {
-            if (Entry* e = g_entries.initEntry(plate)) {
-                e->clearState();
-                e->setState(Entry::IEState::IS_FRIENDLY, parent->IsFriendly());
-                e->unit = parent;
-
-                EntryManager::applyStackingState(e);
-                EntryManager::applyClampingState(e);
-                g_entries.resolvePairs(e, -1, 0);
-                g_entries.appendAdded(e);
-
-                // for occlusion
-                plate->SetPlateState(EFrameState::NP_IS_FRESH, true);
-            }
-        }
-    }
-
-    void __fastcall CSimpleFrame__Hide_siteWrapper(CGNamePlate* plate) {
-        g_entries.appendRemoved(plate->GetPlateId());
-    }
-
     int __cdecl CGWorldFrame__UpdateNamePlatePositionsHk(CGWorldFrame* pThis) {
+        pThis->EnumerateChildren([&](CSimpleFrame* child) {
+            auto* plate = reinterpret_cast<CGNamePlate*>(child);
+            const int id = plate->GetPlateId();
+            auto* e = g_entries.getEntry(id);
+            if (child->m_isShown == 0) {
+                if (e && e->hasState(Entry::IEState::IS_ACTIVE)) {
+                    FrameScript::FireEvent(NAME_PLATE_UNIT_REMOVED, "%s", g_entries.getToken(id));
+                    e->setState(Entry::IEState::IS_ACTIVE, false);
+                }
+            }
+            else {
+                CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(plate->m_ownerGuid, TYPEMASK_UNIT);
+                if (e && e->hasState(Entry::IEState::IS_ACTIVE)) {
+                    if (!unit || !unit->m_nameplate) {
+                        FrameScript::FireEvent(NAME_PLATE_UNIT_REMOVED, "%s", g_entries.getToken(id));
+                        e->setState(Entry::IEState::IS_ACTIVE, false);
+                    }
+                    else if (unit->m_nameplate->m_ownerGuid != e->guid) {
+                        FrameScript::FireEvent(NAME_PLATE_UNIT_REMOVED, "%s", g_entries.getToken(id));
+                        g_entries.appendAdded(id);
+                    }
+                }
+                else if (unit) {
+                	if (const char* name = unit->GetName(nullptr, 1)) {
+						const char* unknownText = FrameScript::GetText("UNKNOWNOBJECT", -1, 0);
+                		if ((!unknownText || !*unknownText || std::strcmp(name, unknownText) != 0) && std::strcmp(name, "Unknown Being") != 0) {
+							if (e = g_entries.initEntry(plate); e) {
+								e->clearState();
+								e->setState(Entry::IEState::IS_FRIENDLY, unit->IsFriendly());
+								e->classification = unit->GetCreatureRank();
+
+								EntryManager::applyStackingState(e);
+								EntryManager::applyClampingState(e);
+								g_entries.resolvePairs(e, -1, 0);
+								g_entries.appendAdded(e);
+
+								// for occlusion
+								plate->SetPlateState(EFrameState::NP_IS_FRESH, true);
+							}
+						}
+					}
+                }
+            }
+            });
+
         g_entries.flushRemoved(); // bulk flush now to ensure callbacks recieve a complete gapless snapshot of the previous frame
+        //const auto& buf = g_entries.get();
         const auto& buf = g_entries.get();
         if (buf.empty()) {
             g_entries.clearPending();
             return CLayoutFrame::ResizePending();
         }
 
-        const int n = static_cast<int>(buf.size());
+        const int n = std::ssize(buf);
         uint32_t level = static_cast<uint32_t>(n) * 10;
 
         g_entries.sort(ESortType::ST_IN); // no target/focus
@@ -776,55 +802,50 @@ namespace {
 
         for (int i = 0; i < n; ++i) {
             Entry* e1 = buf[i];
+            e1->updStableAnchor(sceneTime);
+
             if (!e1->hasState(Entry::IEState::SHOULD_STACK) || e1->hasState(Entry::IEState::IS_FRESH)) {
-                e1->updVis(g_speedLower, g_speedPull, g_momMult, sceneTime, g_maxRaise, g_clampTopOffset);
-                if (!e1->isAt(e1->targetOffsetX, e1->targetOffsetY, true)) g_entries.allPlaced = 0;
-                e1->ptr->SetPoint(1, static_cast<CLayoutFrame*>(pThis), 6, e1->getVisX(), e1->getVisY() + (e1->ptr->m_height * g_placement), 1);
+                e1->updVis(g_speedLower, g_speedPull, sceneTime, g_maxRaise, g_clampTopOffset);
+                e1->ptr->SetPoint(1, pThis, 6, e1->getVisX(), e1->getVisY() + (e1->ptr->m_height * g_placement), 1);
                 e1->ptr->SetFrameDepth(e1->ptr->m_depthZ - pThis->m_depth, 1);
                 continue;
             }
+            if (e1->pushCount > 1) e1->targetOffsetX /= static_cast<float>(e1->pushCount);
+            bool freed = false;
 
-            // improvised callback handling z-losers and ambiguity
-            int status = 1;
-            while (status & 1) {
-                status &= ~1;
-                Entry::YieldNode* node = e1->getYieldHead();
-                while (node) {
-                    Entry* e2 = node->entry;
-                    if (!node->committed) {
-                        float hyst = g_entries.getHystPair(e1, e2);
-                        if (float reqY = e2->resolvePush(e1, g_bandY, hyst); reqY > 0.0f) {
-                            float dx = e2->getReqDXFor(e1);
-                            float minSepX = e1->getAvgWFor(e2, g_bandX * hyst);
-                            if (dx < minSepX) { // no buffer here
-                                float w = std::pow(std::clamp(1.0f - (dx / minSepX), 0.0f, 1.0f), 1.5f);
-                                e1->targetOffsetY = reqY;
-                                e1->targetOffsetX = e2->getReqXFor(e1) * w;
-                                g_entries.commitPair(e2, e1, ms, sceneTime, g_bandY, g_bandX);
-                                node->committed = true;
-                                status |= 1;
-                            }
-                        }
-                    }
-                    if (node->heap) status |= 2;
-                    node = node->next;
-                }
-            }
-            if (status & 2) {
-                Entry::YieldNode* node = e1->getYieldTail();
-                while (node && node->heap) {
-                    Entry::YieldNode* prev = node->prev;
-                    if (node->heap) delete node;
-                    node = prev;
-                }
-            }
             for (int j = i + 1; j < n; ++j) {
                 Entry* e2 = buf[j];
                 // skip fresh plates, UNIT_ADDED callbacks later might disable collisions
                 if (e2->hasState(Entry::IEState::SHOULD_STACK) && !e2->hasState(Entry::IEState::IS_FRESH)) {
-                    float minSepX = e1->getAvgWFor(e2, g_bandX * g_entries.getHystPair(e1, e2));
                     // extra x buffer in case e2 gets pulled later
-                    if (e1->getReqDXFor(e2) < minSepX + e2->ptr->m_width * g_maxPull) e2->appendYield(e1);
+                    g_entries.seedPair(e1, e2, ms);
+                    auto* ps = g_entries.getPair(e1, e2);
+                    float dx = e1->getReqDXFor(e2);
+                    float minSepX = e1->getAvgWFor(e2, g_bandX * ps->hysteresis);
+                    if (dx < minSepX) {
+                        const float dvx = e1->velocityX - e2->velocityX;
+                        const float dvy = e1->velocityY - e2->velocityY;
+                        const float damp = std::exp(-2.0f * std::sqrt(dvx * dvx + dvy * dvy));
+                        if (float reqY = e1->getReqYFor(e2, g_bandY * damp); reqY > e2->targetOffsetY) {
+                            if (e2->getRankWeight() > e1->getRankWeight()) {
+                                reqY = e1->getReqYFor(e1, g_bandY * damp);
+                                if (reqY > e1->targetOffsetY) {
+                                    e1->targetOffsetY = reqY;
+                                    g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
+                                }
+                            }
+                            else {
+                                if (!freed && !e1->resolvePush(e2, g_bandY * damp, ps->hysteresis)) {
+                                    freed = true;
+                                    continue;
+                                }
+                                e2->targetOffsetY = reqY;
+                                e2->targetOffsetX += e1->getReqXFor(e2) * std::pow(std::clamp(1.0f - (dx / minSepX), 0.0f, 1.0f), 1.5f) * damp;
+                                e2->pushCount++;
+                                g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -833,34 +854,14 @@ namespace {
         for (auto* e : buf) {
             g_entries.resolvePairs(e, ms, sceneTime);
             e->updVis(((e->targetOffsetY - e->stackOffsetY) > 0.0f) ? g_speedRaise : g_speedLower,
-                g_speedPull, g_momMult, sceneTime, g_maxRaise, g_clampTopOffset);
-            // cool down after having e arrived
-            if (!e->isAt(e->targetOffsetX, e->targetOffsetY, true)) {
-                g_entries.allPlaced = 0; e->sortKey = 1;
-                e->commitTargetY += (e->targetOffsetY - e->commitTargetY) * std::clamp(4.0f * std::abs(e->momentumY) * sceneTime, 0.0f, 1.0f);
-                e->commitTargetX += (e->targetOffsetX - e->commitTargetX) * std::clamp(4.0f * std::abs(e->momentumX) * sceneTime, 0.0f, 1.0f);
-            }
-            else {
-                e->commitTargetY = e->targetOffsetY;
-                e->commitTargetX = e->targetOffsetX;
-                e->momentumY *= 0.1f;
-                e->momentumX *= 0.1f;
-                e->sortKey = -1;
-            }
+                g_speedPull, sceneTime, g_maxRaise, g_clampTopOffset);
             e->setState(Entry::IEState::IS_FRESH, false);
-            e->ptr->SetPoint(1, static_cast<CLayoutFrame*>(pThis), 6, e->getVisX(), e->getVisY() + (e->ptr->m_height * g_placement), 1);
+            e->ptr->SetPoint(1, pThis, 6, e->getVisX(), e->getVisY() + (e->ptr->m_height * g_placement), 1);
             e->ptr->SetFrameDepth(e->ptr->m_depthZ - pThis->m_depth, 1);
             e->ptr->SetFrameLevel(level, 1);
             level -= 10; // addons buffer
         }
-        // keep the update running
-        if (g_entries.allPlaced++ > 1) {
-            pThis->m_renderDirtyFlags &= ~1;
-            g_entries.allPlaced = 0;
-        }
-        else {
-            pThis->m_renderDirtyFlags |= 1;
-        }
+        pThis->m_renderDirtyFlags |= 1; // clearing this prevents further CGWorldFrame__UpdateNamePlatePositions calls until any plate's raw ndc changes
 
         const int result = CLayoutFrame::ResizePending();
         g_entries.flushAdded(); // all set, fire callbacks
@@ -885,8 +886,8 @@ namespace {
         uint32_t* activeInput = CGInputControl::GetActive();
         if (activeInput && (activeInput[1] & 0x6000003) == 0) {
             CGNamePlate* prio = nullptr;
-            if (g_mouseMode & EMouseMode::M_CLICK_THRU_ENEMY) findBestPlate<IEClickLogic::THRU_ENEMY>(pos, prio);
-            else if (g_mouseMode & EMouseMode::M_CLICK_THRU_FRIEND) findBestPlate<IEClickLogic::THRU_FRIEND>(pos, prio);
+            if (g_mouseOverMode & EMouseMode::M_CLICK_THRU_ENEMY) findBestPlate<IEClickLogic::THRU_ENEMY>(pos, prio);
+            else if (g_mouseOverMode & EMouseMode::M_CLICK_THRU_FRIEND) findBestPlate<IEClickLogic::THRU_FRIEND>(pos, prio);
             else findBestPlate<IEClickLogic::NONE>(pos, prio);
 
             if (CGNamePlate* focus = *g_nameplateFocus; prio != focus) {
@@ -964,31 +965,6 @@ namespace {
         __asm {
             push edi;
             jmp CGNamePlate__OnUpdate_site_jmpback;
-        }
-    }
-
-    void __declspec(naked) CSimpleFrame__Hide_siteHk() {
-        __asm {
-            pushad;
-            mov ecx, [esi + 0C38h];
-            call CSimpleFrame__Hide_siteWrapper;
-            popad;
-            mov dword ptr[esi + 0C38h], 0;
-            mov ecx, esi;
-            pop esi;
-            jmp edx;
-        }
-    }
-
-    void __declspec(naked) CGNamePlate__Initialize_siteHk() {
-        __asm {
-            mov ecx, esi;
-            call CGNamePlate__Initialize_siteWrapper;
-            pop edi;
-            pop esi;
-            mov esp, ebp;
-            pop ebp;
-            retn 8;
         }
     }
 
@@ -1127,23 +1103,19 @@ namespace {
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateRaiseSpeed(CVar* cvar, const char*, const char* value, void*) {
-        const int result = cvar->Sync(value, &g_speedRaise, 1.0f, 30.0f, "%.2f");
+        const int result = cvar->Sync(value, &g_speedRaise, 1.0f, 250.0f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateLowerSpeed(CVar* cvar, const char*, const char* value, void*) {
-        const int result = cvar->Sync(value, &g_speedLower, 1.0f, 30.0f, "%.2f");
+        const int result = cvar->Sync(value, &g_speedLower, 1.0f, 250.0f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplatePullSpeed(CVar* cvar, const char*, const char* value, void*) {
-        const int result = cvar->Sync(value, &g_speedPull, 1.0f, 30.0f, "%.2f");
-        if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
-    }
-    int CVarHandler_NameplateMomentum(CVar* cvar, const char*, const char* value, void*) {
-        const int result = cvar->Sync(value, &g_momMult, 1.0f, 8.0f, "%.2f");
+        const int result = cvar->Sync(value, &g_speedPull, 1.0f, 250.0f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateRaiseDistance(CVar* cvar, const char*, const char* value, void*) {
-        const int result = cvar->Sync(value, &g_maxRaise, 1.0f, 8.0f, "%.2f");
+        const int result = cvar->Sync(value, &g_maxRaise, 1.0f, 20.0f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplatePullDistance(CVar* cvar, const char*, const char* value, void*) {
@@ -1151,7 +1123,7 @@ namespace {
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateClampTopOffset(CVar* cvar, const char*, const char* value, void*) {
-        const int result = cvar->Sync(value, &g_clampTopOffset, 0.0f, NDC_Y * 0.5f, "%.2f");
+        const int result = cvar->Sync(value, &g_clampTopOffset, 0.0f, NDC_Y * 0.25f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateOcclusionAlpha(CVar* cvar, const char*, const char* value, void*) {
@@ -1169,7 +1141,7 @@ namespace {
     int CVarHandler_NameplateMouseMode(CVar* cvar, const char*, const char* value, void*) {
         int f;
         const int result = cvar->Sync(value, &f, static_cast<int>(EMouseMode::M_DISABLED), static_cast<int>(std::size(g_mouseModeMap)) - 1, "%d");
-        g_mouseMode = static_cast<EMouseMode>(g_mouseModeMap[f]);
+        g_mouseOverMode = static_cast<EMouseMode>(g_mouseModeMap[f]);
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateClampTop(CVar* cvar, const char*, const char* value, void*) {
@@ -1209,19 +1181,18 @@ void NamePlates::initialize() {
     Hooks::FrameXML::registerEvent(NAME_PLATE_UNIT_REMOVED);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateDistance, "nameplateDistance", nullptr, "41.0", CVarHandler_NameplateDistance);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplatePlacement, "nameplatePlacement", nullptr, "0.0", CVarHandler_NameplatePlacement);
-    Hooks::FrameXML::registerCVar(&s_cvar_nameplateMouseMode, "nameplateMouseoverMode", nullptr, "0", CVarHandler_NameplateMouseMode);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplateMouseMode, "nameplateMouseMode", nullptr, "0", CVarHandler_NameplateMouseMode);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateBandX, "nameplateBandX", nullptr, "0.7", CVarHandler_NameplateBandX);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateBandY, "nameplateBandY", nullptr, "1.0", CVarHandler_NameplateBandY);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxWidthE, "nameplateHitboxWidthE", nullptr, "1.0", CVarHandler_NameplateHitboxWidthE);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxHeightE, "nameplateHitboxHeightE", nullptr, "1.0", CVarHandler_NameplateHitboxHeightE);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxWidthF, "nameplateHitboxWidthF", nullptr, "1.0", CVarHandler_NameplateHitboxWidthF);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxHeightF, "nameplateHitboxHeightF", nullptr, "1.0", CVarHandler_NameplateHitboxHeightF);
-    Hooks::FrameXML::registerCVar(&s_cvar_nameplateRaiseSpeed, "nameplateRaiseSpeed", nullptr, "8.0", CVarHandler_NameplateRaiseSpeed);
-    Hooks::FrameXML::registerCVar(&s_cvar_nameplateLowerSpeed, "nameplateLowerSpeed", nullptr, "8.0", CVarHandler_NameplateLowerSpeed);
-    Hooks::FrameXML::registerCVar(&s_cvar_nameplatePullSpeed, "nameplatePullSpeed", nullptr, "8.0", CVarHandler_NameplatePullSpeed);
-    Hooks::FrameXML::registerCVar(&s_cvar_nameplateMomentum, "nameplateMomentum", nullptr, "1.25", CVarHandler_NameplateMomentum);
-    Hooks::FrameXML::registerCVar(&s_cvar_nameplateRaiseDistance, "nameplateRaiseDistanceMax", nullptr, "6.0", CVarHandler_NameplateRaiseDistance);
-    Hooks::FrameXML::registerCVar(&s_cvar_nameplatePullDistance, "nameplatePullDistanceMax", nullptr, "0.25", CVarHandler_NameplatePullDistance);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplateRaiseSpeed, "nameplateRaiseSpeed", nullptr, "100.0", CVarHandler_NameplateRaiseSpeed);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplateLowerSpeed, "nameplateLowerSpeed", nullptr, "100.0", CVarHandler_NameplateLowerSpeed);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplatePullSpeed, "nameplatePullSpeed", nullptr, "50.0", CVarHandler_NameplatePullSpeed);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplateRaiseDistance, "nameplateRaiseDistance", nullptr, "8.0", CVarHandler_NameplateRaiseDistance);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplatePullDistance, "nameplatePullDistance", nullptr, "0.25", CVarHandler_NameplatePullDistance);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateOcclusionAlpha, "nameplateOcclusionAlpha", nullptr, "1.0", CVarHandler_NameplateOcclusionAlpha);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateNonTargetAlpha, "nameplateNonTargetAlpha", nullptr, "0.5", CVarHandler_NameplateNonTargetAlpha);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateAlphaSpeed, "nameplateAlphaSpeed", nullptr, "0.25", CVarHandler_NameplateAlphaSpeed);
@@ -1229,11 +1200,9 @@ void NamePlates::initialize() {
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateClampTopOffset, "nameplateClampTopOffset", nullptr, "0.1", CVarHandler_NameplateClampTopOffset);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateStacking, "nameplateStacking", nullptr, "0", CVarHandler_NameplateStacking);
 
-    Hooks::Detour(&CSimpleFrame__Hide_site, CSimpleFrame__Hide_siteHk);
     Hooks::Detour(&CSimpleFrame__SetFrameAlpha_site, CSimpleFrame__SetFrameAlpha_siteHk);
 
     Hooks::Detour(&CGNamePlate__OnUpdate_site, CGNamePlate__OnUpdate_siteHk);
-    Hooks::Detour(&CGNamePlate__Initialize_site, CGNamePlate__Initialize_siteHk);
 
     Hooks::Detour(&CGUnit_C::UpdateReactionFn, CGUnit_C__UpdateReactionHk);
     Hooks::Detour(&CGUnit_C::SetNamePlateFocusFn, CGUnit_C__SetNamePlateFocusHk);

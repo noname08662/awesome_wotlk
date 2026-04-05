@@ -28,7 +28,7 @@ namespace Lua {
     inline constexpr int REGISTRYINDEX = -10000;
     inline constexpr int ENVIRONINDEX = -10001;
     inline constexpr int GLOBALSINDEX = -10002;
-    inline constexpr int upvalueindex(int i) { return GLOBALSINDEX - i; }
+    constexpr int upvalueindex(int i) { return GLOBALSINDEX - i; }
 
     using fn_luaL_checktype = void(*)(lua_State*, int, int);
     using fn_luaL_checklstring = const char* (*)(lua_State*, int, size_t*);
