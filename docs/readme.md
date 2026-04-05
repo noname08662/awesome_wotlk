@@ -1,6 +1,3 @@
-WIP - REWRITING ALL OF THE LIB
-KIND OF SLOWLY, SORRY :<
-
 # Awesome WotLK
 ## World of Warcraft 3.3.5a 12340 Improvements Library
 ### Fork of https://github.com/FrostAtom/awesome_wotlk/
@@ -29,6 +26,8 @@ ___
   - `C_NamePlate.GetNamePlateForUnit`
   - `C_NamePlate.GetNamePlateByGUID`
   - `C_NamePlate.GetNamePlateTokenByGUID`
+  - `GetStackingEnabled nameplate method`
+  - `SetStackingEnabled nameplate method`
 - **C_VoiceChat (TTS):**
   - `C_VoiceChat.SpeakText`
   - `C_VoiceChat.StopSpeakingText`
@@ -69,7 +68,6 @@ ___
   - `NAME_PLATE_CREATED`
   - `NAME_PLATE_UNIT_ADDED`
   - `NAME_PLATE_UNIT_REMOVED`
-  - `NAME_PLATE_OWNER_CHANGED`
 - **TTS Events:**
   - `VOICE_CHAT_TTS_PLAYBACK_STARTED`
   - `VOICE_CHAT_TTS_PLAYBACK_FINISHED`
@@ -80,23 +78,25 @@ ___
 ### New CVars
 - **Nameplate CVars:**
   - `nameplateDistance`
+  - `nameplatePlacement`
+  - `nameplateMouseMode`
+  - `nameplateBandX`
+  - `nameplateBandY`
+  - `nameplateHitboxWidthE`
+  - `nameplateHitboxHeightE`
+  - `nameplateHitboxWidthF`
+  - `nameplateHitboxHeightF`
+  - `nameplateRaiseSpeed`
+  - `nameplateLowerSpeed`
+  - `nameplatePullSpeed`
+  - `nameplateRaiseDistance`
+  - `nameplatePullDistance`
+  - `nameplateOcclusionAlpha`
+  - `nameplateNonTargetAlpha`
+  - `nameplateAlphaSpeed`
+  - `nameplateClampTop`
+  - `nameplateClampTopOffset`
   - `nameplateStacking`
-  - `nameplateXSpace`
-  - `nameplateYSpace`
-  - `nameplateUpperBorder`
-  - `nameplateOriginPos`
-  - `nameplateSpeedRaise`
-  - `nameplateSpeedReset`
-  - `nameplateSpeedLower`
-  - `nameplateHitboxHeight`
-  - `nameplateHitboxWidth`
-  - `nameplateFriendlyHitboxHeight`
-  - `nameplateFriendlyHitboxWidth`
-  - `nameplateStackFriendly`
-  - `nameplateStackFriendlyMode`
-  - `nameplateMaxRaiseDistance`
-  - `nameplateExtendWorldFrameHeight`
-  - `nameplateUpperBorderOnlyBoss`
 - **Interaction CVars:**
   - `interactionMode`
   - `interactionAngle`
@@ -122,7 +122,7 @@ A new keybind for smart interaction with the game world:
 
 ### Nameplate Stacking
 New nameplate stacking system to prevent overlapping:
-- Enable stacking: `/console nameplateStacking 1` (reload recommended after enabling/disabling)
+- Enable stacking: `/console nameplateStacking 1`
 - **Important:** If using [this WeakAura](https://wago.io/AQdGXNEBH), delete it and restart the client before using this feature
 - See [Docs](https://github.com/someweirdhuman/awesome_wotlk/blob/main/docs/api_reference.md) for detailed CVar information
 - All settings are configurable in-game via `/awesome` command (requires AwesomeCVar addon)
