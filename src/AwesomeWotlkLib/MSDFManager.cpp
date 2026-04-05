@@ -28,14 +28,14 @@ MSDFManager::ArenaState::ArenaState() {
         return;
     }
 
-    const uint32_t maxGlyphDim = MSDF::SDF_RENDER_SIZE + 2 * MSDF::SDF_SPREAD;
-    const uint32_t maxPixelsPerGlyph = maxGlyphDim * maxGlyphDim;
-    const uint32_t maxBytesPerGlyph = maxPixelsPerGlyph * 4;
+    constexpr uint32_t maxGlyphDim = MSDF::SDF_RENDER_SIZE + 2 * MSDF::SDF_SPREAD;
+    constexpr uint32_t maxPixelsPerGlyph = maxGlyphDim * maxGlyphDim;
+    constexpr uint32_t maxBytesPerGlyph = maxPixelsPerGlyph * 4;
 
-    const size_t maxPayload = MSDFCache::BLOCK_SIZE * maxBytesPerGlyph;
-    const size_t maxEntries = MSDFCache::BLOCK_SIZE * sizeof(MSDFCache::GlyphEntry);
-    const size_t maxHashTable = MSDFCache::BLOCK_SIZE * sizeof(uint32_t);
-    const size_t maxBlockSize = sizeof(MSDFCache::BlockFileHeader) + maxEntries + maxHashTable + maxPayload;
+    constexpr size_t maxPayload = MSDFCache::BLOCK_SIZE * maxBytesPerGlyph;
+    constexpr size_t maxEntries = MSDFCache::BLOCK_SIZE * sizeof(MSDFCache::GlyphEntry);
+    constexpr size_t maxHashTable = MSDFCache::BLOCK_SIZE * sizeof(uint32_t);
+    constexpr size_t maxBlockSize = sizeof(MSDFCache::BlockFileHeader) + maxEntries + maxHashTable + maxPayload;
 
     SYSTEM_INFO si;
     GetSystemInfo(&si);
@@ -45,9 +45,9 @@ MSDFManager::ArenaState::ArenaState() {
     slotToBlockIndex.fill(0xFFFFFFFF);
 
     const size_t totalSize = effectiveSlotSize * MAX_ARENA_SLOTS;
-    base = VirtualAlloc2(GetCurrentProcess(), NULL, totalSize,
+    base = VirtualAlloc2(GetCurrentProcess(), nullptr, totalSize,
         MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
-        PAGE_NOACCESS, NULL, 0);
+        PAGE_NOACCESS, nullptr, 0);
     if (!base) return;
 
     for (size_t i = 0; i < MAX_ARENA_SLOTS; ++i) {
@@ -101,7 +101,7 @@ void MSDFManager::ArenaState::FreeSlot(uint32_t slotIndex) {
     VirtualFreeEx(GetCurrentProcess(), slotAddr, 0, MEM_RELEASE | MEM_COALESCE_PLACEHOLDERS);
     VirtualAlloc2(GetCurrentProcess(), slotAddr, effectiveSlotSize,
         MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
-        PAGE_NOACCESS, NULL, 0);
+        PAGE_NOACCESS, nullptr, 0);
 
     freeMask |= (1ULL << slotIndex);
 
@@ -161,17 +161,17 @@ uint32_t MSDFManager::RegisterFont(FontHash hash) {
     return fontId;
 }
 
-FontHash MSDFManager::GetFontHash(uint32_t fontId) const {
+FontHash MSDFManager::GetFontHash(uint32_t fontId) {
     auto it = s_fontIdToHash.find(fontId);
     return (it != s_fontIdToHash.end()) ? it->second : 0;
 }
 
-bool MSDFManager::LoadMappedBlock(MSDFCache::BlockWrap wrap, MappedBlock& outBlock, void* slotAddr, uint32_t slotIndex) {
+bool MSDFManager::LoadMappedBlock(const MSDFCache::BlockWrap& wrap, MappedBlock& outBlock, void* slotAddr, uint32_t slotIndex) {
     outBlock.file.handle = CreateFileW(wrap.path.native().c_str(),
         GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        NULL, OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, NULL);
+        nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, nullptr);
     if (outBlock.file.handle == INVALID_HANDLE_VALUE) {
         s_arena.FreeSlot(slotIndex);
         return false;
@@ -185,7 +185,7 @@ bool MSDFManager::LoadMappedBlock(MSDFCache::BlockWrap wrap, MappedBlock& outBlo
     outBlock.fileSize = static_cast<uint64_t>(fileSizeLI.QuadPart);
 
     const size_t allocGran = s_si.dwAllocationGranularity;
-    size_t splitSize = ((outBlock.fileSize + allocGran - 1) / allocGran) * allocGran;
+    uint64_t splitSize = ((outBlock.fileSize + allocGran - 1) / allocGran) * allocGran;
     if (splitSize < allocGran) splitSize = allocGran;
     if (splitSize > s_arena.SlotSize()) {
         s_arena.FreeSlot(slotIndex);
@@ -200,20 +200,20 @@ bool MSDFManager::LoadMappedBlock(MSDFCache::BlockWrap wrap, MappedBlock& outBlo
 
     DWORD sizeHigh = static_cast<DWORD>(splitSize >> 32);
     DWORD sizeLow = static_cast<DWORD>(splitSize & 0xFFFFFFFF);
-    outBlock.mapping.handle = CreateFileMappingW(outBlock.file.handle, NULL, PAGE_READONLY, sizeHigh, sizeLow, NULL);
+    outBlock.mapping.handle = CreateFileMappingW(outBlock.file.handle, nullptr, PAGE_READONLY, sizeHigh, sizeLow, nullptr);
     if (!outBlock.mapping.handle) {
         s_arena.FreeSlot(slotIndex);
         return false;
     }
 
-    outBlock.view.ptr = MapViewOfFile3(outBlock.mapping.handle, NULL, slotAddr, 0, splitSize,
-        MEM_REPLACE_PLACEHOLDER, PAGE_READONLY, NULL, 0);
+    outBlock.view.ptr = MapViewOfFile3(outBlock.mapping.handle, nullptr, slotAddr, 0, splitSize,
+        MEM_REPLACE_PLACEHOLDER, PAGE_READONLY, nullptr, 0);
     if (!outBlock.view.ptr) {
         s_arena.FreeSlot(slotIndex);
         return false;
     }
 
-    outBlock.header = reinterpret_cast<const MSDFCache::BlockFileHeader*>(outBlock.view.ptr);
+    outBlock.header = static_cast<const MSDFCache::BlockFileHeader*>(outBlock.view.ptr);
     if (outBlock.header->magic != MSDFCache::BLOCK_MAGIC ||
         outBlock.header->version != MSDFCache::CACHE_VERSION ||
         outBlock.header->blockId != wrap.key.blockId ||
@@ -253,7 +253,7 @@ bool MSDFManager::LoadMappedBlock(MSDFCache::BlockWrap wrap, MappedBlock& outBlo
     return true;
 }
 
-MSDFManager::MappedBlock* MSDFManager::GetOrLoadMappedBlock(MSDFCache::BlockWrap wrap) {
+MSDFManager::MappedBlock* MSDFManager::GetOrLoadMappedBlock(const MSDFCache::BlockWrap& wrap) {
     if (s_lastBlockIndex != 0xFFFFFFFF && s_lastBlockKey == wrap.key) {
         return &s_mappedBlocks[s_lastBlockIndex];
     }
@@ -280,7 +280,7 @@ MSDFManager::MappedBlock* MSDFManager::GetOrLoadMappedBlock(MSDFCache::BlockWrap
     return &newBlock;
 }
 
-bool MSDFManager::LoadGlyph(MSDFCache::BlockWrap wrap, uint32_t codepoint, GlyphMetrics& outMetrics) {
+bool MSDFManager::LoadGlyph(const MSDFCache::BlockWrap& wrap, uint32_t codepoint, GlyphMetrics& outMetrics) {
     MappedBlock* blockPtr = GetOrLoadMappedBlock(wrap);
     if (!blockPtr) return false;
 

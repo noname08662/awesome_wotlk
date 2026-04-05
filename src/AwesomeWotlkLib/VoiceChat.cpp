@@ -44,6 +44,8 @@
 
 #include "VoiceChat.h"
 #include "GameClient.h"
+#include "Lua.h"
+#include "Utils.h"
 #include "Hooks.h"
 #include <sapi.h>
 #include <sphelper.h>
@@ -89,16 +91,16 @@ static int ClampDestination(int d) {
 // ============================================================================
 // CVar Helpers
 // ============================================================================
-static int GetCVarInt(Console::CVar* cvar, int fallback = 0)
+static int GetCVarInt(CVar* cvar, int fallback = 0)
 {
-    if (!cvar || !cvar->vStr) return fallback;
-    return atoi(cvar->vStr);
+    if (!cvar || !cvar->m_str) return fallback;
+    return atoi(cvar->m_str);
 }
-static void SetCVarInt(Console::CVar* cvar, int value)
+static void SetCVarInt(CVar* cvar, int value)
 {
     if (!cvar) return;
     std::string s = std::to_string(value);
-    SetCVarValue(cvar, s.c_str(), 0, 0, 0, 0);
+    cvar->SetValue(s.c_str(), 0, 0, 0, 0);
 }
 
 // ============================================================================
@@ -116,9 +118,9 @@ static int GetNextUtteranceID() {
 
 static std::vector<VoiceTtsVoiceType> g_cachedVoices;
 
-static Console::CVar* s_cvar_voiceID;
-static Console::CVar* s_cvar_speed;
-static Console::CVar* s_cvar_volume;
+static CVar* s_cvar_voiceID;
+static CVar* s_cvar_speed;
+static CVar* s_cvar_volume;
 
 // Global SAPI voice instance (single threaded apartment)
 static ISpVoice* g_pVoice = nullptr;
@@ -181,11 +183,11 @@ static bool iequals(const std::wstring& a, const std::wstring& b)
 }
 
 // ============================================================================
-// Lua event helpers (typed, NULL-safe, id-safe)
+// Lua event helpers (typed, nullptr-safe, id-safe)
 // ============================================================================
 
 static inline lua_State* TryGetLua() {
-    return GetLuaState(); // may be null during very early startup
+    return Lua::GetLuaState(); // may be null during very early startup
 }
 
 static inline int GetEvtIdOrNeg1(const char* evt) {
@@ -198,9 +200,9 @@ static inline void FireEvent_NoArgs(const char* evt)
     int id = GetEvtIdOrNeg1(evt);
     if (!L || id < 0) return;
 
-    lua_pushstring(L, evt);
+    Lua::lua_pushstring(L, evt);
     FrameScript::FireEvent_inner(id, L, 1);
-    lua_pop(L, 1);
+    Lua::lua_pop(L, 1);
 }
 
 static inline void FireEvent_TTS_PlaybackFailed(const char* status, int utteranceID, int dest)
@@ -209,12 +211,12 @@ static inline void FireEvent_TTS_PlaybackFailed(const char* status, int utteranc
     int id = GetEvtIdOrNeg1(VOICE_CHAT_TTS_PLAYBACK_FAILED);
     if (!L || id < 0) return;
 
-    lua_pushstring(L, VOICE_CHAT_TTS_PLAYBACK_FAILED);
-    lua_pushstring(L, status);
-    lua_pushnumber(L, utteranceID);
-    lua_pushnumber(L, dest); // number
+    Lua::lua_pushstring(L, VOICE_CHAT_TTS_PLAYBACK_FAILED);
+    Lua::lua_pushstring(L, status);
+    Lua::lua_pushnumber(L, utteranceID);
+    Lua::lua_pushnumber(L, dest); // number
     FrameScript::FireEvent_inner(id, L, 4);
-    lua_pop(L, 4);
+    Lua::lua_pop(L, 4);
 }
 
 static inline void FireEvent_TTS_PlaybackStarted(int numConsumers, int utteranceID, int durationMS, int dest)
@@ -223,13 +225,13 @@ static inline void FireEvent_TTS_PlaybackStarted(int numConsumers, int utterance
     int id = GetEvtIdOrNeg1(VOICE_CHAT_TTS_PLAYBACK_STARTED);
     if (!L || id < 0) return;
 
-    lua_pushstring(L, VOICE_CHAT_TTS_PLAYBACK_STARTED);
-    lua_pushnumber(L, numConsumers);
-    lua_pushnumber(L, utteranceID);
-    lua_pushnumber(L, durationMS);
-    lua_pushnumber(L, dest); // number
+    Lua::lua_pushstring(L, VOICE_CHAT_TTS_PLAYBACK_STARTED);
+    Lua::lua_pushnumber(L, numConsumers);
+    Lua::lua_pushnumber(L, utteranceID);
+    Lua::lua_pushnumber(L, durationMS);
+    Lua::lua_pushnumber(L, dest); // number
     FrameScript::FireEvent_inner(id, L, 5);
-    lua_pop(L, 5);
+    Lua::lua_pop(L, 5);
 }
 
 static inline void FireEvent_TTS_PlaybackFinished(int numConsumers, int utteranceID, int dest)
@@ -238,12 +240,12 @@ static inline void FireEvent_TTS_PlaybackFinished(int numConsumers, int utteranc
     int id = GetEvtIdOrNeg1(VOICE_CHAT_TTS_PLAYBACK_FINISHED);
     if (!L || id < 0) return;
 
-    lua_pushstring(L, VOICE_CHAT_TTS_PLAYBACK_FINISHED);
-    lua_pushnumber(L, numConsumers);
-    lua_pushnumber(L, utteranceID);
-    lua_pushnumber(L, dest); // number
+    Lua::lua_pushstring(L, VOICE_CHAT_TTS_PLAYBACK_FINISHED);
+    Lua::lua_pushnumber(L, numConsumers);
+    Lua::lua_pushnumber(L, utteranceID);
+    Lua::lua_pushnumber(L, dest); // number
     FrameScript::FireEvent_inner(id, L, 4);
-    lua_pop(L, 4);
+    Lua::lua_pop(L, 4);
 }
 
 // ============================================================================
@@ -253,7 +255,7 @@ static void VoiceChat_InitCOM()
 {
     static bool comInitDone = false;
     if (!comInitDone) {
-        HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         if (SUCCEEDED(hr)) {
             comInitDone = true;
         }
@@ -267,7 +269,7 @@ static bool VoiceChat_StartSpeakNow(int voiceID, const std::wstring& text, int r
 {
     // Select voice by index
     IEnumSpObjectTokens* pEnum = nullptr; ULONG count = 0;
-    HRESULT hr = SpEnumTokens(SPCAT_VOICES, NULL, NULL, &pEnum);
+    HRESULT hr = SpEnumTokens(SPCAT_VOICES, nullptr, nullptr, &pEnum);
     bool voiceSet = false;
     if (SUCCEEDED(hr) && pEnum) {
         ISpObjectToken* pToken = nullptr; ULONG index = 0;
@@ -343,7 +345,7 @@ void VoiceChat_InitVoice()
 {
     if (!g_pVoice) {
         VoiceChat_InitCOM();
-        HRESULT hr = CoCreateInstance(CLSID_SpVoice, NULL, CLSCTX_ALL, IID_ISpVoice, (void**)&g_pVoice);
+        HRESULT hr = CoCreateInstance(CLSID_SpVoice, nullptr, CLSCTX_ALL, IID_ISpVoice, (void**)&g_pVoice);
         if (SUCCEEDED(hr)) {
             // Register the notify callback once; events will be polled via GetEvents.
             g_pVoice->SetNotifyCallbackFunction(OnSpeechNotify, 0, 0);
@@ -368,7 +370,7 @@ static std::vector<VoiceTtsVoiceType> VoiceChat_GetTtsVoices()
     IEnumSpObjectTokens* pEnum = nullptr;
     ULONG count = 0;
 
-    HRESULT hr = SpEnumTokens(SPCAT_VOICES, NULL, NULL, &pEnum);
+    HRESULT hr = SpEnumTokens(SPCAT_VOICES, nullptr, nullptr, &pEnum);
     if (SUCCEEDED(hr) && pEnum)
     {
         ISpObjectToken* pToken = nullptr;
@@ -464,9 +466,9 @@ static void VoiceChat_SpeakText(int voiceID, const std::wstring& text, int desti
 // Convenience overload (CVars), uses destination=1
 void VoiceChat_SpeakText(const std::wstring& text)
 {
-    int voiceID = atoi(s_cvar_voiceID->vStr);
-    int speed   = atoi(s_cvar_speed->vStr);
-    int volume  = atoi(s_cvar_volume->vStr);
+    int voiceID = atoi(s_cvar_voiceID->m_str);
+    int speed   = atoi(s_cvar_speed->m_str);
+    int volume  = atoi(s_cvar_volume->m_str);
     VoiceChat_SpeakText(voiceID, text, DEST_LOCAL_PLAYBACK, speed, volume);
 }
 
@@ -479,21 +481,21 @@ static int Lua_VoiceChat_GetTtsVoices(lua_State* L)
     VoiceChat_RefreshVoices();
 
     // then return the cached voices list
-    lua_createtable(L, 0, 0);
+    Lua::lua_createtable(L, 0, 0);
 
     int i = 1;
     for (const auto& voice : g_cachedVoices)
     {
-        lua_newtable(L);
+        Lua::lua_newtable(L);
 
-        lua_pushnumber(L, voice.voiceID);
-        lua_setfield(L, -2, "voiceID");
+        Lua::lua_pushnumber(L, voice.voiceID);
+        Lua::lua_setfield(L, -2, "voiceID");
 
         std::string nameUtf8 = WideStringToUtf8(voice.name);
-        lua_pushstring(L, nameUtf8.c_str());
-        lua_setfield(L, -2, "name");
+        Lua::lua_pushstring(L, nameUtf8.c_str());
+        Lua::lua_setfield(L, -2, "name");
 
-        lua_rawseti(L, -2, i++);
+        Lua::lua_rawseti(L, -2, i++);
     }
     return 1;
 }
@@ -501,43 +503,43 @@ static int Lua_VoiceChat_GetTtsVoices(lua_State* L)
 static int Lua_VoiceChat_GetRemoteTtsVoices(lua_State* L)
 {
     auto voices = VoiceChat_GetTtsVoices();
-    lua_createtable(L, 0, 0);
+    Lua::lua_createtable(L, 0, 0);
 
     int i = 1;
     for (const auto& voice : voices)
     {
-        lua_newtable(L);
+        Lua::lua_newtable(L);
 
-        lua_pushnumber(L, voice.voiceID);
-        lua_setfield(L, -2, "voiceID");
+        Lua::lua_pushnumber(L, voice.voiceID);
+        Lua::lua_setfield(L, -2, "voiceID");
 
         std::string nameUtf8 = WideStringToUtf8(voice.name);
-        lua_pushstring(L, nameUtf8.c_str());
-        lua_setfield(L, -2, "name");
+        Lua::lua_pushstring(L, nameUtf8.c_str());
+        Lua::lua_setfield(L, -2, "name");
 
-        lua_rawseti(L, -2, i++);
+        Lua::lua_rawseti(L, -2, i++);
     }
     return 1;
 }
 
 static int Lua_VoiceChat_SpeakText(lua_State* L)
 {
-    int voiceID = (int)luaL_checknumber(L, 1);
-    const char* text = luaL_checklstring(L, 2, nullptr);
+    int voiceID = Lua::luaL_checknumber(L, 1);
+    const char* text = Lua::luaL_checklstring(L, 2, nullptr);
 
     int dest = DEST_LOCAL_PLAYBACK; // default
-    if (lua_gettop(L) >= 3 && lua_type(L, 3) != LUA_TNIL) {
-        dest = (int)luaL_checknumber(L, 3); // only number
+    if (Lua::lua_gettop(L) >= 3 && !Lua::lua_isnil(L, 3)) {
+        dest = Lua::luaL_checknumber(L, 3); // only number
         dest = (dest == DEST_QUEUED_LOCAL_PLAYBACK) ? DEST_QUEUED_LOCAL_PLAYBACK : DEST_LOCAL_PLAYBACK;
     }
 
     int rate = 0;
-    if (lua_gettop(L) >= 4 && lua_type(L, 4) != LUA_TNIL)
-        rate = (int)luaL_checknumber(L, 4);
+    if (Lua::lua_gettop(L) >= 4 && !Lua::lua_isnil(L, 4))
+        rate = Lua::luaL_checknumber(L, 4);
 
     int volume = 100;
-    if (lua_gettop(L) >= 5 && lua_type(L, 5) != LUA_TNIL)
-        volume = (int)luaL_checknumber(L, 5);
+    if (Lua::lua_gettop(L) >= 5 && !Lua::lua_isnil(L, 5))
+        volume = Lua::luaL_checknumber(L, 5);
 
     std::wstring wText = Utf8ToWide(text);
     VoiceChat_SpeakText(voiceID, wText, dest, rate, volume);
@@ -553,19 +555,19 @@ static int Lua_VoiceChat_StopSpeakingText(lua_State* L)
 // Register C_VoiceChat global
 static int lua_openlibvoicechat(lua_State* L)
 {
-    luaL_Reg methods[] = {
+    Lua::luaL_Reg methods[] = {
         {"GetTtsVoices",       Lua_VoiceChat_GetTtsVoices},
         {"GetRemoteTtsVoices", Lua_VoiceChat_GetRemoteTtsVoices},
         {"SpeakText",          Lua_VoiceChat_SpeakText},
         {"StopSpeakingText",   Lua_VoiceChat_StopSpeakingText}
     };
 
-    lua_createtable(L, 0, std::size(methods));
+    Lua::lua_createtable(L, 0, std::size(methods));
     for (size_t i = 0; i < std::size(methods); i++) {
-        lua_pushcfunction(L, methods[i].func);
-        lua_setfield(L, -2, methods[i].name);
+        Lua::lua_pushcfunction(L, methods[i].func);
+        Lua::lua_setfield(L, -2, methods[i].name);
     }
-    lua_setglobal(L, "C_VoiceChat");
+    Lua::lua_setglobal(L, "C_VoiceChat");
     return 0;
 }
 
@@ -596,7 +598,7 @@ static int Lua_TTS_SetDefaultSettings(lua_State* L)
 
 static int Lua_TTS_SetSpeechRate(lua_State* L)
 {
-    int v = (int)luaL_checknumber(L, 1);
+    int v = Lua::luaL_checknumber(L, 1);
     v = std::clamp(v, -10, 10);
     SetCVarInt(s_cvar_speed, v);
     return 0;
@@ -604,7 +606,7 @@ static int Lua_TTS_SetSpeechRate(lua_State* L)
 
 static int Lua_TTS_SetSpeechVolume(lua_State* L)
 {
-    int v = (int)luaL_checknumber(L, 1);
+    int v = Lua::luaL_checknumber(L, 1);
     v = std::clamp(v, 0, 100);
     SetCVarInt(s_cvar_volume, v);
     return 0;
@@ -613,8 +615,8 @@ static int Lua_TTS_SetSpeechVolume(lua_State* L)
 // SetVoiceOption(voiceID:number)
 static int Lua_TTS_SetVoiceOptionByID(lua_State* L)
 {
-    int id = (int)luaL_checknumber(L, 1);
-    int maxVoice = (int)VoiceChat_GetTtsVoices().size();
+    int id = Lua::luaL_checknumber(L, 1);
+    int maxVoice = static_cast<uint32_t>(VoiceChat_GetTtsVoices().size());
     if (maxVoice == 0) return 0;
 
     id = std::clamp(id, 0, maxVoice - 1);
@@ -627,7 +629,7 @@ static int Lua_TTS_SetVoiceOptionByID(lua_State* L)
 // SetVoiceOptionByName(voiceName:string)
 static int Lua_TTS_SetVoiceOptionByName(lua_State* L)
 {
-    const char* nameUtf8 = luaL_checklstring(L, 1, nullptr);
+    const char* nameUtf8 = Lua::luaL_checklstring(L, 1, nullptr);
     std::wstring wname = Utf8ToWide(nameUtf8);
 
     auto voices = VoiceChat_GetTtsVoices();
@@ -645,19 +647,19 @@ static int Lua_TTS_SetVoiceOptionByName(lua_State* L)
 // -- Getters --
 static int Lua_TTS_GetSpeechRate(lua_State* L)
 {
-    lua_pushnumber(L, GetCVarInt(s_cvar_speed, 0));
+    Lua::lua_pushnumber(L, GetCVarInt(s_cvar_speed, 0));
     return 1;
 }
 
 static int Lua_TTS_GetSpeechVolume(lua_State* L)
 {
-    lua_pushnumber(L, GetCVarInt(s_cvar_volume, 100));
+    Lua::lua_pushnumber(L, GetCVarInt(s_cvar_volume, 100));
     return 1;
 }
 
 static int Lua_TTS_GetSpeechVoiceID(lua_State* L)
 {
-    lua_pushnumber(L, GetCVarInt(s_cvar_voiceID, 0));
+    Lua::lua_pushnumber(L, GetCVarInt(s_cvar_voiceID, 0));
     return 1;
 }
 
@@ -665,76 +667,84 @@ static int Lua_TTS_GetVoiceOptionName(lua_State* L)
 {
     int id = GetCVarInt(s_cvar_voiceID, 0);
     std::string name = GetVoiceNameByID(id);
-    lua_pushstring(L, name.c_str());
+    Lua::lua_pushstring(L, name.c_str());
     return 1;
 }
 
 // Register C_TTSSettings global
 static int lua_openlibttssettings(lua_State* L)
 {
-    lua_createtable(L, 0, 0);
+    Lua::lua_createtable(L, 0, 0);
 
     // Getters
-    lua_pushcfunction(L, Lua_TTS_GetSpeechRate);      lua_setfield(L, -2, "GetSpeechRate");
-    lua_pushcfunction(L, Lua_TTS_GetSpeechVolume);    lua_setfield(L, -2, "GetSpeechVolume");
-    lua_pushcfunction(L, Lua_TTS_GetSpeechVoiceID);   lua_setfield(L, -2, "GetSpeechVoiceID");
-    lua_pushcfunction(L, Lua_TTS_GetVoiceOptionName); lua_setfield(L, -2, "GetVoiceOptionName");
+    Lua::lua_pushcfunction(L, Lua_TTS_GetSpeechRate);      Lua::lua_setfield(L, -2, "GetSpeechRate");
+    Lua::lua_pushcfunction(L, Lua_TTS_GetSpeechVolume);    Lua::lua_setfield(L, -2, "GetSpeechVolume");
+    Lua::lua_pushcfunction(L, Lua_TTS_GetSpeechVoiceID);   Lua::lua_setfield(L, -2, "GetSpeechVoiceID");
+    Lua::lua_pushcfunction(L, Lua_TTS_GetVoiceOptionName); Lua::lua_setfield(L, -2, "GetVoiceOptionName");
 
     // Setters
-    lua_pushcfunction(L, Lua_TTS_SetDefaultSettings);  lua_setfield(L, -2, "SetDefaultSettings");
-    lua_pushcfunction(L, Lua_TTS_SetSpeechRate);       lua_setfield(L, -2, "SetSpeechRate");
-    lua_pushcfunction(L, Lua_TTS_SetSpeechVolume);     lua_setfield(L, -2, "SetSpeechVolume");
-    lua_pushcfunction(L, Lua_TTS_SetVoiceOptionByID);  lua_setfield(L, -2, "SetVoiceOption");       // by ID
-    lua_pushcfunction(L, Lua_TTS_SetVoiceOptionByName);lua_setfield(L, -2, "SetVoiceOptionByName"); // by name
+    Lua::lua_pushcfunction(L, Lua_TTS_SetDefaultSettings);      Lua::lua_setfield(L, -2, "SetDefaultSettings");
+    Lua::lua_pushcfunction(L, Lua_TTS_SetSpeechRate);           Lua::lua_setfield(L, -2, "SetSpeechRate");
+    Lua::lua_pushcfunction(L, Lua_TTS_SetSpeechVolume);         Lua::lua_setfield(L, -2, "SetSpeechVolume");
+    Lua::lua_pushcfunction(L, Lua_TTS_SetVoiceOptionByID);      Lua::lua_setfield(L, -2, "SetVoiceOption");       // by ID
+    Lua::lua_pushcfunction(L, Lua_TTS_SetVoiceOptionByName);    Lua::lua_setfield(L, -2, "SetVoiceOptionByName"); // by name
     
     // Refresh
-    lua_pushcfunction(L, Lua_TTS_RefreshVoices);
-    lua_setfield(L, -2, "RefreshVoices");
+    Lua::lua_pushcfunction(L, Lua_TTS_RefreshVoices);
+    Lua::lua_setfield(L, -2, "RefreshVoices");
 
-    lua_setglobal(L, "C_TTSSettings");
+    Lua::lua_setglobal(L, "C_TTSSettings");
     return 0;
 }
 
 // ============================================================================
 // CVar Change Callbacks (clamping & sanity)
 // ============================================================================
-static int OnVoiceIDChanged(Console::CVar* cvar, const char* prevVal, const char* newVal, void* udata)
+static int OnVoiceIDChanged(CVar* cvar, const char* prevVal, const char* newVal, void* udata)
 {
     int val = atoi(newVal);
     int maxVoice = static_cast<int>(VoiceChat_GetTtsVoices().size()) - 1;
     if (val < 0) val = 0;
     if (val > maxVoice) val = maxVoice;
     std::string valStr = std::to_string(val);
-    SetCVarValue(cvar, valStr.c_str(), 0, 0, 0, 0);
+    cvar->SetValue(valStr.c_str(), 0, 0, 0, 0);
     return 1;
 }
 
-static int OnSpeedChanged(Console::CVar* cvar, const char* prevVal, const char* newVal, void* udata)
+static int OnSpeedChanged(CVar* cvar, const char* prevVal, const char* newVal, void* udata)
 {
     int val = atoi(newVal);
     if (val < -10) val = -10;
     else if (val > 10) val = 10;
     std::string valStr = std::to_string(val);
-    SetCVarValue(cvar, valStr.c_str(), 0, 0, 0, 0);
+    cvar->SetValue(valStr.c_str(), 0, 0, 0, 0);
     return 1;
 }
 
-static int OnVolumeChanged(Console::CVar* cvar, const char* prevVal, const char* newVal, void* udata)
+static int OnVolumeChanged(CVar* cvar, const char* prevVal, const char* newVal, void* udata)
 {
     int val = atoi(newVal);
     if (val < 0) val = 0;
     else if (val > 100) val = 100;
     std::string valStr = std::to_string(val);
-    SetCVarValue(cvar, valStr.c_str(), 0, 0, 0, 0);
+    cvar->SetValue(valStr.c_str(), 0, 0, 0, 0);
     return 1;
 }
 
 // Register CVars used by TTS across sessions
 void RegisterVoiceChatCVars()
 {
-    Hooks::FrameXML::registerCVar(&s_cvar_voiceID, "ttsVoice",  NULL, (Console::CVarFlags)1, "1",  OnVoiceIDChanged); // Blizzard default 1 (English)
-    Hooks::FrameXML::registerCVar(&s_cvar_speed,   "ttsSpeed",  NULL, (Console::CVarFlags)1, "0",  OnSpeedChanged);   // Default 0 (normal)
-    Hooks::FrameXML::registerCVar(&s_cvar_volume,  "ttsVolume", NULL, (Console::CVarFlags)1, "100",OnVolumeChanged);  // Default 100 (full)
+    Hooks::FrameXML::registerCVar(&s_cvar_voiceID, "ttsVoice",  nullptr, "1",  OnVoiceIDChanged); // Blizzard default 1 (English)
+    Hooks::FrameXML::registerCVar(&s_cvar_speed,   "ttsSpeed",  nullptr, "0",  OnSpeedChanged);   // Default 0 (normal)
+    Hooks::FrameXML::registerCVar(&s_cvar_volume,  "ttsVolume", nullptr, "100",OnVolumeChanged);  // Default 100 (full)
+}
+
+using CGameDestroy_t = int(__cdecl*)();
+auto CGame_Destroy_orig = reinterpret_cast<CGameDestroy_t>(0x00406B70);
+
+int __cdecl CGame_DestroyHk() {
+    VoiceChat::shutdown();
+    return CGame_Destroy_orig();
 }
 
 // ============================================================================
@@ -753,6 +763,8 @@ void VoiceChat::initialize()
     Hooks::FrameXML::registerEvent(VOICE_CHAT_TTS_PLAYBACK_STARTED);
     Hooks::FrameXML::registerEvent(VOICE_CHAT_TTS_SPEAK_TEXT_UPDATE); // unused
     Hooks::FrameXML::registerEvent(VOICE_CHAT_TTS_VOICES_UPDATE);
+
+    Hooks::Detour(&CGame_Destroy_orig, CGame_DestroyHk);
 
     VoiceChat_RefreshVoices(); // fill cache and fire VOICES_UPDATE at startup
 }

@@ -1,8 +1,10 @@
 #include "MSDFFont.h"
 #include "MSDFCache.h"
 #include "MSDFValidator.h"
+#include "MSDFUtils.h"
+#include <ranges>
 
-MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize, FT_Long faceIndex)
+MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize)
     : m_ftFace(face), m_msdfFont(nullptr), m_isValid(false), m_oldestPage(0), m_evictionCount(0)
 {
     if (!face) return;
@@ -14,13 +16,7 @@ MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize, FT_L
         face->family_name ? face->family_name : "Unknown", face->style_name ? face->style_name : "",
         MSDF::SDF_RENDER_SIZE, MSDF::SDF_SPREAD);
 
-    if (MSDF::IS_CJK) {
-        m_isValid = (m_cache->GetManifestSize() >= MSDF::CJK_CACHE_THRESHOLD) &&
-            (MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont));
-    }
-    else {
-        m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
-    }
+    m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
     if (m_isValid) m_glyphPool.reserve(4096);
 }
 
@@ -42,10 +38,10 @@ MSDFFont* MSDFFont::Get(FT_Face face) {
     return nullptr;
 }
 
-void MSDFFont::Register(FT_Face face, const FT_Byte* data, FT_Long size, FT_Long index) {
+void MSDFFont::Register(FT_Face face, const FT_Byte* data, FT_Long size) {
     if (s_fontHandles.find(face) != s_fontHandles.end()) return;
-    auto font = std::make_unique<MSDFFont>(face, data, size, index);
-    if (font->m_msdfFont && (MSDF::IS_PREGEN || font->m_isValid)) s_fontHandles[face] = std::move(font);
+    auto font = std::make_unique<MSDFFont>(face, data, size);
+    if (font->m_msdfFont && font->m_isValid) s_fontHandles[face] = std::move(font);
 }
 
 void MSDFFont::Unregister(FT_Face face) {
@@ -56,7 +52,7 @@ void MSDFFont::Unregister(FT_Face face) {
 }
 
 void MSDFFont::ClearAllCache() {
-    for (auto& [face, handle] : s_fontHandles) {
+    for (auto& handle : s_fontHandles | std::views::values) {
         if (handle) {
             handle->m_atlasPages.clear();
             handle->m_oldestPage = 0;
@@ -104,12 +100,12 @@ const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
         FT_BBox bbox;
         FT_Outline_Get_BBox(&m_ftFace->glyph->outline, &bbox);
 
-        int w = std::max(0, static_cast<int>(((bbox.xMax + 63) >> 6) - (bbox.xMin >> 6)));
-        int h = std::max(0, static_cast<int>(((bbox.yMax + 63) >> 6) - (bbox.yMin >> 6)));
+        uint16_t w = static_cast<uint16_t>(std::max(0, static_cast<int>(((bbox.xMax + 63) >> 6) - (bbox.xMin >> 6))));
+        uint16_t h = static_cast<uint16_t>(std::max(0, static_cast<int>(((bbox.yMax + 63) >> 6) - (bbox.yMin >> 6))));
 
         if (w > 0 && h > 0) {
-            int sdfW = w + 2 * MSDF::SDF_SPREAD;
-            int sdfH = h + 2 * MSDF::SDF_SPREAD;
+            uint16_t sdfW = w + 2 * MSDF::SDF_SPREAD;
+            uint16_t sdfH = h + 2 * MSDF::SDF_SPREAD;
             storage.ownedPixelData.reserve(static_cast<size_t>(sdfW) * sdfH * 4);
             if (GenerateMSDF(storage.ownedPixelData, codepoint, sdfW, sdfH)) {
                 storage.width = sdfW;
@@ -153,14 +149,14 @@ bool MSDFFont::CreateAtlasPage() {
 bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
     if (!metrics.pixelData || metrics.width == 0 || metrics.height == 0) return true;
 
-    int pageIndex = -1;
+    int16_t pageIndex = -1;
     AtlasPage* targetPage = nullptr;
 
     for (size_t i = 0; i < m_atlasPages.size(); ++i) {
         AtlasPage* page = m_atlasPages[i].get();
         if (page->nextX + metrics.width + MSDF::ATLAS_GUTTER <= MSDF::ATLAS_SIZE &&
             page->nextY + metrics.height + MSDF::ATLAS_GUTTER <= MSDF::ATLAS_SIZE) {
-            pageIndex = static_cast<int>(i);
+            pageIndex = static_cast<int16_t>(i);
             targetPage = page;
             break;
         }
@@ -169,7 +165,7 @@ bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
             page->nextX = MSDF::ATLAS_GUTTER;
             page->nextY = nextY;
             page->rowHeight = 0;
-            pageIndex = static_cast<int>(i);
+            pageIndex = static_cast<int16_t>(i);
             targetPage = page;
             break;
         }
@@ -197,7 +193,7 @@ bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
         }
         else {
             if (!CreateAtlasPage()) return false;
-            pageIndex = static_cast<int>(m_atlasPages.size() - 1);
+            pageIndex = static_cast<int16_t>(m_atlasPages.size() - 1);
             targetPage = m_atlasPages.back().get();
         }
     }
@@ -215,7 +211,7 @@ bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
     const unsigned char* src = metrics.pixelData;
     unsigned char* dest = static_cast<unsigned char*>(lockedRect.pBits) +
         targetPage->nextY * lockedRect.Pitch + targetPage->nextX * 4;
-    for (int y = 0; y < metrics.height; ++y) {
+    for (uint16_t y = 0; y < metrics.height; ++y) {
         memcpy(dest, src, metrics.width * 4);
         dest += lockedRect.Pitch;
         src += metrics.width * 4;
@@ -236,7 +232,7 @@ bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
     return true;
 }
 
-bool MSDFFont::GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, int sdfW, int sdfH) {
+bool MSDFFont::GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, int sdfW, int sdfH) const {
     if (sdfW <= 0 || sdfH <= 0 || sdfW > 512 || sdfH > 512) return false;
 
     msdfgen::Shape shape;

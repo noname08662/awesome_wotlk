@@ -214,13 +214,14 @@ private:
         DecomposeCtx ctx;
         ctx.tol = tol;
 
-        FT_Outline_Funcs funcs = {};
-        funcs.move_to = move_to_func_internal;
-        funcs.line_to = line_to_func_internal;
-        funcs.conic_to = conic_to_func_internal;
-        funcs.cubic_to = cubic_to_func_internal;
-        funcs.shift = 0;
-        funcs.delta = 0;
+        FT_Outline_Funcs funcs = {
+            .move_to = move_to_func_internal,
+            .line_to = line_to_func_internal,
+            .conic_to = conic_to_func_internal,
+            .cubic_to = cubic_to_func_internal,
+            .shift = 0,
+            .delta = 0
+        };
 
         if (FT_Outline_Decompose(const_cast<FT_Outline*>(&outline), &funcs, &ctx) != 0) {
             return false;
@@ -251,8 +252,7 @@ private:
     static std::vector<Vec> flattenMsdfContour(const msdfgen::Contour& contour, double tol) {
         std::vector<Vec> result;
 
-        for (size_t i = 0; i < contour.edges.size(); ++i) {
-            const msdfgen::EdgeSegment* edge = contour.edges[i];
+        for (const auto& edge : contour.edges) {
             if (!edge) continue;
 
             const msdfgen::Point2 start = edge->point(0);

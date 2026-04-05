@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "MSDF.h"
+#include "MSDFUtils.h"
 #include "ankerl/unordered_dense.h"
 #include <filesystem>
 #include <deque>
@@ -9,7 +10,6 @@ class MSDFPregen;
 class MSDFFont;
 
 class MSDFCache {
-private:
     struct BlockKey {
         uint32_t fontId;
         uint32_t blockId;
@@ -26,7 +26,7 @@ private:
     friend class MSDFFont;
     friend class MSDFPregen;
     friend class MSDFManager;
-    friend struct std::hash<MSDFCache::BlockKey>;
+    friend struct std::hash<BlockKey>;
 
 public:
     MSDFCache(const FT_Byte* fontData, FT_Long dataSize,
@@ -40,7 +40,7 @@ public:
     MSDFCache& operator=(MSDFCache&&) = delete;
 
 private:
-    static constexpr const char* CACHE_DIR = "Cache_AwesomeWotLK";
+    static constexpr auto* CACHE_DIR = "Cache_AwesomeWotLK";
     static constexpr uint32_t CACHE_VERSION = 1;
     static constexpr uint32_t BLOCK_MAGIC = 0x4D534442;
     static constexpr uint32_t MANIFEST_MAGIC = 0x4D534D46;
@@ -51,11 +51,9 @@ private:
     struct CacheKey {
         uint32_t sdfRenderSize = 0;
         uint32_t sdfSpread = 0;
-        uint32_t d3dFormat = 0;
         bool operator==(const CacheKey& other) const {
             return sdfRenderSize == other.sdfRenderSize &&
-                sdfSpread == other.sdfSpread &&
-                d3dFormat == other.d3dFormat;
+                sdfSpread == other.sdfSpread;
         }
     };
 
@@ -70,6 +68,7 @@ private:
         uint32_t version;
         CacheKey key;
         uint32_t entryCount;
+        uint32_t pad;
     };
 
     struct ManifestEntry {
@@ -88,8 +87,8 @@ private:
         uint32_t codepoint;
         uint16_t width;
         uint16_t height;
-        int16_t bitmapTop;
-        int16_t bitmapLeft;
+        FT_Int bitmapTop;
+        FT_Int bitmapLeft;
         uint32_t dataOffset;
         uint32_t dataSize;
 
@@ -112,24 +111,21 @@ private:
 
     bool LoadManifest();
     bool SaveManifest(bool isLocked = false);
-    bool LoadManifestFromFile(const std::filesystem::path& path, ManifestMap& outMap);
-    bool LoadManifestJournal(const std::filesystem::path& journalPath, ManifestMap& outMap, size_t& outEntriesApplied);
+    bool LoadManifestFromFile(const std::filesystem::path& path, ManifestMap& outMap) const;
+    static bool LoadManifestJournal(const std::filesystem::path& journalPath, ManifestMap& outMap, size_t& outEntriesApplied);
     bool AppendManifestJournal(const std::vector<ManifestEntry>& entries);
 
     void BuildBlockLockPath(uint32_t blockId, std::filesystem::path& outPath) const;
     void BuildBlockPath(uint32_t blockId, std::filesystem::path& outPath) const;
 
     bool FlushPendingWrites();
-    bool WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore*>& pendingForBlock,
-        std::vector<ManifestEntry>& outNewEntries);
-    void CleanupOrphans();
+    bool WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore*>& pending, std::vector<ManifestEntry>& outEntries);
+    void CleanupOrphans() const;
 
     static uint32_t GetBlockId(uint32_t codepoint);
     static std::string GetCacheBasePath(const char* familyName, const char* styleName,
         uint32_t sdfRenderSize, uint32_t sdfSpread);
     static std::string SanitizeName(std::string_view name);
-
-    uint32_t m_fontID;
 
     std::filesystem::path m_cacheBasePath;
     std::filesystem::path m_cacheManifestPath;
@@ -139,7 +135,8 @@ private:
     CacheKey m_key;
     ManifestMap m_manifest;
 
-    bool m_manifestLoaded;
+    bool m_manifestLoaded = false;
+    uint32_t m_fontID = 0xFFFFFFFF;
 
     VectorPool<uint8_t> m_vecPool;
     VectorPool<uint32_t> m_hashPool;
@@ -153,12 +150,10 @@ private:
     static MSDFManager s_manager;
 };
 
-namespace std {
-    template<>
-    struct hash<MSDFCache::BlockKey> {
-        size_t operator()(const MSDFCache::BlockKey& k) const noexcept {
-            uint64_t packed = k.pack();
-            return ankerl::unordered_dense::detail::wyhash::hash(&packed, sizeof(packed));
-        }
-    };
-}
+template<>
+struct std::hash<MSDFCache::BlockKey> {
+    size_t operator()(const MSDFCache::BlockKey& k) const noexcept {
+        uint64_t packed = k.pack();
+        return ankerl::unordered_dense::detail::wyhash::hash(&packed, sizeof(packed));
+    }
+};

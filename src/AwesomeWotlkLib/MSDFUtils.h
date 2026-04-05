@@ -1,8 +1,7 @@
 #pragma once
+#include <windows.h>
 #include <array>
 #include <filesystem>
-#include <chrono>
-#include <thread>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -38,7 +37,7 @@ private:
         hFile = CreateFileW(lockFilePath.c_str(),
             GENERIC_READ | GENERIC_WRITE,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (hFile == INVALID_HANDLE_VALUE) return false;
 
         ULONGLONG start = GetTickCount64();
@@ -154,18 +153,18 @@ struct FileGuard {
 };
 
 struct MappingGuard {
-    HANDLE handle = NULL;
-    MappingGuard(HANDLE h = NULL) : handle(h) {}
+    HANDLE handle = nullptr;
+    MappingGuard(HANDLE h = nullptr) : handle(h) {}
     ~MappingGuard() { Close(); }
-    HANDLE Release() { HANDLE h = handle; handle = NULL; return h; }
+    HANDLE Release() { HANDLE h = handle; handle = nullptr; return h; }
     void Close() {
-        if (handle != NULL) {
+        if (handle != nullptr) {
             CloseHandle(handle);
-            handle = NULL;
+            handle = nullptr;
         }
     }
     operator HANDLE() const { return handle; }
-    bool IsValid() const { return handle != NULL; }
+    bool IsValid() const { return handle != nullptr; }
     MappingGuard(const MappingGuard&) = delete;
     MappingGuard& operator=(const MappingGuard&) = delete;
 };
@@ -186,65 +185,6 @@ struct ViewGuard {
     ViewGuard& operator=(const ViewGuard&) = delete;
 };
 
-class Throttle {
-private:
-    double targetUsage;
-    std::chrono::steady_clock::time_point lastSleep;
-    std::chrono::milliseconds accumulatedWork{ 0 };
-
-public:
-    Throttle(double targetPercent)
-        : targetUsage(std::clamp(targetPercent, 1.0, 100.0)),
-        lastSleep(std::chrono::steady_clock::now()) {
-    }
-    void StartWork() {
-        lastSleep = std::chrono::steady_clock::now();
-    }
-    void EndWork() {
-        auto now = std::chrono::steady_clock::now();
-        auto workDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastSleep);
-        accumulatedWork += workDuration;
-
-        if (accumulatedWork.count() >= 100) {
-            int sleepMs = static_cast<int>(accumulatedWork.count() / (targetUsage / 100.0) - accumulatedWork.count());
-            if (sleepMs > 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
-            }
-            accumulatedWork = std::chrono::milliseconds{ 0 };
-        }
-        lastSleep = std::chrono::steady_clock::now();
-    }
-};
-
-struct ConsoleGuard {
-    FILE* fpOut = nullptr;
-    FILE* fpIn = nullptr;
-    bool allocated = false;
-    HWND wnd = nullptr;
-
-    ConsoleGuard() {
-        wnd = GetActiveWindow();
-        allocated = AllocConsole() || GetLastError() == ERROR_ACCESS_DENIED;
-        if (allocated) {
-            freopen_s(&fpOut, "CONOUT$", "w", stdout);
-            freopen_s(&fpIn, "CONIN$", "r", stdin);
-            if (wnd) {
-                ShowWindow(wnd, SW_MINIMIZE);
-            }
-            SetForegroundWindow(GetConsoleWindow());
-        }
-    }
-    ~ConsoleGuard() {
-        if (fpOut) fclose(fpOut);
-        if (fpIn) fclose(fpIn);
-        if (allocated) FreeConsole();
-        if (wnd) {
-            ShowWindow(wnd, SW_RESTORE);
-            SetForegroundWindow(wnd);
-        }
-    }
-};
-
 template <typename F>
 struct FinalAction {
     F clean;
@@ -255,7 +195,7 @@ struct FinalAction {
 };
 
 using FontHash = uint64_t;
-static FontHash HashFont(const FT_Byte* data, FT_Long size) {
+inline FontHash HashFont(const FT_Byte* data, FT_Long size) {
     uint64_t h = 0xcbf29ce484222325ULL;
     for (FT_Long i = 0; i < size; ++i) {
         h ^= data[i];

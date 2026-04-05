@@ -1,11 +1,8 @@
-WIP - REWRITING ALL OF THE LIB
-KIND OF SLOWLY, SORRY :<
-
 # Awesome WotLK
 ## World of Warcraft 3.3.5a 12340 Improvements Library
 ### Fork of https://github.com/FrostAtom/awesome_wotlk/
 
-## [Details](#details) - [Installation](#installation) - [Docs](https://github.com/someweirdhuman/awesome_wotlk/blob/main/docs/api_reference.md) - [3rd Party Libraries](#3rd-party-libraries)
+## [Details](#details) - [Installation](#installation) - [Docs](https://github.com/noname08662/awesome_wotlk/blob/main/docs/api_reference.md) - [3rd Party Libraries](#3rd-party-libraries)
 
 ___
 
@@ -29,6 +26,8 @@ ___
   - `C_NamePlate.GetNamePlateForUnit`
   - `C_NamePlate.GetNamePlateByGUID`
   - `C_NamePlate.GetNamePlateTokenByGUID`
+  - `GetStackingEnabled` nameplate method
+  - `SetStackingEnabled` nameplate method
 - **C_VoiceChat (TTS):**
   - `C_VoiceChat.SpeakText`
   - `C_VoiceChat.StopSpeakingText`
@@ -69,7 +68,6 @@ ___
   - `NAME_PLATE_CREATED`
   - `NAME_PLATE_UNIT_ADDED`
   - `NAME_PLATE_UNIT_REMOVED`
-  - `NAME_PLATE_OWNER_CHANGED`
 - **TTS Events:**
   - `VOICE_CHAT_TTS_PLAYBACK_STARTED`
   - `VOICE_CHAT_TTS_PLAYBACK_FINISHED`
@@ -80,23 +78,25 @@ ___
 ### New CVars
 - **Nameplate CVars:**
   - `nameplateDistance`
+  - `nameplatePlacement`
+  - `nameplateMouseMode`
+  - `nameplateBandX`
+  - `nameplateBandY`
+  - `nameplateHitboxWidthE`
+  - `nameplateHitboxHeightE`
+  - `nameplateHitboxWidthF`
+  - `nameplateHitboxHeightF`
+  - `nameplateRaiseSpeed`
+  - `nameplateLowerSpeed`
+  - `nameplatePullSpeed`
+  - `nameplateRaiseDistance`
+  - `nameplatePullDistance`
+  - `nameplateOcclusionAlpha`
+  - `nameplateNonTargetAlpha`
+  - `nameplateAlphaSpeed`
+  - `nameplateClampTop`
+  - `nameplateClampTopOffset`
   - `nameplateStacking`
-  - `nameplateXSpace`
-  - `nameplateYSpace`
-  - `nameplateUpperBorder`
-  - `nameplateOriginPos`
-  - `nameplateSpeedRaise`
-  - `nameplateSpeedReset`
-  - `nameplateSpeedLower`
-  - `nameplateHitboxHeight`
-  - `nameplateHitboxWidth`
-  - `nameplateFriendlyHitboxHeight`
-  - `nameplateFriendlyHitboxWidth`
-  - `nameplateStackFriendly`
-  - `nameplateStackFriendlyMode`
-  - `nameplateMaxRaiseDistance`
-  - `nameplateExtendWorldFrameHeight`
-  - `nameplateUpperBorderOnlyBoss`
 - **Interaction CVars:**
   - `interactionMode`
   - `interactionAngle`
@@ -122,20 +122,20 @@ A new keybind for smart interaction with the game world:
 
 ### Nameplate Stacking
 New nameplate stacking system to prevent overlapping:
-- Enable stacking: `/console nameplateStacking 1` (reload recommended after enabling/disabling)
+- Enable stacking: `/console nameplateStacking 1`
 - **Important:** If using [this WeakAura](https://wago.io/AQdGXNEBH), delete it and restart the client before using this feature
-- See [Docs](https://github.com/someweirdhuman/awesome_wotlk/blob/main/docs/api_reference.md) for detailed CVar information
+- See [Docs](https://github.com/noname08662/awesome_wotlk/blob/main/docs/api_reference.md) for detailed CVar information
 - All settings are configurable in-game via `/awesome` command (requires AwesomeCVar addon)
 
 **Recommended:** Use the AwesomeCVar addon and the `/awesome` command to configure all CVars through an intuitive in-game interface.
 
 ### AwesomeCVar Addon
-![AwesomeCVar Preview](https://raw.githubusercontent.com/someweirdhuman/awesome_wotlk/refs/heads/main/docs/assets/preview.png)
+![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/preview_v2.png)
 
 ___
 
 ## Installation
-1. Download the latest [release](https://github.com/someweirdhuman/awesome_wotlk/releases)
+1. Download the latest [release](https://github.com/noname08662/awesome_wotlk/releases)
 2. Extract all files to your game's root folder
 3. Run `AwesomeWotlkPatch.exe` (you should see a confirmation message), or drag `Wow.exe` onto `AwesomeWotlkPatch.exe`
 4. To update, simply download the new version and replace the DLL file

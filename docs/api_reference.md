@@ -46,25 +46,42 @@ local token = C_NamePlate.GetNamePlateTokenByGUID(destGUID)
 local frame = C_NamePlate.GetNamePlateForUnit(token)
 ```
 
+## GetStackingEnabled `Method`
+**Arguments:** none  
+**Returns:** `enabled` (boolean)
+
+Returns the per-nameplate stacking override flag. Defaults to true for all relevant units.
+
+```lua
+print(string.format("Target nameplate is %s", C_NamePlate.GetNamePlateForUnit('target'):GetStackingEnabled() and "stacking" or "not stacking"))
+```
+
+## SetStackingEnabled `Method`
+**Arguments:** `enabled` (boolean)  
+**Returns:** none
+
+Sets the per-nameplate stacking override flag.
+
+```lua
+for _, nameplate in pairs(C_NamePlate.GetNamePlates()) do
+  nameplate:SetStackingEnabled(UnitName(nameplate.unit) == "Thatguy")
+end
+```
+
 ## NAME_PLATE_CREATED `Event`
 **Parameters:** `namePlateBase` (frame)
 
-Fires when a nameplate is created.
+Fires when a nameplate object is initially created.
 
 ## NAME_PLATE_UNIT_ADDED `Event`
 **Parameters:** `unitId` (string)
 
-Fires when a new nameplate appears.
+Fires when a nameplate becomes active and is attached to a unit.
 
 ## NAME_PLATE_UNIT_REMOVED `Event`
 **Parameters:** `unitId` (string)
 
-Fires when a nameplate is about to be hidden.
-
-## NAME_PLATE_OWNER_CHANGED `Event`
-**Parameters:** `unitId` (string)
-
-Fires when the nameplate owner changes (workaround for [this issue](https://github.com/FrostAtom/awesome_wotlk/blob/main/src/AwesomeWotlkLib/NamePlates.cpp#L170)).
+Fires when a nameplate is detached from a unit and is about to be hidden.
 
 ## nameplateDistance `CVar`
 **Arguments:** `distance` (number)  
@@ -73,117 +90,122 @@ Fires when the nameplate owner changes (workaround for [this issue](https://gith
 Sets the display distance of nameplates in yards.
 
 ## nameplateStacking `CVar`
-**Arguments:** `enabled` (boolean)  
-**Default:** 0
-
-Enables or disables the nameplate stacking feature.
-
-## nameplateXSpace `CVar`
-**Arguments:** `width` (number)  
-**Default:** 130
-
-Sets the effective width of a nameplate used in collision/stacking calculations.
-
-## nameplateYSpace `CVar`
-**Arguments:** `height` (number)  
-**Default:** 20
-
-Sets the effective height of a nameplate used in stacking collision calculations.
-
-## nameplateUpperBorder `CVar`
-**Arguments:** `offset` (number)  
-**Default:** 30
-
-Defines the vertical offset from the top of the screen where nameplates stop stacking upward.
-
-## nameplateOriginPos `CVar`
-**Arguments:** `offset` (number)  
-**Default:** 20
-
-Offset used to push nameplates slightly higher than their default position.
-
-## nameplateSpeedRaise `CVar`
-**Arguments:** `speed` (number)  
-**Default:** 1
-
-Speed at which nameplates move **upward** during stacking resolution.
-
-## nameplateSpeedReset `CVar`
-**Arguments:** `speed` (number)  
-**Default:** 1
-
-Speed at which nameplates **reset** during stacking resolution.
-
-## nameplateSpeedLower `CVar`
-**Arguments:** `speed` (number)  
-**Default:** 1
-
-Speed at which nameplates move **downward** during stacking resolution.
-
-## nameplateFriendlyHitboxHeight `CVar`
-**Arguments:** `height` (number)  
-**Default:** 0
-
-Height of a clickable **friendly** nameplate hitbox. Addons may override or break this; reload or disable/enable nameplates afterward.  
-Use 0 to disable and use default values.  
-Affected by the `nameplateStackFriendlyMode` setting, which has an unintuitive name.
-
-## nameplateFriendlyHitboxWidth `CVar`
-**Arguments:** `width` (number)  
-**Default:** 0
-
-Width of a clickable **friendly** nameplate hitbox. Addons may override or break this; reload or disable/enable nameplates afterward.  
-Use 0 to disable and use default values.
-
-## nameplateHitboxHeight `CVar`
-**Arguments:** `height` (number)  
-**Default:** 0
-
-Height of a clickable nameplate hitbox. Addons may override or break this; reload or disable/enable nameplates afterward.  
-Use 0 to disable and use default values.
-
-## nameplateHitboxWidth `CVar`
-**Arguments:** `width` (number)  
-**Default:** 0
-
-Width of a clickable nameplate hitbox. Addons may override or break this; reload or disable/enable nameplates afterward.  
-Use 0 to disable and use default values.
-
-## nameplateStackFriendly `CVar`
-**Arguments:** `toggle` (boolean)  
-**Default:** 1
-
-Toggles whether friendly nameplates stack or overlap.  
-- **0** = overlapping  
-- **1** = stacking
-
-## nameplateStackFriendlyMode `CVar`
 **Arguments:** `mode` (number)  
+**Default:** 0
+
+Defines the nameplate stacking behavior.
+- **0** = Disabled (Overlapping)
+- **1** = Enable All 
+- **2** = Enemy Only
+- **3** = Friendly Only
+
+## nameplateMouseMode `CVar`
+**Arguments:** `mode` (number)  
+**Default:** 0
+
+Defines nameplate mouse interaction and depth behavior.
+- **0** = Disabled/No Changes  
+- **1** = Click-through enemies
+- **2** = Click-through enemies; always raise the frame level of occluded friendly plates on mouseover
+- **3** = Click-through enemies; raise the frame level of occluded friendly plates on mouseover (In Combat Only)
+- **4** = Click-through friendlies
+- **5** = Click-through friendlies; always raise the frame level of occluded enemy plates on mouseover
+- **6** = Click-through friendlies; raise the frame level of occluded enemy plates on mouseover (In Combat Only)
+- **7** = Always raise the frame level of any occluded plate on mouseover
+- **8** = Raise the frame level of any occluded plate on mouseover (In Combat Only)
+
+## nameplateBandX `CVar`
+**Arguments:** `width` (number)  
+**Default:** 0.7
+
+Sets the horizontal overlap tolerance. Represents the maximum combined width ratio nameplates are allowed to overlap during stacking.
+
+## nameplateBandY `CVar`
+**Arguments:** `height` (number)  
 **Default:** 1
 
-Changes how mob friendliness is determined.  
-- **0** = Uses `UnitReaction("player", "nameplate%") >= 5` with CanAttack check for reaction 4  
-- **1** = Uses healthbar color parsing (same method as WeakAuras)
+Sets the vertical separation margin. Represents the minimum combined height ratio required between nameplates during stacking.
 
-## nameplateMaxRaiseDistance `CVar`
-**Arguments:** `height` (number)  
-**Default:** 200
-
-Sets the maximum height a nameplate can rise before deciding to move down or stay in place.
-
-## nameplateExtendWorldFrameHeight `CVar`
-**Arguments:** `enabled` (boolean)  
+## nameplatePlacement `CVar`
+**Arguments:** `offset` (number)  
 **Default:** 0
 
-When enabled, extends the height of the WorldFrame, allowing nameplates that would normally be out of view to remain visible.
+A vertical offset ratio used to displace nameplates from their original anchor points.
 
-**Note:** This may interfere with some UI elements or addons that rely on the original WorldFrame height. It's recommended to use a WeakAura or addon to toggle this setting only during raids or boss encounters.
+## nameplateRaiseSpeed `CVar`
+**Arguments:** `speed` (number)  
+**Default:** 100
 
-## nameplateUpperBorderOnlyBoss `CVar`
-**Arguments:** `enabled` (boolean)  
+The velocity at which nameplates shift **upward** to resolve stacking conflicts.
+
+## nameplateLowerSpeed `CVar`
+**Arguments:** `speed` (number)  
+**Default:** 100
+
+The velocity at which nameplates shift **downward** to resolve stacking conflicts.
+
+## nameplatePullSpeed `CVar`
+**Arguments:** `speed` (number)  
+**Default:** 50
+
+The velocity at which nameplates shift **horizontally** to resolve stacking conflicts.
+
+## nameplateHitboxHeightF / nameplateHitboxWidthF `CVar`
+**Arguments:** `scale` (number)  
+**Default:** 1
+
+Multipliers for the clickable hitbox dimensions of **friendly** nameplates.
+
+## nameplateHitboxHeightE / nameplateHitboxWidthE `CVar`
+**Arguments:** `scale` (number)  
+**Default:** 1
+
+Multipliers for the clickable hitbox dimensions of **enemy** nameplates.
+
+## nameplateRaiseDistance `CVar`
+**Arguments:** `distance` (number)  
+**Default:** 8
+
+Sets the maximum vertical distance (as a ratio of plate height) a nameplate can be pushed from its origin.
+
+## nameplatePullDistance `CVar`
+**Arguments:** `distance` (number)  
+**Default:** 0.25
+
+Sets the maximum horizontal distance (as a ratio of plate width) a nameplate can be pulled from its origin.
+
+## nameplateClampTop `CVar`
+**Arguments:** `mode` (number)  
 **Default:** 0
 
-When enabled, only boss creature nameplates will stick to the top of the screen; all other nameplates will overflow.
+Restricts nameplates from moving beyond the top edge of the screen.
+- **0** = Disabled  
+- **1** = Enabled (All)
+- **2** = Bosses Only
+
+## nameplateClampTopOffset `CVar`
+**Arguments:** `offset` (number)  
+**Default:** 0.1
+
+Sets the vertical screen boundary for clamping (0.0 is the very top). Requires `nameplateClampTop` to be enabled.
+
+## nameplateOcclusionAlpha `CVar`
+**Arguments:** `alpha` (number)  
+**Default:** 1
+
+Sets the transparency level for nameplates blocked by line-of-sight (objects or terrain).
+
+## nameplateNonTargetAlpha `CVar`
+**Arguments:** `alpha` (number)  
+**Default:** 0.5
+
+Sets the transparency level for all nameplates except the current target.
+
+## nameplateAlphaSpeed `CVar`
+**Arguments:** `speed` (number)  
+**Default:** 0.25
+
+Determines the transition speed for `nameplateOcclusionAlpha` and `nameplateNonTargetAlpha` alpha state changes.
 
 ---
 
