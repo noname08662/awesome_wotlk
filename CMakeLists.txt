@@ -1,36 +1,54 @@
-cmake_minimum_required(VERSION 3.15)
+project( AwesomeWotlkLib )
 
-project(AwesomeWotLK LANGUAGES CXX C)
+add_library(
+	${PROJECT_NAME} SHARED
+		"Entry.cpp"
 
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/$<CONFIG>")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/$<CONFIG>")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/$<CONFIG>")
+		"GameClient.h" "Utils.h"
+		"Enums.h" "Types.h"
+		"D3D.h" "D3D.cpp"
+		"Camera.h" "Camera.cpp"
+        "NamePlates.h" "NamePlates.cpp"
+		"Hooks.h" "Hooks.cpp"
+		"Misc.h" "Misc.cpp"
+		"BugFixes.h" "BugFixes.cpp"
+		"MSDF.h" "MSDF.cpp"
+		"MSDFValidator.h" "MSDFUtils.h" "MSDFShaders.h"
+		"MSDFCache.h" "MSDFCache.cpp"
+		"MSDFManager.h" "MSDFManager.cpp"
+		"MSDFFont.h" "MSDFFont.cpp"
+		"CommandLine.cpp" "CommandLine.h"
+		"Inventory.cpp" "Inventory.h"
+		"Item.h" "Item.cpp"
+		"UnitAPI.h" "UnitAPI.cpp"
+		"Spell.h" "Spell.cpp"
+		"VoiceChat.h" "VoiceChat.cpp")
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-
-add_compile_definitions(
-  WIN32_LEAN_AND_MEAN
-  _CRT_SECURE_NO_WARNINGS
-  UNICODE
-  _UNICODE
+target_include_directories(
+    ${PROJECT_NAME} PRIVATE
+		${CMAKE_SOURCE_DIR}/deps
+		${CMAKE_SOURCE_DIR}/deps/skia/include
+		${CMAKE_SOURCE_DIR}/deps/msdfgen
+		${CMAKE_BINARY_DIR}/deps/msdfgen
+		${CMAKE_SOURCE_DIR}/unordered_dense/include
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-  add_compile_options(/W3 /wd4458)
-  add_compile_options("$<$<CONFIG:Release>:/O2;/Gw;/GL;/DNDEBUG>")
-  add_compile_options("$<$<CONFIG:Debug>:/Od;/Zi;/DDEBUG>")
-  add_link_options("$<$<CONFIG:Release>:/LTCG>")
-  set(CMAKE_SYSTEM_VERSION 10.0)
-elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  add_compile_options("$<$<CONFIG:Release>:/O2;/Gw;/GL;/DNDEBUG>")
-  add_compile_options("$<$<CONFIG:Debug>:/Od;/Zi;/DDEBUG>")
-  add_link_options("$<$<CONFIG:Release>:/LTCG>")
-else()
-  message(FATAL_ERROR "Unsupported toolset, use MSVC or Clang for build")
-endif()
+target_link_libraries(
+    ${PROJECT_NAME} PRIVATE
+        Detours
+		msdfgen::msdfgen-core
+		msdfgen::msdfgen-ext
+		freetype
+        ole32
+        oleaut32
+        uuid
+        sapi
+		"${CMAKE_SOURCE_DIR}/deps/skia/skia.lib"
+		ankerl::unordered_dense
+)
 
-add_subdirectory(deps)
-add_subdirectory(src)
+target_compile_definitions(
+    ${PROJECT_NAME} PRIVATE
+        APP_NAME="${PROJECT_NAME}"
+)
