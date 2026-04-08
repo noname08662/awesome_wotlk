@@ -522,6 +522,7 @@ function ACVar:CreateMainFrame()
             local text = control:CreateFontString(nil, "ARTWORK", "GameFontNormal")
             text:SetPoint("TOPLEFT", 0, 0)
             text:SetText(cvarDef.label..":")
+			text:SetJustifyH("CENTER")
             local controlHeight = text:GetHeight()
             local descText
             if cvarDef.desc then
@@ -529,6 +530,7 @@ function ACVar:CreateMainFrame()
                 descText:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -2)
                 descText:SetText(cvarDef.desc)
                 descText:SetTextColor(unpack(CONSTANTS.COLORS.DESC_TEXT))
+				descText:SetJustifyH("CENTER")
                 controlHeight = controlHeight + descText:GetHeight() + 2
             end
 
@@ -545,7 +547,7 @@ function ACVar:CreateMainFrame()
             elseif cvarDef.type == "dropdown" then
                 additionalHeight = createDropdownControl(control, cvarDef, text, descText)
                 controlHeight = controlHeight + additionalHeight + 5
-            else
+			elseif cvarDef.type ~= "description" then
                 text:SetText(text:GetText().." (Unsupported type: "..tostring(cvarDef.type)..")")
             end
             control:SetHeight(controlHeight)
