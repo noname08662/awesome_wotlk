@@ -85,7 +85,6 @@ namespace {
     float g_hitHeightE = 1.0f;
     float g_hitWidthF = 1.0f;
     float g_hitHeightF = 1.0f;
-    float g_placement = 0.0f;
     float g_speedRaise = 100.0f;
     float g_speedLower = 100.0f;
     float g_speedPull = 50.0f;
@@ -805,7 +804,7 @@ namespace {
 
             if (!e1->hasState(Entry::IEState::SHOULD_STACK) || e1->hasState(Entry::IEState::IS_FRESH)) {
                 e1->updVis(g_speedLower, g_speedPull, sceneTime, g_maxRaise, g_clampTopOffset);
-                e1->ptr->SetPoint(1, pThis, 6, e1->getVisX(), e1->getVisY() + (e1->ptr->m_height * g_placement), 1);
+                e1->ptr->SetPoint(1, pThis, 6, e1->getVisX(), e1->getVisY(), 1);
                 e1->ptr->SetFrameDepth(e1->ptr->m_depthZ - pThis->m_depth, 1);
                 continue;
             }
@@ -855,7 +854,7 @@ namespace {
             e->updVis(((e->targetOffsetY - e->stackOffsetY) > 0.0f) ? g_speedRaise : g_speedLower,
                 g_speedPull, sceneTime, g_maxRaise, g_clampTopOffset);
             e->setState(Entry::IEState::IS_FRESH, false);
-            e->ptr->SetPoint(1, pThis, 6, e->getVisX(), e->getVisY() + (e->ptr->m_height * g_placement), 1);
+            e->ptr->SetPoint(1, pThis, 6, e->getVisX(), e->getVisY(), 1);
             e->ptr->SetFrameDepth(e->ptr->m_depthZ - pThis->m_depth, 1);
             e->ptr->SetFrameLevel(level, 1);
             level -= 10; // addons buffer
@@ -921,28 +920,28 @@ namespace {
         return (result == 7 || r); // 7 = unit is outside the top edge of the viewport
     }
 
-    uint8_t __fastcall CSimpleFrame__SetFrameAlpha_siteWrapper(CGUnit_C* unit) {
-        // original logic + traceline + alpha blending
-        if (!unit || !unit->m_nameplate) return 255;
-        uint8_t targetAlpha = (*g_lockedTarget)
-            ? ((unit->GetEntry<UnitEntry>()->m_guid == *g_lockedTarget) ? 255 : 255 * g_nonTargetAlpha)
-            : 255;
-        float current = static_cast<float>(unit->m_nameplate->m_alpha);
-        if (g_occlusionAlpha < 1.0f) {
-            if (CGCamera* cam = CGCamera::GetActiveCamera()) {
-                C3Vector hitPoint; float dist = 1.0f;
-                C3Vector start = cam->m_pos; C3Vector end;
-                unit->GetPosition(end); end.Z += unit->m_unitHeight / 2.0f;
-                if (CGGameUI::TraceLine(start, end, 0x100111, hitPoint, dist)) {
-                    if (unit->m_nameplate->HasPlateState(EFrameState::NP_IS_FRESH)) {
-                        unit->m_nameplate->SetPlateState(EFrameState::NP_IS_FRESH, false);
-                        return static_cast<uint8_t>(targetAlpha * g_occlusionAlpha);
-                    }
-                    return static_cast<uint8_t>(current + (targetAlpha * g_occlusionAlpha - current) * g_alphaSpd);
-                }
-            }
-        }
-        return static_cast<uint8_t>(current + (targetAlpha - current) * g_alphaSpd);
+	uint8_t __fastcall CSimpleFrame__SetFrameAlpha_siteWrapper(CGUnit_C* unit) {
+    	// original logic + traceline + alpha blending
+    	if (!unit || !unit->m_nameplate) return 255;
+    	uint8_t targetAlpha = (*g_lockedTarget)
+			? ((unit->GetEntry<UnitEntry>()->m_guid == *g_lockedTarget) ? 255 : 255 * g_nonTargetAlpha)
+			: 255;
+    	float current = unit->m_nameplate->m_alpha;
+    	if (g_occlusionAlpha < 1.0f) {
+    		if (CGCamera* cam = CGCamera::GetActiveCamera()) {
+    			C3Vector hitPoint; float dist = 1.0f;
+    			C3Vector start = cam->m_pos; C3Vector end;
+    			unit->GetPosition(end); end.Z += unit->m_unitHeight * 0.666f;
+    			if (CGGameUI::TraceLine(start, end, 0x100111, hitPoint, dist)) {
+    				if (unit->m_nameplate->HasPlateState(EFrameState::NP_IS_FRESH)) {
+    					unit->m_nameplate->SetPlateState(EFrameState::NP_IS_FRESH, false);
+    					return static_cast<uint8_t>(targetAlpha * g_occlusionAlpha);
+    				}
+    				return static_cast<uint8_t>(current + (targetAlpha * g_occlusionAlpha - current) * g_alphaSpd);
+    			}
+    		}
+    	}
+    	return static_cast<uint8_t>(current + (targetAlpha - current) * g_alphaSpd);
     }
 
     guid_t* __cdecl CGGameUI__WipeActivePlatesHk() {
@@ -1073,8 +1072,15 @@ namespace {
         *reinterpret_cast<float*>(0x00ADAA7C) = f * f;
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
-    int CVarHandler_NameplatePlacement(CVar* cvar, const char*, const char* value, void*) {
-        const int result = cvar->Sync(value, &g_placement, -1.0f, 2.0f, "%.4f");
+	int CVarHandler_NameplatePlacement(CVar* cvar, const char*, const char* value, void*) {
+        float f;
+    	const int result = cvar->Sync(value, &f, -1.0f, 2.0f, "%.4f");
+    	DWORD oldProtect;
+    	void* targetAddr = CGNamePlate::VerticalPlacementOffset;
+    	if (VirtualProtect(targetAddr, sizeof(float), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+    		*CGNamePlate::VerticalPlacementOffset = f;
+    		VirtualProtect(targetAddr, sizeof(float), oldProtect, &oldProtect);
+    	}
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateBandX(CVar* cvar, const char*, const char* value, void*) {

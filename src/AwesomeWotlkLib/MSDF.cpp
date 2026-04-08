@@ -64,9 +64,7 @@ namespace {
     void __fastcall ProcessGeometry(CGxString* pThis) {
         if (!(pThis->m_flags & 0x40000000)) return;
 
-        CGxFont* fontObj = pThis->m_fontObj;
-        FT_Face fontFace = pThis->GetFontFace();
-        MSDFFont* fontHandle = MSDFFont::Get(fontFace);
+        MSDFFont* fontHandle = MSDFFont::Get(pThis->GetFontFace());
         if (!fontHandle) return;
 
         CGxFontGeomBatch* batch = pThis->m_geomBuffers[0];
@@ -74,7 +72,8 @@ namespace {
 
         TSGrowableArray<CGxFontVertex>& verts = batch->m_verts;
         if (verts.m_count < 4) return;
-
+		
+    	CGxFont* fontObj = pThis->m_fontObj;
         const uint32_t flags = fontObj->m_atlasPages[0].m_flags;
         const bool is3d = pThis->m_flags & 0x80; // native 3d obj - nameplate text, etc.
         const double fontSizeMult = pThis->m_fontSizeMult;
@@ -205,7 +204,6 @@ namespace {
             device->SetPixelShaderConstantF(MSDF::SDF_SAMPLER_SLOT, resetControl, 1);
             device->SetVertexShaderConstantF(MSDF::SDF_SAMPLER_SLOT, resetControl, 1);
         }
-        return;
     }
 
     char __cdecl GxuFontGlyphRenderGlyphHk(FT_Face fontFace, uint32_t fontSize, uint32_t codepoint, uint32_t pageInfo, CGxGlyphMetrics* resultBuffer, uint32_t outline_flag, uint32_t pad) {
@@ -508,9 +506,7 @@ namespace {
                         });
                 }
                 if (s_cachedPS) {
-                    if (shaderData->pixel_shader) {
-                        reinterpret_cast<IDirect3DPixelShader9*>(shaderData->pixel_shader)->Release();
-                    }
+                    if (shaderData->pixel_shader) shaderData->pixel_shader->Release();
                     shaderData->pixel_shader = s_cachedPS;
                     shaderData->compilation_flags = 1;
                 }

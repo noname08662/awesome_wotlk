@@ -54,9 +54,10 @@ void MSDFFont::Unregister(FT_Face face) {
 void MSDFFont::ClearAllCache() {
     for (auto& handle : s_fontHandles | std::views::values) {
         if (handle) {
+			handle->m_glyphPool.clear();
             handle->m_atlasPages.clear();
             handle->m_oldestPage = 0;
-            handle->m_evictionCount = 0;
+        	handle->m_evictionCount++;
         }
     }
 }

@@ -453,6 +453,9 @@ public:
     using GetName_t = const char*(__thiscall*)(CGUnit_C*, void*, int);
     inline static auto GetNameFn = reinterpret_cast<GetName_t>(0x0072A000);
 
+    using GetMissileTargetPosition_t = int(__thiscall*)(CGUnit_C*, C3Vector*);
+    inline static auto GetMissileTargetPositionFn = reinterpret_cast<GetMissileTargetPosition_t>(0x0071A720);
+
     guid_t GetGUID() const { return GetValue<guid_t>(OBJECT_FIELD_GUID); }
     const char* GetName(void* ptr, int flag) { return GetNameFn(this, ptr, flag); }
     ECreatureRank GetCreatureRank() const { return GetCreatureRankFn(this); }
@@ -460,6 +463,7 @@ public:
     bool CanAssist(const CGUnit_C* unit, bool ignoreFlags) const { return CanAssistFn(this, unit, ignoreFlags); }
     EUnitReaction UnitReaction(const CGUnit_C* unit) const { return UnitReactionFn(this, unit); }
     int UpdateReaction(int updateAll) { return UpdateReactionFn(this, updateAll); }
+    int GetMissileTargetPosition(C3Vector* out) { return GetMissileTargetPositionFn(this, out); }
     CGNamePlate* HideNamePlate() { return HideNamePlateFn(this); }
     bool IsFriendly(const CGUnit_C* player = ObjectMgr::Get<CGUnit_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER)) const {
         if (!player) return false; int reaction = player->UnitReaction(this);
@@ -1331,6 +1335,8 @@ public:
     float m_castStartTime;              // 0x2F0
     float m_castEndTime;                // 0x2F4
     uint32_t m_castFlags;               // 0x2F8
+
+	inline static auto VerticalPlacementOffset = reinterpret_cast<float*>(0x009FC830);
 
     using Create_t = CGNamePlate* (__thiscall*)(CGNamePlate*, CSimpleFrame*);
     inline static auto CreateFn = reinterpret_cast<Create_t>(0x0098F790);
