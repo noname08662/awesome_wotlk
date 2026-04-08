@@ -1,7 +1,8 @@
 [C_NamePlates](#c_nameplates) - [C_VoiceChat](#c_voicechat) - [Unit](#unit) - [Inventory](#inventory) - [Spell](#spell) - [Item](#item) - [Misc](#misc)
 
 # C_NamePlates
-Backported C-Lua interfaces from retail
+Backported C-Lua interfaces from retail  
+All nameplates come equipped with a `unit` field holding relevant `nameplateN` token string
 
 ## C_NamePlate.GetNamePlateForUnit `API`
 **Arguments:** `unitId` (string)  
