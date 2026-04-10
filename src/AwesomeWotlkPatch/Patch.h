@@ -1,13 +1,11 @@
 #pragma once
-#include <vector>
-
 
 struct PatchDetails {
     unsigned virtualAddress;
     const char* hexBytes;
 };
 
-PatchDetails s_patches[] = {
+inline PatchDetails s_patches[] = {
     {
         0x004DCCF0, // lua_ScanDllStart
         "B8" "00000000" // mov eax, 1

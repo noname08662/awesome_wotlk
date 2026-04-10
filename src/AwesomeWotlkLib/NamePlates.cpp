@@ -21,6 +21,7 @@ namespace {
     CVar* s_cvar_nameplateStacking;
     CVar* s_cvar_nameplateBandX;
     CVar* s_cvar_nameplateBandY;
+    CVar* s_cvar_nameplateHitboxAnchor;
     CVar* s_cvar_nameplateHitboxWidthE;
     CVar* s_cvar_nameplateHitboxHeightE;
     CVar* s_cvar_nameplateHitboxWidthF;
@@ -76,9 +77,10 @@ namespace {
         ST_OUT = 1 << 1
     };
 
-    EStackingMode g_stackingMode = EStackingMode::S_DISABLED;
-    EMouseMode g_mouseOverMode = EMouseMode::M_DISABLED;
-    EClampMode g_clampTop = EClampMode::C_DISABLED;
+    alignas(4) EStackingMode g_stackingMode = EStackingMode::S_DISABLED;
+    alignas(4) EMouseMode g_mouseOverMode = EMouseMode::M_DISABLED;
+    alignas(4) EClampMode g_clampTop = EClampMode::C_DISABLED;
+    alignas(4) CGNamePlate::EHitboxAnchor g_hitAnchor = CGNamePlate::EHitboxAnchor::HB_CENTER;
     float g_bandX = 0.7f;
     float g_bandY = 1.0f;
     float g_hitWidthE = 1.0f;
@@ -197,8 +199,8 @@ namespace {
             case RANK_ELITE: return 3;
             case RANK_RAREELITE: return 4;
             case RANK_WORLDBOSS: return 5;
-            default: return 0;
             }
+            return 0;
         }
 
         bool resolvePush(const Entry* e, float sep, float hyst) const {
@@ -225,6 +227,7 @@ namespace {
         bool isAtX(float x) const { return std::abs(stackOffsetX - x) < EPS; }
         bool isAtY(float y) const { return std::abs(stackOffsetY - y) < EPS; }
         bool isAt(float x, float y) const { return isAtX(x) && isAtY(y); }
+        bool isResting() const { return std::abs(stackOffsetX) < EPS && std::abs(stackOffsetY) < EPS; }
 
         void updVis(const float spdY, const float spdX, const float delta, const float maxY, const float ceilY) {
             float maxPull = ptr->m_width * g_maxPull;
@@ -233,16 +236,20 @@ namespace {
                 : ptr->m_height * maxY);
 
             float gapY = targetOffsetY - commitTargetY;
-            float gapX = targetOffsetX - commitTargetX;
+        	float gapX = targetOffsetX - commitTargetX;
+        	float wantMomY = std::abs(gapY) > EPS ? (gapY > 0.0f ? 1.0f : -1.0f) : 0.0f;
+        	float wantMomX = std::abs(gapX) > EPS ? (gapX > 0.0f ? 1.0f : -1.0f) : 0.0f;
 
-            float wantMomY = std::abs(gapY) > EPS ? (gapY > 0.0f ? 1.0f : -1.0f) : 0.0f;
-            float wantMomX = std::abs(gapX) > EPS ? (gapX > 0.0f ? 1.0f : -1.0f) : 0.0f;
-
-            float rateY = (wantMomY * momentumY < 0.0f) ? 1.0f : spdY * 0.025f;
-            float rateX = (wantMomX * momentumX < 0.0f) ? 1.0f : spdX * 0.025f;
-
-            momentumY += (wantMomY - momentumY) * std::clamp(rateY * delta, 0.0f, 1.0f);
-            momentumX += (wantMomX - momentumX) * std::clamp(rateX * delta, 0.0f, 1.0f);
+            if (isResting()) {
+            	momentumY = wantMomY;
+            	momentumX = wantMomX;
+            }
+            else {
+            	float rateY = (wantMomY * momentumY < 0.0f) ? 1.0f : spdY * 0.025f;
+            	float rateX = (wantMomX * momentumX < 0.0f) ? 1.0f : spdX * 0.025f;
+        		momentumY += (wantMomY - momentumY) * std::clamp(rateY * delta, 0.0f, 1.0f);
+        		momentumX += (wantMomX - momentumX) * std::clamp(rateX * delta, 0.0f, 1.0f);
+            }
 
             if (!isAt(targetOffsetX, targetOffsetY)) {
                 float commitAlpha = std::clamp(4.0f * std::abs(momentumY) * delta, 0.0f, 1.0f);
@@ -706,8 +713,6 @@ namespace {
     constexpr uintptr_t CGUnit_C__ShouldShowNamePlate_site_jmpback = 0x0072B2C7;
     constexpr uintptr_t CGUnit_C__ShouldShowNamePlate_site_pass = 0x0072B247;
 
-    auto(*CGWorldFrame__GetScreenCoordinates_site)() = reinterpret_cast<DummyCallback_t>(0x0071574A);
-
     const auto isValidObjFn = reinterpret_cast<int(*)(void*)>(0x0077F0B0);
 
     enum class IEClickLogic : uint8_t { NONE, THRU_ENEMY, THRU_FRIEND };
@@ -720,7 +725,7 @@ namespace {
             const bool isFriendly = e->hasState(Entry::IEState::IS_FRIENDLY);
             const Vec2D hitBox = isFriendly ? Vec2D{ .x = g_hitWidthF, .y = g_hitHeightF } : Vec2D{ .x = g_hitWidthE, .y = g_hitHeightE };
 
-            if (e->ptr->IsAtTargetPos(pos, hitBox)) {
+            if (e->ptr->IsAtTargetPos(pos, hitBox, g_hitAnchor)) {
                 if (!prio) prio = e->ptr;
 
                 if constexpr (mode == IEClickLogic::THRU_ENEMY) {
@@ -879,6 +884,23 @@ namespace {
         return result;
     }
 
+	bool __cdecl CGUnit_C__ISVisibleHk(CGWorldFrame* wf, C3Vector* out) {
+    	CGUnit_C* unit; __asm { mov unit, ecx }
+    	C3Vector worldPos;
+    	unit->GetNamePosition(worldPos);
+    	worldPos.Z += *CGNamePlate::VerticalPlacementOffset;
+    	int mask = 0;
+    	if (wf->GetScreenCoordinates(&worldPos, out, &mask)) return true;
+    	if (mask > 0) {
+    		float marginX; float marginY;
+            CGGameUI::NDCToDDCFn(CGNamePlate::DefaultWidth * 0.5f, CGNamePlate::DefaultHeight * 0.5f, &marginX, &marginY);
+            // nameplate is >=50% out of the viewport but is still visible, return true to keep it visible and prevent static names popping in
+    		if ((out->X >= -marginX) && (out->X <= (wf->m_right - wf->m_left) + marginX) &&
+				(out->Y >= -marginY) && (out->Y <= (wf->m_top - wf->m_bottom) + marginY)) return true;
+    	}
+    	return g_clampTop != EClampMode::C_DISABLED && mask == 7;
+    }
+
     void __cdecl CGUnit_C__SetNamePlateFocusHk(C3Vector* pos) {
         // original logic
         uint32_t* activeInput = CGInputControl::GetActive();
@@ -913,11 +935,6 @@ namespace {
 
     bool __fastcall CGUnit_C__ShouldShowNamePlate_siteWrapper(const CGUnit_C* unit) {
         return g_clampTop != EClampMode::C_BOSS || unit->GetCreatureRank() == ECreatureRank::RANK_WORLDBOSS || isValidObjFn(unit->m_worldObject);
-    }
-
-    bool __fastcall CGWorldFrame__GetScreenCoordinates_siteWrapper(CGWorldFrame* pThis, void* edx, C3Vector* pos, Vec2D<float>* out, int* res) {
-        int result; bool r = pThis->GetScreenCoordinates(pos, out, &result);
-        return (result == 7 || r); // 7 = unit is outside the top edge of the viewport
     }
 
 	uint8_t __fastcall CSimpleFrame__SetFrameAlpha_siteWrapper(CGUnit_C* unit) {
@@ -977,15 +994,6 @@ namespace {
             jmp CGUnit_C__ShouldShowNamePlate_site_jmpback;
         pass:
             jmp CGUnit_C__ShouldShowNamePlate_site_pass;
-        }
-    }
-
-    void __declspec(naked) CGWorldFrame__GetScreenCoordinates_siteHk() {
-        __asm {
-            call CGWorldFrame__GetScreenCoordinates_siteWrapper;
-            mov esp, ebp;
-            pop ebp;
-            retn;
         }
     }
 
@@ -1091,6 +1099,11 @@ namespace {
         const int result = cvar->Sync(value, &g_bandY, 0.1f, 1.5f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
+    int CVarHandler_NameplateHitboxAnchor(CVar* cvar, const char*, const char* value, void*) {
+        const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_hitAnchor),
+            static_cast<int>(CGNamePlate::EHitboxAnchor::HB_TOP), static_cast<int>(CGNamePlate::EHitboxAnchor::HB_BOTTOM), "%d");
+        if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
+    }
     int CVarHandler_NameplateHitboxWidthE(CVar* cvar, const char*, const char* value, void*) {
         const int result = cvar->Sync(value, &g_hitWidthE, 0.0f, 1.0f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
@@ -1154,11 +1167,9 @@ namespace {
         DetourTransactionBegin(); DetourUpdateThread(GetCurrentThread());
         if (g_clampTop == EClampMode::C_DISABLED) {
             Hooks::Detach(&CGUnit_C__ShouldShowNamePlate_site, CGUnit_C__ShouldShowNamePlate_siteHk);
-            Hooks::Detach(&CGWorldFrame__GetScreenCoordinates_site, CGWorldFrame__GetScreenCoordinates_siteHk);
         }
         else {
             Hooks::Detour(&CGUnit_C__ShouldShowNamePlate_site, CGUnit_C__ShouldShowNamePlate_siteHk);
-            Hooks::Detour(&CGWorldFrame__GetScreenCoordinates_site, CGWorldFrame__GetScreenCoordinates_siteHk);
         }
         DetourTransactionCommit();
         for (auto& buf = g_entries.get(); const auto& e : buf) EntryManager::applyClampingState(e);
@@ -1173,7 +1184,7 @@ namespace {
     }
 }
 
-guid_t NamePlates::GetTokenGuid(int index) { return g_entries.getTokenGuid(index); }
+guid_t NamePlates::GetTokenGuid(int id) { return g_entries.getTokenGuid(id); }
 int NamePlates::GetTokenId(guid_t guid) { return g_entries.getTokenId(guid); }
 
 void NamePlates::initialize() {
@@ -1189,6 +1200,7 @@ void NamePlates::initialize() {
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateMouseMode, "nameplateMouseMode", nullptr, "0", CVarHandler_NameplateMouseMode);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateBandX, "nameplateBandX", nullptr, "0.7", CVarHandler_NameplateBandX);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateBandY, "nameplateBandY", nullptr, "1.0", CVarHandler_NameplateBandY);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxAnchor, "nameplateHitboxAnchor", nullptr, "1", CVarHandler_NameplateHitboxAnchor);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxWidthE, "nameplateHitboxWidthE", nullptr, "1.0", CVarHandler_NameplateHitboxWidthE);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxHeightE, "nameplateHitboxHeightE", nullptr, "1.0", CVarHandler_NameplateHitboxHeightE);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxWidthF, "nameplateHitboxWidthF", nullptr, "1.0", CVarHandler_NameplateHitboxWidthF);
@@ -1209,15 +1221,14 @@ void NamePlates::initialize() {
 
     Hooks::Detour(&CGNamePlate__OnUpdate_site, CGNamePlate__OnUpdate_siteHk);
 
+    Hooks::Detour(&CGUnit_C::IsVisibleFn, CGUnit_C__ISVisibleHk);
     Hooks::Detour(&CGUnit_C::UpdateReactionFn, CGUnit_C__UpdateReactionHk);
     Hooks::Detour(&CGUnit_C::SetNamePlateFocusFn, CGUnit_C__SetNamePlateFocusHk);
-    Hooks::Detour(&CGUnit_C__ShouldShowNamePlate_site, CGUnit_C__ShouldShowNamePlate_siteHk);
 
     Hooks::Detour(&CGPlayer_C::NotifyCombatChangeFn, CGPlayer_C__NotifyCombatChangeHk);
 
     Hooks::Detour(&CGWorldFrame::UpdateNamePlatePositionsFn, CGWorldFrame__UpdateNamePlatePositionsHk);
     Hooks::Detour(&CGWorldFrame__UpdateNamePlatePositions_site, CGWorldFrame__UpdateNamePlatePositions_siteHk);
-    Hooks::Detour(&CGWorldFrame__GetScreenCoordinates_site, CGWorldFrame__GetScreenCoordinates_siteHk);
 
     Hooks::Detour(&CGGameUI::DestroyPlatePoolFn, CGGameUI__DestroyPlatePoolHk);
     Hooks::Detour(&CGGameUI::WipeActivePlatesFn, CGGameUI__WipeActivePlatesHk);

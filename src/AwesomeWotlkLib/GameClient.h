@@ -126,6 +126,12 @@ namespace CGGameUI {
     using OsGetAsyncTimeMs_t = int(__cdecl*)();
     inline auto OsGetAsyncTimeMsFn = reinterpret_cast<OsGetAsyncTimeMs_t>(0x0086AE20);
 
+    using NDCToDDC_t = float(__cdecl*)(float ndcX, float ndcY, float *ddcX, float *ddcY);
+    inline auto NDCToDDCFn = reinterpret_cast<NDCToDDC_t>(0x0047BFF0);
+
+    using DDCToNDC_t = float(__cdecl*)(float ddcX, float ddcY, float *ndcX, float *ndcY);
+    inline auto DDCToNDCFn = reinterpret_cast<DDCToNDC_t>(0x0047C020);
+
     using TraceLine_t = uint8_t(__cdecl*)(C3Vector*, C3Vector*, C3Vector*, float*, uint32_t, uint32_t);
     inline auto TraceLineFn = reinterpret_cast<TraceLine_t>(0x007A3B70);
 
@@ -282,6 +288,7 @@ class CSimpleTop;
 class CSimpleFrame;
 class CGNamePlate;
 class CSimpleCamera;
+class CGWorldFrame;
 
 // CGObject_C
 class CGObject_C {
@@ -316,7 +323,7 @@ public:
     virtual void UpdateWorldObject(); // 5
     virtual void ShouldFadeout(); // 6
     virtual void UpdateDisplayInfo(); // 7
-    virtual void GetNamePosition(); // 8
+    virtual void GetNamePosition(C3Vector& pos); // 8
     virtual void GetBag(); // 9
     virtual void GetBag2(); // 10
     virtual C3Vector& GetPosition(C3Vector& pos); // 11
@@ -456,6 +463,9 @@ public:
     using GetMissileTargetPosition_t = int(__thiscall*)(CGUnit_C*, C3Vector*);
     inline static auto GetMissileTargetPositionFn = reinterpret_cast<GetMissileTargetPosition_t>(0x0071A720);
 
+    using IsVisible_t = bool(__thiscall*)(CGUnit_C*, CGWorldFrame*, C3Vector*);
+    inline static auto IsVisibleFn = reinterpret_cast<IsVisible_t>(0x00715720);
+
     guid_t GetGUID() const { return GetValue<guid_t>(OBJECT_FIELD_GUID); }
     const char* GetName(void* ptr, int flag) { return GetNameFn(this, ptr, flag); }
     ECreatureRank GetCreatureRank() const { return GetCreatureRankFn(this); }
@@ -465,6 +475,7 @@ public:
     int UpdateReaction(int updateAll) { return UpdateReactionFn(this, updateAll); }
     int GetMissileTargetPosition(C3Vector* out) { return GetMissileTargetPositionFn(this, out); }
     CGNamePlate* HideNamePlate() { return HideNamePlateFn(this); }
+    bool IsVisible(CGWorldFrame* wf, C3Vector* out) { return IsVisibleFn(this, wf, out); }
     bool IsFriendly(const CGUnit_C* player = ObjectMgr::Get<CGUnit_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER)) const {
         if (!player) return false; int reaction = player->UnitReaction(this);
         return (reaction >= 5) || (reaction == 4 && !player->CanAttack(this));
@@ -527,6 +538,12 @@ public:
         unk_t unk_0C;
     };
 
+	enum EHitboxAnchor : uint8_t {
+		HB_TOP = 0,
+		HB_CENTER = 1,
+		HB_BOTTOM = 2,
+	};
+
     virtual ~CLayoutFrame();
     virtual void LoadXML(void* node, void* status);
     virtual void* GetLayoutParent();
@@ -579,10 +596,28 @@ public:
     }
     static int ResizePending() { return reinterpret_cast<int(__cdecl*)()>(0x004898B0)(); }
 
-    bool IsAtTargetPos(const C3Vector* pos, Vec2D<float> percs) const {
-        float midX = (this->m_left + this->m_right) * 0.5f; float midY = (this->m_bottom + this->m_top) * 0.5f;
-        float h_width = (this->m_width * 0.5f) * percs.x; float h_height = (this->m_height * 0.5f) * percs.y;
-        return (pos->X >= (midX - h_width) && pos->X <= (midX + h_width)) && (pos->Y >= (midY - h_height) && pos->Y <= (midY + h_height));
+	bool IsAtTargetPos(const C3Vector* pos, Vec2D<float> percs, EHitboxAnchor anchor) const {
+    	float yMin, yMax;
+    	switch (anchor) {
+    	case HB_TOP:
+    		yMax = this->m_top;
+    		yMin = this->m_top - this->m_height * percs.y;
+    		break;
+    	case HB_BOTTOM:
+    		yMin = this->m_bottom;
+    		yMax = this->m_bottom + this->m_height * percs.y;
+    		break;
+    	case HB_CENTER:
+    	default:
+    		const float midY = (this->m_bottom + this->m_top) * 0.5f;
+    		const float halfHeight = this->m_height * percs.y * 0.5f;
+    		yMin = midY - halfHeight;
+    		yMax = midY + halfHeight;
+    		break;
+    	}
+    	const float midX = (this->m_left + this->m_right) * 0.5f;
+    	const float halfWidth = (this->m_width * 0.5f) * percs.x;
+    	return (pos->X >= (midX - halfWidth) && pos->X <= (midX + halfWidth)) && (pos->Y >= yMin && pos->Y <= yMax);
     }
 };
 static_assert(sizeof(CLayoutFrame) == 0x74);
@@ -917,7 +952,7 @@ public:
     void* m_vehicleCam;                 // 0x31C
 
     inline static auto GetActiveCameraFn = reinterpret_cast<CGCamera*(*)()>(0x004F5960);
-    inline static CGCamera* GetActiveCamera() { return GetActiveCameraFn(); }
+    static CGCamera* GetActiveCamera() { return GetActiveCameraFn(); }
 };
 
 class CGWorldFrame : public CSimpleFrame {
@@ -953,10 +988,10 @@ public:
     uint32_t m_flags_31C;               // 0x31C
     unk_t unk_320[4];                   // 0x320
 
-    float m_viewLeft;                   // 0x330
-    float m_viewRight;                  // 0x334
+	float m_viewBottom;                 // 0x330
+    float m_viewLeft;                   // 0x334
     float m_viewTop;                    // 0x338
-    float m_viewBottom;                 // 0x33C
+    float m_viewRight;                  // 0x33C
     C44Matrix m_viewMatrix;             // 0x340
 
     CGWorldFrameUnk* m_data;            // 0x380
@@ -985,7 +1020,7 @@ public:
     using UpdateNamePlatePosition_t = char(__cdecl*)(int, CGNamePlate*, CGWorldFrame*, C3Vector*, int);
     inline static auto UpdateNamePlatePositionFn = reinterpret_cast<UpdateNamePlatePosition_t>(0x00615E10);
 
-    using GetScreenCoordinates_t = bool(__thiscall*)(CGWorldFrame*, C3Vector*, Vec2D<float>*, int*);
+    using GetScreenCoordinates_t = bool(__thiscall*)(CGWorldFrame*, C3Vector*, C3Vector*, int*);
     inline static auto GetScreenCoordinatesFn = reinterpret_cast<GetScreenCoordinates_t>(0x004F6D20);
 
     using To2D_t = int(__thiscall*)(CGWorldFrame*, C3Vector*, C3Vector*, uint32_t*);
@@ -994,15 +1029,15 @@ public:
     using OnLayerTrackTerrain_t = int(__thiscall*)(CGWorldFrame*, int*);
     inline static auto OnLayerTrackTerrainFn = reinterpret_cast<OnLayerTrackTerrain_t>(0x004F66C0);
 
-    inline int To2D(C3Vector* pos3d, C3Vector* pos2d, uint32_t* flags) { return To2DFn(this, pos3d, pos2d, flags); }
-    inline int GetScreenCoordinates(C3Vector* pos, Vec2D<float>* out, int* result) { return GetScreenCoordinatesFn(this, pos, out, result); }
-    inline int OnLayerTrackTerrain(int* a2) { return OnLayerTrackTerrainFn(this, a2); }
-    inline int UpdateNamePlatePositions() { return UpdateNamePlatePositionsFn(this); }
-    inline char UpdateNamePlatePosition(int viewportId, CGNamePlate* namePlate, C3Vector* proj, int flag) {
+    int To2D(C3Vector* pos3d, C3Vector* pos2d, uint32_t* flags) { return To2DFn(this, pos3d, pos2d, flags); }
+    int GetScreenCoordinates(C3Vector* pos, C3Vector* out, int* result) { return GetScreenCoordinatesFn(this, pos, out, result); }
+    int OnLayerTrackTerrain(int* a2) { return OnLayerTrackTerrainFn(this, a2); }
+    int UpdateNamePlatePositions() { return UpdateNamePlatePositionsFn(this); }
+    char UpdateNamePlatePosition(int viewportId, CGNamePlate* namePlate, C3Vector* proj, int flag) {
         return UpdateNamePlatePositionFn(viewportId, namePlate, this, proj, flag);
     }
 
-    inline static void PercToScreenPos(float x, float y, float* resX, float* resY) {
+    static void PercToScreenPos(float x, float y, float* resX, float* resY) {
         if (!resX || !resY) return;
         float screenHeightAptitude = *reinterpret_cast<float*>(0x00AC0CBC);
         float someVal = *reinterpret_cast<float*>(0x00AC0CB4);
@@ -1010,10 +1045,10 @@ public:
         float scale = (screenHeightAptitude * 1024.0f) / someVal;
         *resX = x * scale; *resY = y * scale;
     }
-    inline static int HandleNameplateLeftClick(guid_t guid) { return reinterpret_cast<int(__cdecl*)(guid_t)>(0x005274F0)(guid); }
-    inline static int HandleNameplateRightClick(guid_t guid) { return reinterpret_cast<int(__cdecl*)(guid_t)>(0x005277B0)(guid); }
+    static int HandleNameplateLeftClick(guid_t guid) { return reinterpret_cast<int(__cdecl*)(guid_t)>(0x005274F0)(guid); }
+    static int HandleNameplateRightClick(guid_t guid) { return reinterpret_cast<int(__cdecl*)(guid_t)>(0x005277B0)(guid); }
 
-    inline static CGWorldFrame* GetWorldFrame() { return *reinterpret_cast<CGWorldFrame**>(0x00B7436C); }
+    static CGWorldFrame* GetWorldFrame() { return *reinterpret_cast<CGWorldFrame**>(0x00B7436C); }
 };
 
 class CSimpleAnim : public FrameScript_Object {
@@ -1308,6 +1343,9 @@ static_assert(sizeof(CSimpleFontString) == 0x144);
 
 class CGNamePlate : public CSimpleFrame {
 public:
+    static constexpr float DefaultHeight = 0.025f;
+    static constexpr float DefaultWidth = 0.1f;
+
     struct CSimpleTexture {};
 
     CGNamePlate* m_sortedPrev;          // 0x29C
