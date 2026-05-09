@@ -94,11 +94,14 @@ Sets the display distance of nameplates in yards.
 **Arguments:** `mode` (number)  
 **Default:** 0
 
-Defines the nameplate stacking behavior.
+Defines the nameplate stacking behavior. 'Smart' mode allows nameplates to bypass the stacking push if there is sufficient space below, resulting in a tighter layout at the cost of more frequent rearrangements.
+- **-3** = Friendly Only (Smart)
+- **-2** = Enemy Only (Smart)
+- **-1** = Enable All (Smart)
 - **0** = Disabled (Overlapping)
-- **1** = Enable All 
-- **2** = Enemy Only
-- **3** = Friendly Only
+- **1** = Enable All (Standard)
+- **2** = Enemy Only (Standard)
+- **3** = Friendly Only (Standard)
 
 ## nameplateMouseMode `CVar`
 **Arguments:** `mode` (number)  
@@ -127,6 +130,12 @@ Sets the horizontal overlap tolerance. Represents the maximum combined width rat
 
 Sets the vertical separation margin. Represents the minimum combined height ratio required between nameplates during stacking.
 
+## nameplateInertia `CVar`
+**Arguments:** `mult` (number)  
+**Default:** 1
+
+Controls the physical weight of nameplate movement. Higher values increase responsiveness during stacking, while lower values make movement feel heavier and more damped.
+
 ## nameplatePlacement `CVar`
 **Arguments:** `offset` (number)  
 **Default:** 0
@@ -150,6 +159,15 @@ The velocity at which nameplates shift **downward** to resolve stacking conflict
 **Default:** 50
 
 The velocity at which nameplates shift **horizontally** to resolve stacking conflicts.
+
+## nameplateHitboxAnchor `CVar`
+**Arguments:** `anchor` (number)  
+**Default:** 1
+
+Sets the vertical origin point used to calculate the clickable hitbox area. Adjusting this ensures that the interactive area aligns correctly with the visual nameplate, particularly when using UI overhauls (like ElvUI) that anchor health bars by their top or bottom edges rather than the center.
+- **0** = Top  
+- **1** = Center
+- **2** = Bottom
 
 ## nameplateHitboxHeightF / nameplateHitboxWidthF `CVar`
 **Arguments:** `scale` (number)  
