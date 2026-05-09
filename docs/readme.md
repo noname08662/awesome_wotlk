@@ -125,7 +125,7 @@ A new keybind for smart interaction with the game world:
 
 ### Nameplate Stacking
 New nameplate stacking system to prevent overlapping:
-- Enable stacking: `/console nameplateStacking 1`
+- Enable stacking: `/console nameplateStacking %mode%` (consult [docs](https://github.com/noname08662/awesome_wotlk/blob/main/docs/api_reference.md) for available modes)
 - **Important:** If using [this WeakAura](https://wago.io/AQdGXNEBH), delete it and restart the client before using this feature
 - See [Docs](https://github.com/noname08662/awesome_wotlk/blob/main/docs/api_reference.md) for detailed CVar information
 - All settings are configurable in-game via `/awesome` command (requires AwesomeCVar addon)
