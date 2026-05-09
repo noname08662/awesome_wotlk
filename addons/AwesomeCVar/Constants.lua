@@ -55,7 +55,7 @@ ACVar.CVARS = {
     },
     [L.CATEGORY_NAMEPLATES] = {
         { name = "info", label = L.CVAR_LABEL_INFO, desc = L.DESC_INFO, type = "description" },
-        { name = "nameplateStacking", label = L.CVAR_LABEL_STACKING_MODE, desc = L.DESC_STACKING_MODE, type = "slider", min = 0, max = 3, default = 0 },
+        { name = "nameplateStacking", label = L.CVAR_LABEL_STACKING_MODE, desc = L.DESC_STACKING_MODE, type = "slider", min = -3, max = 3, default = 0 },
         { name = "nameplateMouseMode", label = L.CVAR_LABEL_MOUSEOVER, desc = L.DESC_MOUSEOVER, type = "slider", min = 0, max = 8, step = 1, default = 0 },
         { name = "nameplatePlacement", label = L.CVAR_LABEL_PLACEMENT, type = "slider", min = -1, max = 2, step = 0.01, default = 0.66 },
         { name = "nameplateDistance", label = L.CVAR_LABEL_NAMEPLATE_DISTANCE, type = "slider", min = 41, max = 100, step = 1, default = 41 },
@@ -71,6 +71,8 @@ ACVar.CVARS = {
         { name = "nameplateRaiseSpeed", label = L.CVAR_LABEL_SPEED_RAISE, type = "slider", min = 1, max = 250, step = 1, default = 100 },
         { name = "nameplateLowerSpeed", label = L.CVAR_LABEL_SPEED_LOWER, type = "slider", min = 1, max = 250, step = 1, default = 100 },
         { name = "nameplatePullSpeed", label = L.CVAR_LABEL_SPEED_PULL, type = "slider", min = 1, max = 250, step = 1, default = 50 },
+        { name = "nameplateInertia", label = L.CVAR_LABEL_INERTIA, desc = L.DESC_INERTIA, type = "slider", min = 0, max = 20, step = 0.1, default = 1 },
+        { name = "nameplateHitboxAnchor", label = L.CVAR_LABEL_HITBOX_ANCHOR, desc = L.DESC_HITBOX_ANCHOR, type = "slider", min = 0, max = 2, step = 1, default = 1 },
         { name = "nameplateHitboxHeightE", label = L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY, type = "slider", min = 0, max = 1, step = 0.01, default = 1 },
         { name = "nameplateHitboxWidthE", label = L.CVAR_LABEL_HITBOX_WIDTH_ENEMY, type = "slider", min = 0, max = 1, step = 0.01, default = 1 },
         { name = "nameplateHitboxHeightF", label = L.CVAR_LABEL_HITBOX_HEIGHT_FRIENDLY, type = "slider", min = 0, max = 1, step = 0.01, default = 1 },

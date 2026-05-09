@@ -5,12 +5,22 @@
 
 namespace Hooks {
 	template <typename addr, typename detour>
-	inline LONG Detour(addr** ppPointer, detour pDetour) {
+	LONG Detour(addr** ppPointer, detour pDetour) {
 		return DetourAttach(reinterpret_cast<PVOID*>(ppPointer), reinterpret_cast<PVOID>(pDetour));
 	}
 	template <typename addr, typename detour>
-	inline LONG Detach(addr** ppPointer, detour pDetour) {
+	LONG Detach(addr** ppPointer, detour pDetour) {
 		return DetourDetach(reinterpret_cast<PVOID*>(ppPointer), reinterpret_cast<PVOID>(pDetour));
+	}
+	template <typename T>
+	bool PatchBytes(void* address, const T* data, size_t size) {
+		DWORD oldProtect = 0;
+		if (!VirtualProtect(address, size, PAGE_EXECUTE_READWRITE, &oldProtect)) return false;
+		std::memcpy(address, data, size);
+		FlushInstructionCache(GetCurrentProcess(), address, size);
+		DWORD temp = 0;
+		VirtualProtect(address, size, oldProtect, &temp);
+		return true;
 	}
 
 	namespace FrameScript {

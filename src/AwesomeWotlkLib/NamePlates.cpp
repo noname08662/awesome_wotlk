@@ -1,4 +1,5 @@
 ﻿#include "NamePlates.h"
+#include "Utils.h"
 #include <format>
 #include <bit>
 #include <algorithm>
@@ -36,10 +37,11 @@ namespace {
     CVar* s_cvar_nameplateOcclusionAlpha;
     CVar* s_cvar_nameplateNonTargetAlpha;
     CVar* s_cvar_nameplateAlphaSpeed;
+    CVar* s_cvar_nameplateInertia;
     CVar* s_cvar_nameplateClampTop;
     CVar* s_cvar_nameplateClampTopOffset;
 
-    enum EStackingMode : uint8_t {
+    enum EStackingMode : int8_t {
         S_DISABLED = 0,
         S_ALL = 1,
         S_ENEMY = 2,
@@ -96,6 +98,7 @@ namespace {
     float g_nonTargetAlpha = 0.5f;
     float g_occlusionAlpha = 1.0f;
     float g_alphaSpd = 0.25f;
+    float g_inertia = 1.0f;
 
     auto* const g_alloc = reinterpret_cast<CDataAllocator*>(0x00DCEC44);
     auto* const g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
@@ -139,21 +142,17 @@ namespace {
         float smoothTargetY = 0.0f;
         float stackOffsetX = 0.0f;
         float stackOffsetY = 0.0f;
-
-        float stableNDCY = 0.0f;
-        float stableNDCX = 0.0f;
-        float velocityX = 0.0f;
-        float velocityY = 0.0f;
-        float lastStableNDCX = 0.0f;
-        float lastStableNDCY = 0.0f;
+        float accumX = 0.0f;
 
         IEState state = IEState::NONE;
 
         uint32_t activeCollisions[MAX_PLATES / 32];
 
-        void freshState() {
-            targetOffsetY = 0.0f;
-            targetOffsetX = 0.0f;
+        void freshState(float spd) {
+            float alpha = std::clamp(spd, 0.0f, 0.5f);
+			accumX += (0.0f - accumX) * alpha;
+            targetOffsetY += (0.0f - targetOffsetY) * alpha;
+        	targetOffsetX = (pushCount > 1) ? accumX / static_cast<float>(pushCount) : accumX;
             pushCount = 0;
         }
 
@@ -167,27 +166,23 @@ namespace {
             smoothTargetX = 0.0f;
             smoothTargetY = 0.0f;
             momentumX = 0.0f;
-            momentumY = 0.0f;
-            stableNDCY = ptr->m_NDCproj.y;
-            stableNDCX = ptr->m_NDCproj.x;
-            velocityX = 0.0f;
-            velocityY = 0.0f;
-            lastStableNDCX = 0.0f;
-            lastStableNDCY = 0.0f;
+        	momentumY = 0.0f;
+        	pushCount = 0;
+        	accumX = 0.0f;
             state = IEState::IS_FRESH;
         }
 
         void setActiveCollision(int id) { activeCollisions[id >> 5] |= (1u << (id & 31)); }
         void setInactiveCollision(int id) { activeCollisions[id >> 5] &= ~(1u << (id & 31)); }
 
-        float getTopNDC(float perc = 1.0f) const { return stableNDCY + ptr->m_height * 0.5f * perc; }
-        float getBotNDC(float perc = 1.0f) const { return stableNDCY - ptr->m_height * 0.5f * perc; }
+        float getTopNDC(float perc = 1.0f) const { return ptr->m_NDCproj.y + ptr->m_height * 0.5f * perc; }
+        float getBotNDC(float perc = 1.0f) const { return ptr->m_NDCproj.y - ptr->m_height * 0.5f * perc; }
         float getAvgWFor(const Entry* e, float perc = 1.0f) const { return (ptr->m_width + e->ptr->m_width) * 0.5f * perc; }
         float getAvgHFor(const Entry* e, float perc = 1.0f) const { return (ptr->m_height + e->ptr->m_height) * 0.5f * perc; }
-        float getReqYFor(const Entry* e, float perc = 1.0f) const { return stableNDCY + targetOffsetY + getAvgHFor(e, perc) - e->stableNDCY; }
-        float getReqXFor(const Entry* e) const { return (stableNDCX + commitTargetX) - (e->stableNDCX + e->commitTargetX); }
-        float getReqDXFor(const Entry* e) const { return std::abs((stableNDCX + commitTargetX) - (e->stableNDCX + e->commitTargetX)); }
-        float getReqDYFor(const Entry* e) const { return std::abs((stableNDCY + commitTargetY) - (e->stableNDCY + e->commitTargetY)); }
+        float getReqYFor(const Entry* e, float perc = 1.0f) const { return ptr->m_NDCproj.y + targetOffsetY + getAvgHFor(e, perc) - e->ptr->m_NDCproj.y; }
+        float getReqXFor(const Entry* e) const { return (ptr->m_NDCproj.x + targetOffsetX) - (e->ptr->m_NDCproj.x + e->targetOffsetX); }
+        float getReqDXFor(const Entry* e) const { return std::abs((ptr->m_NDCproj.x + targetOffsetX) - (e->ptr->m_NDCproj.x + e->targetOffsetX)); }
+        float getReqDYFor(const Entry* e) const { return std::abs((ptr->m_NDCproj.y + targetOffsetY) - (e->ptr->m_NDCproj.y + e->targetOffsetY)); }
         float getProximity(const Entry* e, float bx = 1.0f, float by = 1.0f) const {
             return std::clamp(std::min(getReqDXFor(e) / getAvgWFor(e, bx), getReqDYFor(e) / getAvgHFor(e, by)), 0.0f, 1.0f);
         }
@@ -203,58 +198,50 @@ namespace {
             return 0;
         }
 
-        bool resolvePush(const Entry* e, float sep, float hyst) const {
-            return ((e->getTarY() > getBotNDC(sep * (hyst + 1.0f)) + targetOffsetY) && (e->getTarY() < getTopNDC(sep * (hyst + 1.0f)) + targetOffsetY)
-                || (e->getBotNDC() + e->stackOffsetY > getTopNDC() + targetOffsetY && e->getBotNDC() + e->targetOffsetY < getTopNDC() + targetOffsetY));
+    	bool resolvePush(const Entry* e, float sep, float hyst) const {
+        	return ((e->getTarY() > getBotNDC(sep * (hyst + 1.0f)) + targetOffsetY) && (e->getTarY() < getTopNDC(sep * (hyst + 1.0f)) + targetOffsetY)
+				|| (e->getBotNDC() + e->stackOffsetY > getTopNDC() + targetOffsetY && e->getBotNDC() + e->targetOffsetY < getTopNDC() + targetOffsetY));
         }
 
         float getVisY() const { return ptr->m_NDCproj.y + stackOffsetY; }
-        float getVisX() const { return ptr->m_NDCproj.x + stackOffsetX; }
+    	float getVisX() const { return ptr->m_NDCproj.x + stackOffsetX; }
 
-        float getTarY() const { return ptr->m_NDCproj.y + targetOffsetY; }
-        float getTarX() const { return ptr->m_NDCproj.x + targetOffsetX; }
-
-        void updStableAnchor(float delta) {
-            float t = 1.0f - std::exp(-5.0f * delta);
-            stableNDCX += (ptr->m_NDCproj.x - stableNDCX) * t;
-            stableNDCY += (ptr->m_NDCproj.y - stableNDCY) * t;
-            velocityX = (stableNDCX - lastStableNDCX) / delta;
-            velocityY = (stableNDCY - lastStableNDCY) / delta;
-            lastStableNDCX = stableNDCX;
-            lastStableNDCY = stableNDCY;
-        }
+    	float getTarY() const { return ptr->m_NDCproj.y + targetOffsetY; }
+    	float getTarX() const { return ptr->m_NDCproj.x + targetOffsetX; }
 
         bool isAtX(float x) const { return std::abs(stackOffsetX - x) < EPS; }
         bool isAtY(float y) const { return std::abs(stackOffsetY - y) < EPS; }
         bool isAt(float x, float y) const { return isAtX(x) && isAtY(y); }
         bool isResting() const { return std::abs(stackOffsetX) < EPS && std::abs(stackOffsetY) < EPS; }
 
-        void updVis(const float spdY, const float spdX, const float delta, const float maxY, const float ceilY) {
+        void updVis(const float spdY, const float spdX, const float inertia, const float delta, const float maxY, const float ceilY) {
             float maxPull = ptr->m_width * g_maxPull;
             float maxRaise = (hasState(IEState::SHOULD_CLAMP)
                 ? std::min(ptr->m_height * maxY, NDC_Y - ceilY - getTopNDC())
                 : ptr->m_height * maxY);
+            targetOffsetX = std::clamp(targetOffsetX, -maxPull, maxPull);
+            targetOffsetY = std::min(targetOffsetY, maxRaise);
 
             float gapY = targetOffsetY - commitTargetY;
-        	float gapX = targetOffsetX - commitTargetX;
-        	float wantMomY = std::abs(gapY) > EPS ? (gapY > 0.0f ? 1.0f : -1.0f) : 0.0f;
-        	float wantMomX = std::abs(gapX) > EPS ? (gapX > 0.0f ? 1.0f : -1.0f) : 0.0f;
+            float gapX = targetOffsetX - commitTargetX;
+            float wantMomY = std::abs(gapY) > EPS ? (gapY > 0.0f ? 1.0f : -1.0f) : 0.0f;
+            float wantMomX = std::abs(gapX) > EPS ? (gapX > 0.0f ? 1.0f : -1.0f) : 0.0f;
 
             if (isResting()) {
-            	momentumY = wantMomY;
-            	momentumX = wantMomX;
+                momentumY = wantMomY;
+                momentumX = wantMomX;
             }
             else {
-            	float rateY = (wantMomY * momentumY < 0.0f) ? 1.0f : spdY * 0.025f;
-            	float rateX = (wantMomX * momentumX < 0.0f) ? 1.0f : spdX * 0.025f;
-        		momentumY += (wantMomY - momentumY) * std::clamp(rateY * delta, 0.0f, 1.0f);
-        		momentumX += (wantMomX - momentumX) * std::clamp(rateX * delta, 0.0f, 1.0f);
+                float rateY = (wantMomY * momentumY < 0.0f) ? 1.0f : spdY * 0.025f;
+                float rateX = (wantMomX * momentumX < 0.0f) ? 1.0f : spdX * 0.025f;
+                momentumY += (wantMomY - momentumY) * std::clamp(rateY * inertia * delta, 0.0f, 1.0f);
+                momentumX += (wantMomX - momentumX) * std::clamp(rateX * inertia * delta, 0.0f, 1.0f);
             }
 
             if (!isAt(targetOffsetX, targetOffsetY)) {
-                float commitAlpha = std::clamp(4.0f * std::abs(momentumY) * delta, 0.0f, 1.0f);
+                float commitAlpha = std::clamp(10.0f * std::abs(momentumY) * delta, 0.0f, 1.0f);
                 commitTargetY += (targetOffsetY - commitTargetY) * commitAlpha;
-                commitAlpha = std::clamp(4.0f * std::abs(momentumX) * delta, 0.0f, 1.0f);
+                commitAlpha = std::clamp(10.0f * std::abs(momentumX) * delta, 0.0f, 1.0f);
                 commitTargetX += (targetOffsetX - commitTargetX) * commitAlpha;
             }
             else {
@@ -276,9 +263,6 @@ namespace {
             else stackOffsetY = smoothTargetY;
             if (std::abs(dx) > EPS) stackOffsetX += dx * std::clamp(a2x, 0.0f, 1.0f);
             else stackOffsetX = smoothTargetX;
-
-            stackOffsetY = maxRaise < 0.0f ? maxRaise : std::min(stackOffsetY, maxRaise);
-            stackOffsetX = std::clamp(stackOffsetX, -maxPull, maxPull);
         }
     };
 
@@ -363,7 +347,7 @@ namespace {
                 }
                 void seed(uint64_t ms, const Entry* e1_, const Entry* e2_) {
                     proximate = ms;
-                	if (!e1 || !e2) { e1 = e1_; e2 = e2_; }
+                    if (!e1 || !e2) { e1 = e1_; e2 = e2_; }
                 }
                 void reset(bool full = false) {
                     hysteresis = 1.0f;
@@ -406,10 +390,13 @@ namespace {
                     if (isF_a != isF_b) return isF_a;
                 }
                 if constexpr (out) return a->ptr->m_depthZ < b->ptr->m_depthZ;
-                if (std::abs((a->stableNDCY + a->targetOffsetY) - (b->stableNDCY + b->targetOffsetY)) > EPS) {
-                    return (a->stableNDCY + a->targetOffsetY) < (b->stableNDCY + b->targetOffsetY);
-                }
-                return a->getRankWeight() > b->getRankWeight();
+                float posA = a->ptr->m_NDCproj.y + a->targetOffsetY;
+                float posB = b->ptr->m_NDCproj.y + b->targetOffsetY;
+                if (std::abs(posA - posB) > EPS) return posA < posB;
+                int rankA = a->getRankWeight();
+                int rankB = b->getRankWeight();
+                if (rankA != rankB) return rankA > rankB;
+                return a->ptr < b->ptr;
                 });
         }
 
@@ -470,8 +457,9 @@ namespace {
             // set bits, update hysteresis
             auto* ps = pairsMgr.get(e1->ptr->GetPlateId(), e2->ptr->GetPlateId());
             float decayFloor = 1.25f + std::min(ps->hystSteps * 0.15f, 0.75f);
-            if ((e1->getTopNDC() + e1->targetOffsetY + e1->getAvgHFor(e2, by)) > (e2->getBotNDC() + e2->targetOffsetY)
-                && e1->getReqDXFor(e2) < e1->getAvgWFor(e2, bx)) {
+            if (!e1->isAt(e1->targetOffsetX, e1->targetOffsetY) || !e2->isAt(e2->targetOffsetX, e2->targetOffsetY) ||
+					((e1->getTopNDC(decayFloor) + e1->targetOffsetY + e1->getAvgHFor(e2, by)) > (e2->getBotNDC(decayFloor) + e2->targetOffsetY)
+					&& e1->getReqDXFor(e2) < e1->getAvgWFor(e2, bx))) {
                 ps->commit(ms, decayFloor); // still overlapping naturally
             }
             else {
@@ -765,24 +753,24 @@ namespace {
                     }
                 }
                 else if (unit) {
-                	if (const char* name = unit->GetName(nullptr, 1)) {
-						const char* unknownText = FrameScript::GetText("UNKNOWNOBJECT", -1, 0);
-                		if ((!unknownText || !*unknownText || std::strcmp(name, unknownText) != 0) && std::strcmp(name, "Unknown Being") != 0) {
-							if (e = g_entries.initEntry(plate); e) {
-								e->clearState();
-								e->setState(Entry::IEState::IS_FRIENDLY, unit->IsFriendly());
-								e->classification = unit->GetCreatureRank();
+                    if (const char* name = unit->GetName(nullptr, 1)) {
+                        const char* unknownText = FrameScript::GetText("UNKNOWNOBJECT", -1, 0);
+                        if ((!unknownText || !*unknownText || std::strcmp(name, unknownText) != 0) && std::strcmp(name, "Unknown Being") != 0) {
+                            if (e = g_entries.initEntry(plate); e) {
+                                e->clearState();
+                                e->setState(Entry::IEState::IS_FRIENDLY, unit->IsFriendly());
+                                e->classification = unit->GetCreatureRank();
 
-								EntryManager::applyStackingState(e);
-								EntryManager::applyClampingState(e);
-								g_entries.resolvePairs(e, -1, 0);
-								g_entries.appendAdded(e);
+                                EntryManager::applyStackingState(e);
+                                EntryManager::applyClampingState(e);
+                                g_entries.resolvePairs(e, -1, 0);
+                                g_entries.appendAdded(e);
 
-								// for occlusion
-								plate->SetPlateState(EFrameState::NP_IS_FRESH, true);
-							}
-						}
-					}
+                                // for occlusion
+                                plate->SetPlateState(EFrameState::NP_IS_FRESH, true);
+                            }
+                        }
+                    }
                 }
             }
             });
@@ -797,58 +785,64 @@ namespace {
         const int n = std::ssize(buf);
         uint32_t level = static_cast<uint32_t>(n) * 10;
 
-        g_entries.sort(ESortType::ST_IN); // no target/focus
-        for (auto& e : buf) e->freshState();
-
         const float sceneTime = std::min(0.02f, pThis->m_sceneTime);
         const uint64_t ms = CGGameUI::OsGetAsyncTimeMsFn();
 
+        g_entries.sort(ESortType::ST_IN); // no target/focus
+        for (auto& e : buf) e->freshState(g_speedLower * sceneTime);
+
         for (int i = 0; i < n; ++i) {
             Entry* e1 = buf[i];
-            e1->updStableAnchor(sceneTime);
-
             if (!e1->hasState(Entry::IEState::SHOULD_STACK) || e1->hasState(Entry::IEState::IS_FRESH)) {
-                e1->updVis(g_speedLower, g_speedPull, sceneTime, g_maxRaise, g_clampTopOffset);
+                e1->updVis(g_speedLower, g_speedPull, g_inertia, sceneTime, g_maxRaise, g_clampTopOffset);
                 e1->ptr->SetPoint(1, pThis, 6, e1->getVisX(), e1->getVisY(), 1);
                 e1->ptr->SetFrameDepth(e1->ptr->m_depthZ - pThis->m_depth, 1);
                 continue;
             }
-            if (e1->pushCount > 1) e1->targetOffsetX /= static_cast<float>(e1->pushCount);
-            bool freed = false;
-
+            bool freed = g_stackingMode > EStackingMode::S_DISABLED;
+        	
             for (int j = i + 1; j < n; ++j) {
                 Entry* e2 = buf[j];
                 // skip fresh plates, UNIT_ADDED callbacks later might disable collisions
                 if (e2->hasState(Entry::IEState::SHOULD_STACK) && !e2->hasState(Entry::IEState::IS_FRESH)) {
-                    // extra x buffer in case e2 gets pulled later
                     g_entries.seedPair(e1, e2, ms);
                     auto* ps = g_entries.getPair(e1, e2);
-                    float dx = e1->getReqDXFor(e2);
-                    float minSepX = e1->getAvgWFor(e2, g_bandX * ps->hysteresis);
-                    if (dx < minSepX) {
-                        const float dvx = e1->velocityX - e2->velocityX;
-                        const float dvy = e1->velocityY - e2->velocityY;
-                        const float damp = std::exp(-2.0f * std::sqrt(dvx * dvx + dvy * dvy));
-                        if (float reqY = e1->getReqYFor(e2, g_bandY * damp); reqY > e2->targetOffsetY) {
-                            if (e2->getRankWeight() > e1->getRankWeight()) {
-                                reqY = e1->getReqYFor(e1, g_bandY * damp);
-                                if (reqY > e1->targetOffsetY) {
-                                    e1->targetOffsetY = reqY;
-                                    g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
-                                }
-                            }
-                            else {
-                                if (!freed && !e1->resolvePush(e2, g_bandY * damp, ps->hysteresis)) {
-                                    freed = true;
-                                    continue;
-                                }
-                                e2->targetOffsetY = reqY;
-                                e2->targetOffsetX += e1->getReqXFor(e2) * std::pow(std::clamp(1.0f - (dx / minSepX), 0.0f, 1.0f), 1.5f) * damp;
-                                e2->pushCount++;
-                                g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
-                            }
-                        }
-                    }
+                	float dx = e1->getReqDXFor(e2);
+                	float minSepX = e1->getAvgWFor(e2, g_bandX * ps->hysteresis);
+                	if (dx <= minSepX - EPS) {
+                		if (float reqY = e1->getReqYFor(e2, g_bandY); reqY > e2->targetOffsetY) {
+                            // genuine overlap
+                			if (e2->getRankWeight() > e1->getRankWeight()) {
+                                // rank prio hot correction
+                				reqY = e2->getReqYFor(e1, g_bandY);
+                				if (reqY > e1->targetOffsetY) {
+                					e1->targetOffsetY = reqY;
+                					g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
+                				}
+                			}
+                			else {
+                				if (!freed && !e1->resolvePush(e2, g_bandY, ps->hysteresis)) {
+                					freed = true;
+                					continue;
+                				}
+                				e2->targetOffsetY = reqY;
+                                float reqX = e1->getReqXFor(e2);
+                				if (e1->pushCount == 0 || std::signbit(e1->targetOffsetX) == std::signbit(reqX)) {
+									e2->accumX += reqX * std::pow(std::clamp(1.0f - (dx / minSepX), 0.0f, 1.0f), 1.5f);
+                					e2->pushCount++;
+                				}
+                				g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
+                			}
+                		} else if (!ps->isStale(1)) {
+                			// overlap at extended range, keep the commitment and pulls up
+                            float reqX = e1->getReqXFor(e2);
+                			if (e1->pushCount == 0 || std::signbit(e1->targetOffsetX) == std::signbit(reqX)) {
+                                e2->accumX += reqX * std::pow(std::clamp(1.0f - (dx / minSepX), 0.0f, 1.0f), 1.5f);
+                				e2->pushCount++;
+                			}
+                			g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
+                		}
+                	}
                 }
             }
         }
@@ -856,8 +850,8 @@ namespace {
         g_entries.sort(ESortType::ST_OUT);
         for (auto* e : buf) {
             g_entries.resolvePairs(e, ms, sceneTime);
-            e->updVis(((e->targetOffsetY - e->stackOffsetY) > 0.0f) ? g_speedRaise : g_speedLower,
-                g_speedPull, sceneTime, g_maxRaise, g_clampTopOffset);
+            e->updVis(((e->commitTargetY - e->stackOffsetY) > 0.0f) ? g_speedRaise : g_speedLower,
+                g_speedPull, g_inertia, sceneTime, g_maxRaise, g_clampTopOffset);
             e->setState(Entry::IEState::IS_FRESH, false);
             e->ptr->SetPoint(1, pThis, 6, e->getVisX(), e->getVisY(), 1);
             e->ptr->SetFrameDepth(e->ptr->m_depthZ - pThis->m_depth, 1);
@@ -884,21 +878,20 @@ namespace {
         return result;
     }
 
-	bool __cdecl CGUnit_C__ISVisibleHk(CGWorldFrame* wf, C3Vector* out) {
-    	CGUnit_C* unit; __asm { mov unit, ecx }
-    	C3Vector worldPos;
-    	unit->GetNamePosition(worldPos);
-    	worldPos.Z += *CGNamePlate::VerticalPlacementOffset;
-    	int mask = 0;
-    	if (wf->GetScreenCoordinates(&worldPos, out, &mask)) return true;
-    	if (mask > 0) {
-    		float marginX; float marginY;
+    bool __fastcall CGUnit_C__ISVisibleHk(CGUnit_C* unit, void* edx, CGWorldFrame* wf, C3Vector* out) {
+        C3Vector worldPos;
+        unit->GetNamePosition(worldPos);
+        worldPos.Z += *CGNamePlate::VerticalPlacementOffset;
+        int mask = 0;
+        if (wf->GetScreenCoordinates(&worldPos, out, &mask)) return true;
+        if (mask > 0) {
+            float marginX; float marginY;
             CGGameUI::NDCToDDCFn(CGNamePlate::DefaultWidth * 0.5f, CGNamePlate::DefaultHeight * 0.5f, &marginX, &marginY);
             // nameplate is >=50% out of the viewport but is still visible, return true to keep it visible and prevent static names popping in
-    		if ((out->X >= -marginX) && (out->X <= (wf->m_right - wf->m_left) + marginX) &&
-				(out->Y >= -marginY) && (out->Y <= (wf->m_top - wf->m_bottom) + marginY)) return true;
-    	}
-    	return g_clampTop != EClampMode::C_DISABLED && mask == 7;
+            if ((out->X >= -marginX) && (out->X <= (wf->m_right - wf->m_left) + marginX) &&
+                (out->Y >= -marginY) && (out->Y <= (wf->m_top - wf->m_bottom) + marginY)) return true;
+        }
+        return g_clampTop != EClampMode::C_DISABLED && mask == 7;
     }
 
     void __cdecl CGUnit_C__SetNamePlateFocusHk(C3Vector* pos) {
@@ -937,28 +930,28 @@ namespace {
         return g_clampTop != EClampMode::C_BOSS || unit->GetCreatureRank() == ECreatureRank::RANK_WORLDBOSS || isValidObjFn(unit->m_worldObject);
     }
 
-	uint8_t __fastcall CSimpleFrame__SetFrameAlpha_siteWrapper(CGUnit_C* unit) {
-    	// original logic + traceline + alpha blending
-    	if (!unit || !unit->m_nameplate) return 255;
-    	uint8_t targetAlpha = (*g_lockedTarget)
-			? ((unit->GetEntry<UnitEntry>()->m_guid == *g_lockedTarget) ? 255 : 255 * g_nonTargetAlpha)
-			: 255;
-    	float current = unit->m_nameplate->m_alpha;
-    	if (g_occlusionAlpha < 1.0f) {
-    		if (CGCamera* cam = CGCamera::GetActiveCamera()) {
-    			C3Vector hitPoint; float dist = 1.0f;
-    			C3Vector start = cam->m_pos; C3Vector end;
-    			unit->GetPosition(end); end.Z += unit->m_unitHeight * 0.666f;
-    			if (CGGameUI::TraceLine(start, end, 0x100111, hitPoint, dist)) {
-    				if (unit->m_nameplate->HasPlateState(EFrameState::NP_IS_FRESH)) {
-    					unit->m_nameplate->SetPlateState(EFrameState::NP_IS_FRESH, false);
-    					return static_cast<uint8_t>(targetAlpha * g_occlusionAlpha);
-    				}
-    				return static_cast<uint8_t>(current + (targetAlpha * g_occlusionAlpha - current) * g_alphaSpd);
-    			}
-    		}
-    	}
-    	return static_cast<uint8_t>(current + (targetAlpha - current) * g_alphaSpd);
+    uint8_t __fastcall CSimpleFrame__SetFrameAlpha_siteWrapper(CGUnit_C* unit) {
+        // original logic + traceline + alpha blending
+        if (!unit || !unit->m_nameplate) return 255;
+        uint8_t targetAlpha = (*g_lockedTarget)
+            ? ((unit->GetEntry<UnitEntry>()->m_guid == *g_lockedTarget) ? 255 : 255 * g_nonTargetAlpha)
+            : 255;
+        float current = unit->m_nameplate->m_alpha;
+        if (g_occlusionAlpha < 1.0f) {
+            if (CGCamera* cam = CGCamera::GetActiveCamera()) {
+                C3Vector hitPoint; float dist = 1.0f;
+                C3Vector start = cam->m_pos; C3Vector end;
+                unit->GetPosition(end); end.Z += unit->m_unitHeight * 0.666f;
+                if (CGGameUI::TraceLine(start, end, 0x100111, hitPoint, dist)) {
+                    if (unit->m_nameplate->HasPlateState(EFrameState::NP_IS_FRESH)) {
+                        unit->m_nameplate->SetPlateState(EFrameState::NP_IS_FRESH, false);
+                        return static_cast<uint8_t>(targetAlpha * g_occlusionAlpha);
+                    }
+                    return static_cast<uint8_t>(current + (targetAlpha * g_occlusionAlpha - current) * g_alphaSpd);
+                }
+            }
+        }
+        return static_cast<uint8_t>(current + (targetAlpha - current) * g_alphaSpd);
     }
 
     guid_t* __cdecl CGGameUI__WipeActivePlatesHk() {
@@ -1080,15 +1073,15 @@ namespace {
         *reinterpret_cast<float*>(0x00ADAA7C) = f * f;
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
-	int CVarHandler_NameplatePlacement(CVar* cvar, const char*, const char* value, void*) {
+    int CVarHandler_NameplatePlacement(CVar* cvar, const char*, const char* value, void*) {
         float f;
-    	const int result = cvar->Sync(value, &f, -1.0f, 2.0f, "%.4f");
-    	DWORD oldProtect;
-    	void* targetAddr = CGNamePlate::VerticalPlacementOffset;
-    	if (VirtualProtect(targetAddr, sizeof(float), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-    		*CGNamePlate::VerticalPlacementOffset = f;
-    		VirtualProtect(targetAddr, sizeof(float), oldProtect, &oldProtect);
-    	}
+        const int result = cvar->Sync(value, &f, -1.0f, 2.0f, "%.4f");
+        DWORD oldProtect;
+        void* targetAddr = CGNamePlate::VerticalPlacementOffset;
+        if (VirtualProtect(targetAddr, sizeof(float), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+            *CGNamePlate::VerticalPlacementOffset = f;
+            VirtualProtect(targetAddr, sizeof(float), oldProtect, &oldProtect);
+        }
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateBandX(CVar* cvar, const char*, const char* value, void*) {
@@ -1156,6 +1149,10 @@ namespace {
         const int result = cvar->Sync(value, &g_alphaSpd, 0.01f, 1.00f, "%.3f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
+    int CVarHandler_NameplateInertia(CVar* cvar, const char*, const char* value, void*) {
+        const int result = cvar->Sync(value, &g_inertia, 0.0f, 20.0f, "%.2f");
+        if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
+    }
     int CVarHandler_NameplateMouseMode(CVar* cvar, const char*, const char* value, void*) {
         int f;
         const int result = cvar->Sync(value, &f, static_cast<int>(EMouseMode::M_DISABLED), static_cast<int>(std::size(g_mouseModeMap)) - 1, "%d");
@@ -1176,7 +1173,7 @@ namespace {
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateStacking(CVar* cvar, const char*, const char* value, void*) {
-        const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_stackingMode), static_cast<int>(EStackingMode::S_DISABLED), static_cast<int>(EStackingMode::S_FRIENDLY), "%d");
+        const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_stackingMode), -static_cast<int>(EStackingMode::S_FRIENDLY), static_cast<int>(EStackingMode::S_FRIENDLY), "%d");
         auto& buf = g_entries.get();
         for (auto& e : buf) EntryManager::applyStackingState(e);
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
@@ -1213,6 +1210,7 @@ void NamePlates::initialize() {
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateOcclusionAlpha, "nameplateOcclusionAlpha", nullptr, "1.0", CVarHandler_NameplateOcclusionAlpha);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateNonTargetAlpha, "nameplateNonTargetAlpha", nullptr, "0.5", CVarHandler_NameplateNonTargetAlpha);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateAlphaSpeed, "nameplateAlphaSpeed", nullptr, "0.25", CVarHandler_NameplateAlphaSpeed);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplateInertia, "nameplateInertia", nullptr, "1", CVarHandler_NameplateInertia);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateClampTop, "nameplateClampTop", nullptr, "0", CVarHandler_NameplateClampTop);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateClampTopOffset, "nameplateClampTopOffset", nullptr, "0.1", CVarHandler_NameplateClampTopOffset);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateStacking, "nameplateStacking", nullptr, "0", CVarHandler_NameplateStacking);
@@ -1221,6 +1219,8 @@ void NamePlates::initialize() {
 
     Hooks::Detour(&CGNamePlate__OnUpdate_site, CGNamePlate__OnUpdate_siteHk);
 
+    std::uint8_t nop3[3] = { 0x90, 0x90, 0x90 };
+    Hooks::PatchBytes(reinterpret_cast<void*>(0x0072B2D0), nop3, sizeof(nop3)); // non-standard thiscall: caller cleans stack (ecx + cdecl hybrid)
     Hooks::Detour(&CGUnit_C::IsVisibleFn, CGUnit_C__ISVisibleHk);
     Hooks::Detour(&CGUnit_C::UpdateReactionFn, CGUnit_C__UpdateReactionHk);
     Hooks::Detour(&CGUnit_C::SetNamePlateFocusFn, CGUnit_C__SetNamePlateFocusHk);
