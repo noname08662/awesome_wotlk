@@ -19,6 +19,7 @@ ___
   - Backported `cursor` conditional
   - Implemented `playerlocation` conditional
 - **Stance/Form Bug Fix:** Fixed client bug preventing casting a second ability after changing form or stance. Now `/cast battle stance /cast charge` works in a single click.
+- ...a few other miscellaneous fixes/tweaks.
 
 ### New API Functions
 - **C_NamePlate:**
@@ -80,8 +81,10 @@ ___
   - `nameplateDistance`
   - `nameplatePlacement`
   - `nameplateMouseMode`
+  - `nameplateInertia`
   - `nameplateBandX`
   - `nameplateBandY`
+  - `nameplateHitboxAnchor`
   - `nameplateHitboxWidthE`
   - `nameplateHitboxHeightE`
   - `nameplateHitboxWidthF`
