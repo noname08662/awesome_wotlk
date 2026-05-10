@@ -99,6 +99,7 @@ namespace {
     float g_occlusionAlpha = 1.0f;
     float g_alphaSpd = 0.25f;
     float g_inertia = 1.0f;
+    float g_nameplatePlacement = 0.66666669f;
 
     auto* const g_alloc = reinterpret_cast<CDataAllocator*>(0x00DCEC44);
     auto* const g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
@@ -338,7 +339,7 @@ namespace {
                         return;
                     }
                     if (hystDecay > 0.0f) {
-                        hystDecay -= (e1->getProximity(e2) * 0.15f) * delta;
+                        hystDecay -= e1->getProximity(e2) * delta;
                         if (hystDecay <= 0.0f) {
                             hystDecay = 0.0f;
                             hystSteps = 0;
@@ -457,8 +458,7 @@ namespace {
             // set bits, update hysteresis
             auto* ps = pairsMgr.get(e1->ptr->GetPlateId(), e2->ptr->GetPlateId());
             float decayFloor = 1.25f + std::min(ps->hystSteps * 0.15f, 0.75f);
-            if (!e1->isAt(e1->targetOffsetX, e1->targetOffsetY) || !e2->isAt(e2->targetOffsetX, e2->targetOffsetY) ||
-					((e1->getTopNDC(decayFloor) + e1->targetOffsetY + e1->getAvgHFor(e2, by)) > (e2->getBotNDC(decayFloor) + e2->targetOffsetY)
+            if (((e1->getTopNDC(decayFloor) + e1->targetOffsetY + e1->getAvgHFor(e2, by)) > (e2->getBotNDC(decayFloor) + e2->targetOffsetY)
 					&& e1->getReqDXFor(e2) < e1->getAvgWFor(e2, bx))) {
                 ps->commit(ms, decayFloor); // still overlapping naturally
             }
@@ -530,11 +530,12 @@ namespace {
                 e->setState(Entry::IEState::SHOULD_STACK, false);
                 return;
             }
-            bool shouldStack = (g_stackingMode != EStackingMode::S_DISABLED);
-            if (g_stackingMode == EStackingMode::S_FRIENDLY) {
+            auto mode = static_cast<EStackingMode>(std::abs(g_stackingMode));
+            bool shouldStack = (mode != EStackingMode::S_DISABLED);
+            if (mode == EStackingMode::S_FRIENDLY) {
                 shouldStack = e->hasState(Entry::IEState::IS_FRIENDLY);
             }
-            else if (g_stackingMode == EStackingMode::S_ENEMY) {
+            else if (mode == EStackingMode::S_ENEMY) {
                 shouldStack = !e->hasState(Entry::IEState::IS_FRIENDLY);
             }
             e->setState(Entry::IEState::SHOULD_STACK, shouldStack);
@@ -881,7 +882,7 @@ namespace {
     bool __fastcall CGUnit_C__ISVisibleHk(CGUnit_C* unit, void* edx, CGWorldFrame* wf, C3Vector* out) {
         C3Vector worldPos;
         unit->GetNamePosition(worldPos);
-        worldPos.Z += *CGNamePlate::VerticalPlacementOffset;
+        worldPos.Z += g_nameplatePlacement;
         int mask = 0;
         if (wf->GetScreenCoordinates(&worldPos, out, &mask)) return true;
         if (mask > 0) {
@@ -1074,14 +1075,7 @@ namespace {
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplatePlacement(CVar* cvar, const char*, const char* value, void*) {
-        float f;
-        const int result = cvar->Sync(value, &f, -1.0f, 2.0f, "%.4f");
-        DWORD oldProtect;
-        void* targetAddr = CGNamePlate::VerticalPlacementOffset;
-        if (VirtualProtect(targetAddr, sizeof(float), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-            *CGNamePlate::VerticalPlacementOffset = f;
-            VirtualProtect(targetAddr, sizeof(float), oldProtect, &oldProtect);
-        }
+        const int result = cvar->Sync(value, &g_nameplatePlacement, -1.0f, 2.0f, "%.4f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
     int CVarHandler_NameplateBandX(CVar* cvar, const char*, const char* value, void*) {
@@ -1221,6 +1215,7 @@ void NamePlates::initialize() {
 
     std::uint8_t nop3[3] = { 0x90, 0x90, 0x90 };
     Hooks::PatchBytes(reinterpret_cast<void*>(0x0072B2D0), nop3, sizeof(nop3)); // non-standard thiscall: caller cleans stack (ecx + cdecl hybrid)
+    Hooks::PatchBytes(reinterpret_cast<void*>(0x00715737 + 2), &g_nameplatePlacement, sizeof(void*));
     Hooks::Detour(&CGUnit_C::IsVisibleFn, CGUnit_C__ISVisibleHk);
     Hooks::Detour(&CGUnit_C::UpdateReactionFn, CGUnit_C__UpdateReactionHk);
     Hooks::Detour(&CGUnit_C::SetNamePlateFocusFn, CGUnit_C__SetNamePlateFocusHk);

@@ -1374,8 +1374,6 @@ public:
     float m_castEndTime;                // 0x2F4
     uint32_t m_castFlags;               // 0x2F8
 
-	inline static auto VerticalPlacementOffset = reinterpret_cast<float*>(0x009FC830);
-
     using Create_t = CGNamePlate* (__thiscall*)(CGNamePlate*, CSimpleFrame*);
     inline static auto CreateFn = reinterpret_cast<Create_t>(0x0098F790);
 
