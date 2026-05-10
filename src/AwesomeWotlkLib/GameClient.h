@@ -157,7 +157,9 @@ namespace CGGameUI {
 
 // CGlueMgr
 namespace CGlueMgr {
-    inline auto LoadGlueXMLFn = reinterpret_cast<DummyCallback_t>(0x004DA9AC);
+	inline auto(*LoadGlueXML_site)() = reinterpret_cast<DummyCallback_t>(0x004DA9A7);
+	constexpr uintptr_t LoadGlueXML_site_jmpback = 0x004DA9AC;
+
     inline auto LoadCharactersFn = reinterpret_cast<DummyCallback_t>(0x004E47E5);
 }
 

@@ -829,7 +829,7 @@ namespace {
                 				e2->targetOffsetY = reqY;
                                 float reqX = e1->getReqXFor(e2);
                 				if (e1->pushCount == 0 || std::signbit(e1->targetOffsetX) == std::signbit(reqX)) {
-									e2->accumX += reqX * std::pow(std::clamp(1.0f - (dx / minSepX), 0.0f, 1.0f), 1.5f);
+									e2->accumX += reqX * std::pow(std::clamp(1.0f - (dx / e1->getAvgWFor(e2, g_bandX)), 0.0f, 1.0f), 1.5f);
                 					e2->pushCount++;
                 				}
                 				g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
@@ -838,7 +838,7 @@ namespace {
                 			// overlap at extended range, keep the commitment and pulls up
                             float reqX = e1->getReqXFor(e2);
                 			if (e1->pushCount == 0 || std::signbit(e1->targetOffsetX) == std::signbit(reqX)) {
-                                e2->accumX += reqX * std::pow(std::clamp(1.0f - (dx / minSepX), 0.0f, 1.0f), 1.5f);
+                                e2->accumX += reqX * std::pow(std::clamp(1.0f - (dx / e1->getAvgWFor(e2, g_bandX)), 0.0f, 1.0f), 1.5f);
                 				e2->pushCount++;
                 			}
                 			g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);

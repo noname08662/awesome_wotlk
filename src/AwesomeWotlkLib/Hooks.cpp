@@ -72,8 +72,10 @@ namespace Hooks {
             }
         }
 
-        void __declspec(naked) Lua_OpenFrameXMLApiHk() {
+        void __declspec(naked) Lua_OpenFrameXMLApi_siteHk() {
             __asm {
+            	mov eax, 0x00530F60; 
+            	call eax;
                 pushad;
                 pushfd;
                 call Lua_OpenFrameXMlApi_bulk;
@@ -156,18 +158,18 @@ namespace Hooks {
 
         void LoadGlueXML_bulk() { for (auto& func : s_glueXmlPostLoad) func(); }
 
-        void __declspec(naked) LoadGlueXMLHk() {
+        void __declspec(naked) LoadGlueXML_siteHk() {
+        	static constexpr DWORD addr = 0x004DA2D0;
             __asm {
-                pop ebx;
-                mov esp, ebp;
-                pop ebp;
+                call addr;
 
                 pushad;
                 pushfd;
                 call LoadGlueXML_bulk;
                 popfd;
                 popad;
-                ret;
+
+                jmp CGlueMgr::LoadGlueXML_site_jmpback;
             }
         }
 
@@ -223,7 +225,7 @@ void Hooks::initialize() {
     Detour(&CGGameUI::LeaveWorldFn, OnLeaveWorld);
     Detour(&CGGameUI::GetGuidByKeywordFn, GetGuidByKeywordHk);
     Detour(&CGGameUI::GetKeywordsByGuidFn, GetKeywordsByGuidHk);
-    Detour(&CGlueMgr::LoadGlueXMLFn, LoadGlueXMLHk);
+    Detour(&CGlueMgr::LoadGlueXML_site, LoadGlueXML_siteHk);
     Detour(&CGlueMgr::LoadCharactersFn, LoadCharactersHk);
-    Detour(&Lua::OpenFrameXMLApiFn, Lua_OpenFrameXMLApiHk);
+    Detour(&Lua::OpenFrameXMLApi_site, Lua_OpenFrameXMLApi_siteHk);
 }

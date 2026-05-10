@@ -63,7 +63,7 @@ namespace Lua {
     using fn_lua_newuserdata = void* (*)(lua_State*, size_t);
     using fn_lua_setmetatable = int(*)(lua_State*, int);
 
-    inline auto OpenFrameXMLApiFn = reinterpret_cast<DummyCallback_t>(0x00530F85);
+    inline auto OpenFrameXMLApi_site = reinterpret_cast<DummyCallback_t>(0x0051226D);
 
     inline void luaL_checktype(lua_State* L, int idx, int t) {
         reinterpret_cast<fn_luaL_checktype>(0x0084F960)(L, idx, t);
