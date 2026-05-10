@@ -120,7 +120,7 @@ A new keybind for smart interaction with the game world:
 - Loots mobs
 - Skins mobs
 - Interacts with nearby objects (ore veins, chairs, doors, mailboxes, etc.)
-- Can be bound in the Options menu like any other keybind (requires Interaction Addon, bundled in release)
+- Can be bound in the Options menu like any other keybind
 - Can be used in macros: `/interact` or `/interact [@mouseover]` (standard Blizzard modifiers apply)
 
 ### Nameplate Stacking
