@@ -1,59 +1,39 @@
 name: CMake Windows Win32 Release
-
 on:
   push:
     tags:
       - "*"
-
 env:
   BUILD_TYPE: Release
-
 jobs:
   build-windows-win32-release:
     runs-on: windows-latest
-    permissions:
-      contents: write 
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
-
-      - name: Configure and build DLL
+      - name: Configure and build
         run: |
           $buildDir = "${{ github.workspace }}\build"
           cmake -S "${{ github.workspace }}" -B $buildDir -G "Visual Studio 17 2022" -A Win32 -T host=x64
           cmake --build $buildDir --config ${{ env.BUILD_TYPE }} -- /m
-
-      - name: Package stuff
+      - name: Package release
         run: |
           $tag = "${{ github.ref_name }}"
-          $distDir = "${{ github.workspace }}\dist"
-          New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+          $staging = "${{ github.workspace }}\staging"
 
-          $src = "${{ github.workspace }}\build\Release"
-          $skiaDll = "${{ github.workspace }}\deps\skia\skia.dll"
-          $zip = "$distDir\AwesomeWotLK_$tag.zip"
+          New-Item -ItemType Directory -Force -Path "$staging\Interface\AddOns" | Out-Null
 
-          Compress-Archive -Path "$src\AwesomeWotlkPatch.exe","$src\AwesomeWotlkLib.dll",$skiaDll -DestinationPath $zip -Force
+          Copy-Item "${{ github.workspace }}\addons\AwesomeCVar" "$staging\Interface\AddOns\AwesomeCVar" -Recurse
+          Copy-Item "${{ github.workspace }}\addons\Flash" "$staging\Interface\AddOns\Flash" -Recurse
 
-      - name: Package addons folder
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $addonsPath = "${{ github.workspace }}\addons"
-          if (!(Test-Path $addonsPath)) { throw "Not found: $addonsPath" }
+          Copy-Item "${{ github.workspace }}\build\Release\AwesomeWotlkPatch.exe" "$staging\"
+          Copy-Item "${{ github.workspace }}\build\Release\AwesomeWotlkLib.dll" "$staging\"
+          Copy-Item "${{ github.workspace }}\deps\skia\skia.dll" "$staging\"
 
-          $addonsZip = "${{ github.workspace }}\dist\addons_$tag.zip"
-          Compress-Archive -Path "$addonsPath" -DestinationPath $addonsZip -Force
-
-      - name: Upload build artifacts
+          Compress-Archive -Path "$staging\*" -DestinationPath "${{ github.workspace }}\AwesomeWotLK_$tag.zip" -Force
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: win32-release
-          path: dist/*.zip
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.zip
+          path: AwesomeWotLK_*.zip
