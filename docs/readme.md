@@ -9,7 +9,7 @@ ___
 ## Details
 
 ### Features
-- **MSDF Font Rendering:** Optionally enables smooth, vector-based font rendering, reducing pixelation for text such as damage numbers or unit names.
+- **MSDF Font Rendering:** Optionally enables smooth, vector-based font rendering, reducing pixelation across all in-game text.
 - **Clipboard Fix:** Resolves issue where non-English text would appear as "???" when copied to clipboard.
 - **Auto Login:** Launch with credentials via command line/shortcuts.  
   Usage: `Wow.exe -login "LOGIN" -password "PASSWORD" -realmlist "REALMLIST" -realmname "REALMNAME"`
@@ -142,7 +142,7 @@ ___
 1. Download the latest [release](https://github.com/noname08662/awesome_wotlk/releases)
 2. Extract all files to your game's root folder
 3. Run `AwesomeWotlkPatch.exe` (you should see a confirmation message), or drag `Wow.exe` onto `AwesomeWotlkPatch.exe`
-4. To update, simply download the new version and replace the DLL file
+4. To update, simply download the new version and replace the `AwesomeWotlkLib.dll` file (unless release notes specify something extra)
 
 ___
 
