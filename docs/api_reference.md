@@ -181,6 +181,12 @@ Multipliers for the clickable hitbox dimensions of **friendly** nameplates.
 
 Multipliers for the clickable hitbox dimensions of **enemy** nameplates.
 
+## nameplateHysteresisDecay `CVar`
+**Arguments:** `rate` (number)  
+**Default:** 1
+
+Controls how quickly stacking pairs dissolve once nameplates are no longer overlapping. Higher values cause faster separation; lower values keep pairs committed longer.
+
 ## nameplateRaiseDistance `CVar`
 **Arguments:** `distance` (number)  
 **Default:** 8
@@ -528,4 +534,4 @@ Copies text to the clipboard.
 **Arguments:** `value` (number)  
 **Default:** 100
 
-Changes the camera field of view (fisheye effect), in range **1**-**200**.
+Changes the camera field of view (fisheye effect), in range **60**-**150**.
