@@ -1,4 +1,4 @@
-﻿#include "NamePlates.h"
+#include "NamePlates.h"
 #include "Utils.h"
 #include <format>
 #include <bit>
@@ -459,10 +459,9 @@ namespace {
         void commitPair(const Entry* e1, const Entry* e2, uint64_t ms, float delta, float by, float bx) {
             // set bits, update hysteresis
             auto* ps = pairsMgr.get(e1->ptr->GetPlateId(), e2->ptr->GetPlateId());
-            float decayFloor = 1.25f + std::min(ps->hystSteps * 0.15f, 0.75f);
-            if (((e1->getTopNDC(decayFloor) + e1->targetOffsetY + e1->getAvgHFor(e2, by)) > (e2->getBotNDC(decayFloor) + e2->targetOffsetY)
+            if (((e1->getTopNDC() + e1->targetOffsetY + e1->getAvgHFor(e2, by)) > (e2->getBotNDC() + e2->targetOffsetY)
 					&& e1->getReqDXFor(e2) < e1->getAvgWFor(e2, bx))) {
-                ps->commit(ms, decayFloor); // still overlapping naturally
+                ps->commit(ms, 1.25f + std::min(ps->hystSteps * 0.15f, 0.75f)); // still overlapping naturally
             }
             else {
                 // bboxes no longer overlap — compute separation-scaled decay rate
@@ -836,7 +835,8 @@ namespace {
                 				}
                 				g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
                 			}
-                		} else if (!ps->isStale(1)) {
+                		} else if (!ps->isStale(1)
+								&& (e1->getTopNDC(ps->hysteresis) + e1->targetOffsetY + e1->getAvgHFor(e2, g_bandY) > (e2->getBotNDC(ps->hysteresis) + e2->targetOffsetY))) {
                 			// overlap at extended range, keep the commitment and pulls up
                             float reqX = e1->getReqXFor(e2);
                 			if (e1->pushCount == 0 || std::signbit(e1->targetOffsetX) == std::signbit(reqX)) {
