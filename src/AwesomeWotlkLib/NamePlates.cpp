@@ -38,6 +38,7 @@ namespace {
     CVar* s_cvar_nameplateNonTargetAlpha;
     CVar* s_cvar_nameplateAlphaSpeed;
     CVar* s_cvar_nameplateInertia;
+    CVar* s_cvar_nameplateHysteresisDecay;
     CVar* s_cvar_nameplateClampTop;
     CVar* s_cvar_nameplateClampTopOffset;
 
@@ -99,6 +100,7 @@ namespace {
     float g_occlusionAlpha = 1.0f;
     float g_alphaSpd = 0.25f;
     float g_inertia = 1.0f;
+    float g_hystDecay = 1.0f;
     float g_nameplatePlacement = 0.66666669f;
 
     auto* const g_alloc = reinterpret_cast<CDataAllocator*>(0x00DCEC44);
@@ -464,7 +466,7 @@ namespace {
             }
             else {
                 // bboxes no longer overlap — compute separation-scaled decay rate
-                ps->commit(ms, std::max(1.0f, ps->hysteresis - (e1->getProximity(e2) * 0.05f) * delta));
+                ps->commit(ms, std::max(1.0f, ps->hysteresis - (e1->getProximity(e2) * 0.05f) * delta * g_hystDecay));
             }
         }
 
@@ -1147,6 +1149,10 @@ namespace {
         const int result = cvar->Sync(value, &g_inertia, 0.0f, 20.0f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
+	int CVarHandler_NameplateHysteresisDecay(CVar* cvar, const char*, const char* value, void*) {
+    	const int result = cvar->Sync(value, &g_hystDecay, 0.25f, 30.0f, "%.2f");
+    	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
+    }
     int CVarHandler_NameplateMouseMode(CVar* cvar, const char*, const char* value, void*) {
         int f;
         const int result = cvar->Sync(value, &f, static_cast<int>(EMouseMode::M_DISABLED), static_cast<int>(std::size(g_mouseModeMap)) - 1, "%d");
@@ -1205,6 +1211,7 @@ void NamePlates::initialize() {
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateNonTargetAlpha, "nameplateNonTargetAlpha", nullptr, "0.5", CVarHandler_NameplateNonTargetAlpha);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateAlphaSpeed, "nameplateAlphaSpeed", nullptr, "0.25", CVarHandler_NameplateAlphaSpeed);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateInertia, "nameplateInertia", nullptr, "1", CVarHandler_NameplateInertia);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplateHysteresisDecay, "nameplateHysteresisDecay", nullptr, "1", CVarHandler_NameplateHysteresisDecay);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateClampTop, "nameplateClampTop", nullptr, "0", CVarHandler_NameplateClampTop);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateClampTopOffset, "nameplateClampTopOffset", nullptr, "0.1", CVarHandler_NameplateClampTopOffset);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateStacking, "nameplateStacking", nullptr, "0", CVarHandler_NameplateStacking);

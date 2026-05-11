@@ -59,185 +59,6 @@ local function createPopupFrame(name, title, message, width, height)
     return frame
 end
 
--- ### UI Update and Control Creation Functions ###
-local function createToggleControl(control, cvarDef, text)
-    local checkbox = CreateFrame("CheckButton", getFrameName(cvarDef.name, "Checkbox"), control, "UICheckButtonTemplate")
-    checkbox:SetPoint("LEFT", text, "RIGHT", 10, 0)
-    checkbox.cvarDef = cvarDef
-    checkbox:SetScript("OnClick", function(self)
-        local checked = self:GetChecked()
-        local newVal = checked and self.cvarDef.max or self.cvarDef.min
-        ACVar:SetCVarValue(self.cvarDef.name, newVal, self.cvarDef)
-        ACVar:PrintCVarChange(self.cvarDef.name, newVal)
-        PlaySound(checked and "igMainMenuOptionCheckBoxOn" or "igMainMenuOptionCheckBoxOff")
-    end)
-    return 25
-end
-
-local function createSliderControl(control, cvarDef, text, descText)
-    local slider = CreateFrame("Slider", getFrameName(cvarDef.name, "Slider"), control, "OptionsSliderTemplate")
-    _G[slider:GetName().."Low"]:SetText(cvarDef.min)
-    _G[slider:GetName().."High"]:SetText(cvarDef.max)
-    slider:SetMinMaxValues(cvarDef.min, cvarDef.max)
-    slider:SetValueStep(cvarDef.step or 1)
-
-    if descText then
-        slider:SetPoint("TOPLEFT", descText, "BOTTOMLEFT", 0, -10)
-    else
-        slider:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -10)
-    end
-    slider:SetPoint("RIGHT", control, "RIGHT", -100, 0)
-
-    local valueText = control:CreateFontString(getFrameName(cvarDef.name, "SliderValue"), "ARTWORK", "GameFontNormal")
-    valueText:SetPoint("TOP", slider, "BOTTOM", 0, 0)
-
-    slider.cvarDef = cvarDef
-    slider.valueText = valueText
-
-    local resetButton = createButton(control, getFrameName(cvarDef.name, "ResetButton"), string.format(L.RESET_TO, cvarDef.default), 100, 20)
-    resetButton:SetPoint("LEFT", slider, "RIGHT", 12, -4)
-    resetButton:Hide()
-    resetButton.cvarDef = cvarDef
-    resetButton.slider = slider
-    resetButton:SetScript("OnClick", function(self)
-        ACVar:SetCVarValue(self.cvarDef.name, self.cvarDef.default, self.cvarDef)
-        ACVar:PrintCVarChange(self.cvarDef.name, self.cvarDef.default)
-        self.slider:SetValue(self.cvarDef.default)
-        self:Hide()
-
-        PlaySound("igMainMenuOptionFaerTab")
-    end)
-
-    slider:SetScript("OnValueChanged", function(self, val)
-        val = ACVar.FormatNumber(val)
-        self.valueText:SetText(tostring(val))
-        ACVar:SetCVarValue(self.cvarDef.name, val, self.cvarDef)
-        self.pendingValue = val
-        ACVar:UpdateResetButtonVisibility(self.cvarDef, val)
-    end)
-
-    slider:SetScript("OnMouseUp", function(self)
-        if self.pendingValue then
-            ACVar:PrintCVarChange(self.cvarDef.name, self.pendingValue)
-        end
-    end)
-    return 40
-end
-
-local function createDropdownControl(control, cvarDef, text, descText)
-    local dropdown = CreateFrame("Frame", getFrameName(cvarDef.name, "Dropdown"), control, "UIDropDownMenuTemplate")
-
-    if descText then
-        dropdown:SetPoint("TOPLEFT", descText, "BOTTOMLEFT", 0, -10)
-    else
-        dropdown:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -10)
-    end
-    dropdown:SetPoint("RIGHT", control, "RIGHT", -100, 0)
-
-    UIDropDownMenu_SetWidth(dropdown, 160)
-    dropdown.cvarDef = cvarDef
-
-    local function getCurrentValue()
-        return (ACVar and ACVar.GetCVarValue and ACVar:GetCVarValue(cvarDef.name)) or cvarDef.default
-    end
-
-    local function setClosedLabel(val)
-        local label = cvarDef.options[val] or tostring(val)
-        UIDropDownMenu_SetText(dropdown, label)
-        UIDropDownMenu_SetSelectedValue(dropdown, val)
-    end
-
-    local function getMinMaxIndex(t)
-        local minK, maxK
-        for k in pairs(t or {}) do
-            if type(k) == "number" then
-                if not minK or k < minK then minK = k end
-                if not maxK or k > maxK then maxK = k end
-            end
-        end
-        return minK or 0, maxK or -1
-    end
-
-    UIDropDownMenu_Initialize(dropdown, function(self, level)
-        local cur = getCurrentValue()
-        local minK, maxK = getMinMaxIndex(cvarDef.options)
-
-        for i = minK, maxK do
-            local label = (cvarDef.options or {})[i]
-            if label ~= nil then
-                local info = UIDropDownMenu_CreateInfo()
-                info.text = label
-                info.value = i
-                info.checked = (i == cur)
-                info.func = function()
-                    UIDropDownMenu_SetSelectedValue(dropdown, i)
-                    UIDropDownMenu_SetText(dropdown, label)
-
-                    ACVar:SetCVarValue(cvarDef.name, i, cvarDef)
-                    dropdown.pendingValue = i
-                    ACVar:UpdateResetButtonVisibility(cvarDef, i)
-                    ACVar:PrintCVarChange(cvarDef.name, i)
-                    PlaySound("igMainMenuOptionCheckBoxOn")
-                    CloseDropDownMenus()
-                end
-                UIDropDownMenu_AddButton(info, level)
-            end
-        end
-    end)
-
-    setClosedLabel(getCurrentValue())
-
-    local resetButton = createButton(
-        control,
-        getFrameName(cvarDef.name, "ResetButton"),
-        string.format(L.RESET_TO, tostring(cvarDef.options[cvarDef.default] or cvarDef.default)),
-        100, 20
-    )
-    resetButton:SetPoint("LEFT", dropdown, "RIGHT", 12, -4)
-    resetButton:Hide()
-    resetButton.cvarDef = cvarDef
-    resetButton.dropdown = dropdown
-
-    resetButton:SetScript("OnClick", function(self)
-        ACVar:SetCVarValue(self.cvarDef.name, self.cvarDef.default, self.cvarDef)
-        ACVar:PrintCVarChange(self.cvarDef.name, self.cvarDef.default)
-        setClosedLabel(self.cvarDef.default)
-        PlaySound("igMainMenuOptionCheckBoxOn")
-        self:Hide()
-    end)
-
-    dropdown.resetButton = resetButton
-    ACVar:UpdateResetButtonVisibility(cvarDef, getCurrentValue())
-
-    return 40
-end
-
-local function createModeControl(control, cvarDef, text, descText)
-    local currentOffsetY = (descText and descText:GetHeight() + 5) or 0
-    for j, mode in ipairs(cvarDef.modes) do
-        currentOffsetY = currentOffsetY + 20
-        local radio = CreateFrame("CheckButton", getFrameName(cvarDef.name, "Radio"..j), control, "UIRadioButtonTemplate")
-        radio:SetPoint("TOPLEFT", text, "TOPLEFT", 0, -currentOffsetY)
-
-        local label = radio:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-        label:SetText(mode.label)
-
-        radio.cvarDef = cvarDef
-        radio.modeValue = mode.value
-        radio:SetScript("OnClick", function(self)
-            for k = 1, #self.cvarDef.modes do
-                _G[getFrameName(self.cvarDef.name, "Radio"..k)]:SetChecked(false)
-            end
-            self:SetChecked(true)
-            ACVar:SetCVarValue(self.cvarDef.name, self.modeValue, self.cvarDef)
-            ACVar:PrintCVarChange(self.cvarDef.name, self.modeValue)
-            PlaySound("igMainMenuOptionCheckBoxOn")
-        end)
-    end
-    return 25 * #cvarDef.modes
-end
-
 function ACVar:UpdateResetButtonVisibility(cvarDef, currentValue)
     local resetButton = _G[getFrameName(cvarDef.name, "ResetButton")]
     if resetButton then
@@ -291,6 +112,7 @@ function ACVar:ToggleFrame(tabName)
         end
     end
 end
+
 -- Open API function usage: AwesomeCVar:ToggleFrame("Nameplates")
 _G["AwesomeCVar"].ToggleFrame = function(self, tabName) ACVar:ToggleFrame(tabName) end
 
@@ -507,54 +329,212 @@ function ACVar:CreateMainFrame()
             PlaySound("igCharacterInfoTab")
         end)
 
-        -- Populate panel content
-        local cvarList = CVARS[categoryName]
-        local lastControl, totalContentHeight = nil, 0
-        for i, cvarDef in ipairs(cvarList) do
-            local control = CreateFrame("Frame", getFrameName(cvarDef.name, "Control"), content)
-            control:SetWidth(content:GetWidth() - 45)
-            if lastControl then
-                control:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -15)
-            else
-                control:SetPoint("TOPLEFT", 20, -20)
-            end
+		-- Populate panel content
+		local cvarList = CVARS[categoryName]
+		local lastControl = nil
 
-            local text = control:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-            text:SetPoint("TOPLEFT", 0, 0)
-            text:SetText(cvarDef.label..":")
-			text:SetJustifyH("CENTER")
-            local controlHeight = text:GetHeight()
-            local descText
-            if cvarDef.desc then
-                descText = control:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-                descText:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -2)
-                descText:SetText(cvarDef.desc)
-                descText:SetTextColor(unpack(CONSTANTS.COLORS.DESC_TEXT))
-				descText:SetJustifyH("CENTER")
-                controlHeight = controlHeight + descText:GetHeight() + 2
-            end
+		for i, cvarDef in ipairs(cvarList) do
+			local control = CreateFrame("Frame", getFrameName(cvarDef.name, "Control"), content)
+			control:SetWidth(content:GetWidth() - 45)
+			if lastControl then
+				control:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -15)
+			else
+				control:SetPoint("TOPLEFT", 20, -20)
+			end
 
-            local additionalHeight = 0
-            if cvarDef.type == "toggle" then
-                additionalHeight = createToggleControl(control, cvarDef, text)
-                controlHeight = max(controlHeight, additionalHeight)
-            elseif cvarDef.type == "slider" then
-                additionalHeight = createSliderControl(control, cvarDef, text, descText)
-                controlHeight = controlHeight + additionalHeight + 5
-            elseif cvarDef.type == "mode" then
-                additionalHeight = createModeControl(control, cvarDef, text, descText)
-                controlHeight = controlHeight + additionalHeight
-            elseif cvarDef.type == "dropdown" then
-                additionalHeight = createDropdownControl(control, cvarDef, text, descText)
-                controlHeight = controlHeight + additionalHeight + 5
+			-- Label
+			local text = control:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+			text:SetPoint("TOPLEFT", control, "TOPLEFT", 0, 0)
+			text:SetWidth(control:GetWidth())
+			text:SetJustifyH("LEFT")
+			text:SetText(cvarDef.label..":")
+
+			-- Desc
+			local descText
+			if cvarDef.desc then
+				descText = control:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+				descText:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -4)
+				descText:SetWidth(control:GetWidth())
+				descText:SetJustifyH("LEFT")
+				descText:SetTextColor(unpack(CONSTANTS.COLORS.DESC_TEXT))
+				descText:SetText(cvarDef.desc)
+			end
+
+			-- Widget frame anchored below label/desc
+			local widgetFrame = CreateFrame("Frame", getFrameName(cvarDef.name, "Widget"), control)
+			widgetFrame:SetPoint("TOPLEFT", descText or text, "BOTTOMLEFT", 0, -8)
+			widgetFrame:SetPoint("RIGHT", control, "RIGHT", 0, 0)
+
+			if cvarDef.type == "toggle" then
+				widgetFrame:SetHeight(25)
+				local checkbox = CreateFrame("CheckButton", getFrameName(cvarDef.name, "Checkbox"), widgetFrame, "UICheckButtonTemplate")
+				checkbox:SetPoint("LEFT", widgetFrame, "LEFT", 0, 0)
+				checkbox.cvarDef = cvarDef
+				checkbox:SetScript("OnClick", function(self)
+					local checked = self:GetChecked()
+					local newVal = checked and self.cvarDef.max or self.cvarDef.min
+					ACVar:SetCVarValue(self.cvarDef.name, newVal, self.cvarDef)
+					ACVar:PrintCVarChange(self.cvarDef.name, newVal)
+					PlaySound(checked and "igMainMenuOptionCheckBoxOn" or "igMainMenuOptionCheckBoxOff")
+				end)
+
+			elseif cvarDef.type == "slider" then
+				widgetFrame:SetHeight(40)
+				local slider = CreateFrame("Slider", getFrameName(cvarDef.name, "Slider"), widgetFrame, "OptionsSliderTemplate")
+				_G[slider:GetName().."Low"]:SetText(cvarDef.min)
+				_G[slider:GetName().."High"]:SetText(cvarDef.max)
+				slider:SetMinMaxValues(cvarDef.min, cvarDef.max)
+				slider:SetValueStep(cvarDef.step or 1)
+				slider:SetPoint("TOPLEFT", widgetFrame, "TOPLEFT", 0, -8)
+				slider:SetPoint("RIGHT", widgetFrame, "RIGHT", -120, 0)
+
+				local valueText = widgetFrame:CreateFontString(getFrameName(cvarDef.name, "SliderValue"), "ARTWORK", "GameFontNormal")
+				valueText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
+				slider.cvarDef = cvarDef
+				slider.valueText = valueText
+
+				local resetButton = createButton(widgetFrame, getFrameName(cvarDef.name, "ResetButton"),
+					string.format(L.RESET_TO, cvarDef.default), 100, 20)
+				resetButton:SetPoint("LEFT", slider, "RIGHT", 12, -4)
+				resetButton:Hide()
+				resetButton.cvarDef = cvarDef
+				resetButton.slider = slider
+				resetButton:SetScript("OnClick", function(self)
+					ACVar:SetCVarValue(self.cvarDef.name, self.cvarDef.default, self.cvarDef)
+					ACVar:PrintCVarChange(self.cvarDef.name, self.cvarDef.default)
+					self.slider:SetValue(self.cvarDef.default)
+					self:Hide()
+					PlaySound("igMainMenuOptionFaerTab")
+				end)
+				slider:SetScript("OnValueChanged", function(self, val)
+					val = ACVar.FormatNumber(val)
+					self.valueText:SetText(tostring(val))
+					ACVar:SetCVarValue(self.cvarDef.name, val, self.cvarDef)
+					self.pendingValue = val
+					ACVar:UpdateResetButtonVisibility(self.cvarDef, val)
+				end)
+				slider:SetScript("OnMouseUp", function(self)
+					if self.pendingValue then
+						ACVar:PrintCVarChange(self.cvarDef.name, self.pendingValue)
+					end
+				end)
+
+			elseif cvarDef.type == "dropdown" then
+				widgetFrame:SetHeight(40)
+				local dropdown = CreateFrame("Frame", getFrameName(cvarDef.name, "Dropdown"), widgetFrame, "UIDropDownMenuTemplate")
+				dropdown:SetPoint("TOPLEFT", widgetFrame, "TOPLEFT", -16, 0)
+				UIDropDownMenu_SetWidth(dropdown, 160)
+				dropdown.cvarDef = cvarDef
+
+				local function getCurrentValue()
+					return (ACVar and ACVar.GetCVarValue and ACVar:GetCVarValue(cvarDef.name)) or cvarDef.default
+				end
+				local function setClosedLabel(val)
+					UIDropDownMenu_SetText(dropdown, cvarDef.options[val] or tostring(val))
+					UIDropDownMenu_SetSelectedValue(dropdown, val)
+				end
+				local function getMinMaxIndex(t)
+					local minK, maxK
+					for k in pairs(t or {}) do
+						if type(k) == "number" then
+							if not minK or k < minK then minK = k end
+							if not maxK or k > maxK then maxK = k end
+						end
+					end
+					return minK or 0, maxK or -1
+				end
+				UIDropDownMenu_Initialize(dropdown, function(self, level)
+					local cur = getCurrentValue()
+					local minK, maxK = getMinMaxIndex(cvarDef.options)
+					for i = minK, maxK do
+						local label = (cvarDef.options or {})[i]
+						if label ~= nil then
+							local info = UIDropDownMenu_CreateInfo()
+							info.text = label
+							info.value = i
+							info.checked = (i == cur)
+							info.func = function()
+								UIDropDownMenu_SetSelectedValue(dropdown, i)
+								UIDropDownMenu_SetText(dropdown, label)
+								ACVar:SetCVarValue(cvarDef.name, i, cvarDef)
+								ACVar:UpdateResetButtonVisibility(cvarDef, i)
+								ACVar:PrintCVarChange(cvarDef.name, i)
+								PlaySound("igMainMenuOptionCheckBoxOn")
+								CloseDropDownMenus()
+							end
+							UIDropDownMenu_AddButton(info, level)
+						end
+					end
+				end)
+				setClosedLabel(getCurrentValue())
+
+				local resetButton = createButton(widgetFrame, getFrameName(cvarDef.name, "ResetButton"),
+					string.format(L.RESET_TO, tostring(cvarDef.options[cvarDef.default] or cvarDef.default)), 100, 20)
+				resetButton:SetPoint("LEFT", dropdown, "RIGHT", -4, 2)
+				resetButton:Hide()
+				resetButton.cvarDef = cvarDef
+				resetButton.dropdown = dropdown
+				resetButton:SetScript("OnClick", function(self)
+					ACVar:SetCVarValue(self.cvarDef.name, self.cvarDef.default, self.cvarDef)
+					ACVar:PrintCVarChange(self.cvarDef.name, self.cvarDef.default)
+					setClosedLabel(self.cvarDef.default)
+					PlaySound("igMainMenuOptionCheckBoxOn")
+					self:Hide()
+				end)
+				dropdown.resetButton = resetButton
+				ACVar:UpdateResetButtonVisibility(cvarDef, getCurrentValue())
+
+			elseif cvarDef.type == "mode" then
+				widgetFrame:SetHeight(#cvarDef.modes * 20)
+				local prevRadio
+				for j, mode in ipairs(cvarDef.modes) do
+					local radio = CreateFrame("CheckButton", getFrameName(cvarDef.name, "Radio"..j), widgetFrame, "UIRadioButtonTemplate")
+					if prevRadio then
+						radio:SetPoint("TOPLEFT", prevRadio, "BOTTOMLEFT", 0, -4)
+					else
+						radio:SetPoint("TOPLEFT", widgetFrame, "TOPLEFT", 0, 0)
+					end
+					local label = radio:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+					label:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+					label:SetText(mode.label)
+					
+					radio.cvarDef = cvarDef
+					radio.modeValue = mode.value
+					radio:SetScript("OnClick", function(self)
+						for k = 1, #self.cvarDef.modes do
+							_G[getFrameName(self.cvarDef.name, "Radio"..k)]:SetChecked(false)
+						end
+						self:SetChecked(true)
+						ACVar:SetCVarValue(self.cvarDef.name, self.modeValue, self.cvarDef)
+						ACVar:PrintCVarChange(self.cvarDef.name, self.modeValue)
+						PlaySound("igMainMenuOptionCheckBoxOn")
+					end)
+					prevRadio = radio
+				end
+
 			elseif cvarDef.type ~= "description" then
-                text:SetText(text:GetText().." (Unsupported type: "..tostring(cvarDef.type)..")")
-            end
-            control:SetHeight(controlHeight)
-            lastControl = control
-            totalContentHeight = totalContentHeight + control:GetHeight() + 15
-        end
-        content:SetHeight(totalContentHeight + 10)
+				widgetFrame:SetHeight(20)
+				text:SetText(text:GetText().." (Unsupported type: "..tostring(cvarDef.type)..")")
+			else
+				widgetFrame:SetHeight(0) -- description type, no widget
+			end
+
+			control:SetScript("OnUpdate", function(self)
+				self:SetScript("OnUpdate", nil)
+				local descH = descText and (descText:GetStringHeight() + 4 + 8) or 0
+				local widgetH = (cvarDef.type ~= "description") and (widgetFrame:GetHeight() + 8) or 0
+				self:SetHeight(text:GetStringHeight() + descH + widgetH)
+			end)
+			lastControl = control
+		end
+
+		-- total scroll content height
+		content:SetScript("OnUpdate", function(self)
+			self:SetScript("OnUpdate", nil)
+			if lastControl and lastControl:GetBottom() then
+				self:SetHeight(self:GetTop() - lastControl:GetBottom() + 20)
+			end
+		end)
     end
 
     self.TabsByName = {}
