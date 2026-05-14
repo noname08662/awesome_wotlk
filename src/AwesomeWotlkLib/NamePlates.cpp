@@ -1,4 +1,4 @@
-#include "NamePlates.h"
+﻿#include "NamePlates.h"
 #include "Utils.h"
 #include <format>
 #include <bit>
@@ -98,7 +98,7 @@ namespace {
     float g_clampTopOffset = 0.1f;
     float g_nonTargetAlpha = 0.5f;
     float g_occlusionAlpha = 1.0f;
-    float g_alphaSpd = 0.25f;
+    float g_alphaSpd = 1.0f;
     float g_inertia = 1.0f;
     float g_hystDecay = 1.0f;
     float g_nameplatePlacement = 0.66666669f;
@@ -153,9 +153,10 @@ namespace {
 
         void freshState(float spd) {
             float alpha = std::clamp(spd, 0.0f, 0.5f);
+        	float maxPull = ptr->m_width * g_maxPull;
 			accumX += (0.0f - accumX) * alpha;
             targetOffsetY += (0.0f - targetOffsetY) * alpha;
-        	targetOffsetX = (pushCount > 1) ? accumX / static_cast<float>(pushCount) : accumX;
+        	targetOffsetX = std::clamp((pushCount > 1) ? accumX / static_cast<float>(pushCount) : accumX, -maxPull, maxPull);
             pushCount = 0;
         }
 
