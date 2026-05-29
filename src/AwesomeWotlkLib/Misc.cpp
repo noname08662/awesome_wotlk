@@ -361,7 +361,7 @@ void Misc::initialize() {
     Hooks::FrameXML::registerLuaLib(lua_openmisclib);
     Hooks::FrameXML::registerCVar(&s_cvar_interactionAngle, "interactionAngle", nullptr, "60", CVarHandler_interactionAngle);
     Hooks::FrameXML::registerCVar(&s_cvar_interactionMode, "interactionMode", nullptr, "1", CVarHandler_interactionMode);
-    Hooks::FrameXML::registerCVar(&s_cvar_objectHighlightMode, "objectHighlightMode", nullptr, "1", CVarHandler_objectHighlightMode);
+    Hooks::FrameXML::registerCVar(&s_cvar_objectHighlightMode, "objectHighlightMode", nullptr, "0", CVarHandler_objectHighlightMode);
 
     Hooks::Detour(&CGGameUI::SecureCmdOptionParseFn, SecureCmdOptionParseHk);
     Hooks::Detour(&CGWorldFrame::OnLayerTrackTerrainFn, OnLayerTrackTerrainHk);
