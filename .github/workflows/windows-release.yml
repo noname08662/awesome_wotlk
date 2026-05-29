@@ -1,8 +1,7 @@
 name: CMake Windows Win32 Release
 on:
-  push:
-    tags:
-      - "*"
+  release:
+    types: [published]
 env:
   BUILD_TYPE: Release
 jobs:
@@ -19,7 +18,7 @@ jobs:
           cmake --build $buildDir --config ${{ env.BUILD_TYPE }} -- /m
       - name: Package release
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = "${{ github.event.release.tag_name }}"
           $staging = "${{ github.workspace }}\staging"
 
           New-Item -ItemType Directory -Force -Path "$staging\Interface\AddOns" | Out-Null
