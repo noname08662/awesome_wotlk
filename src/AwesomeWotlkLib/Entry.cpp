@@ -24,7 +24,7 @@ namespace {
     }
 
     int lua_openawesomewotlk(lua_State* L) {
-        Lua::lua_pushnumber(L, 1.0);
+        Lua::lua_pushnumber(L, 36);
         Lua::lua_setglobal(L, "AwesomeWotlk");
 
 #ifdef _DEBUG

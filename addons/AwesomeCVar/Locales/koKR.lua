@@ -1,6 +1,6 @@
 -- File: koKR.lua
 -- Language: Korean
-local addonName, AwesomeCVar = ...
+local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
     AwesomeCVar.L = {}
@@ -50,6 +50,7 @@ if GetLocale() == "koKR" then
     L.CVAR_LABEL_STACKING_MODE = "이름표 배열 모드"
     L.CVAR_LABEL_MOUSEOVER = "이름표 마우스오버 모드"
     L.CVAR_LABEL_OCCLUSION_ALPHA = "이름표 가려짐 투명도"
+	L.CVAR_LABEL_OCCLUSION_MODE = "이름표 가림 모드"
     L.CVAR_LABEL_NONTARGET_ALPHA = "비대상 이름표 투명도"
     L.CVAR_LABEL_ALPHA_SPEED = "이름표 투명도 변화 속도"
     L.CVAR_LABEL_CLAMP_TOP = "이름표 상단 고정 모드"
@@ -64,7 +65,7 @@ if GetLocale() == "koKR" then
     L.CVAR_LABEL_SPEED_LOWER = "이름표 하단 이동 속도"
     L.CVAR_LABEL_SPEED_PULL = "이름표 가로 이동 속도"
 	L.CVAR_LABEL_INERTIA = "이름표 정렬 관성"
-	L.CVAR_HYST_DECAY = "이름표 쌍 분리 속도"
+	L.CVAR_LABEL_HYST_DECAY = "이름표 쌍 분리 속도"
 	L.CVAR_LABEL_HITBOX_ANCHOR = "이름표 히트박스 고정 위치"
     L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY = "적군 이름표 히트박스 높이"
     L.CVAR_LABEL_HITBOX_WIDTH_ENEMY = "적군 이름표 히트박스 너비"
@@ -72,9 +73,10 @@ if GetLocale() == "koKR" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "아군 이름표 히트박스 너비"
     L.CVAR_LABEL_INTERACTION_MODE = "상호작용 모드"
     L.CVAR_LABEL_INTERACTION_ANGLE = "상호작용 원뿔 각도(도)"
-    L.CVAR_STANCE_PATCH = "태세/형태 변환 패치"
-    L.CVAR_SHOW_PLAYER = "내 캐릭터 모델 렌더링"
-    L.CVAR_MSDF_MODE = "글꼴 렌더링 모드 (재시작 필요)"
+    L.CVAR_LABEL_STANCE_PATCH = "태세/형태 변환 패치"
+    L.CVAR_LABEL_SHOW_PLAYER = "내 캐릭터 모델 렌더링"
+    L.CVAR_LABEL_MSDF_MODE = "글꼴 렌더링 모드 (재시작 필요)"
+	L.CVAR_LABEL_OBJ_HIGHLIGHT = "오브젝트 강조"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "카메라 간접 가시성"
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "카메라 간접 투명도"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "카메라 최대 거리"
@@ -89,12 +91,17 @@ if GetLocale() == "koKR" then
     L.DESC_ALPHA_BLEND = "이름표가 새로운 투명도에 도달하는 속도를 조절합니다 (1 = 즉시)."
     L.DESC_STANCE_PATCH = "매크로 사용 시 단 한 번의 클릭으로 태세/형태 변환과 기술 시전을 동시에 가능하게 합니다."
     L.DESC_OCCLUSION_ALPHA = "장애물이나 지형에 가려진 이름표의 투명도를 조절합니다."
+	L.DESC_OCCLUSION_MODE = "지형이나 벽에 가려졌을 때 이름표를 숨기거나 흐리게 처리할 타이밍을 제어합니다."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "카메라가 지형지물에 막히지 않고 통과할 수 있게 합니다."
     L.DESC_CAMERA_INDIRECT_ALPHA = "카메라와 캐릭터 사이를 가리는 물체의 투명도를 설정합니다."
     L.DESC_CAMERA_DISTANCE_MAX = "카메라가 시점에서 멀어질 수 있는 최대 거리를 설정합니다."
-    L.DESC_MSDF = "벡터 기반 글꼴 렌더링을 활성화하여 글자 품질을 획기적으로 향상시킵니다.\n0 = 비활성; 1 = 활성;\n2 = 활성 (불안정한 글꼴) — 거리 필드 계산 방식 때문에\n획이 겹치는 일부 글꼴은 깨질 수 있습니다."
+    L.DESC_MSDF = "벡터 기반 글꼴 렌더링을 활성화하여 글자 품질을 획기적으로 향상시킵니다."
+	L.DESC_OBJ_HIGHLIGHT = "자원(약초/광석) 및 상자나 현상 수배 게시판 같은 상호작용 가능한 오브젝트에 강제로 반짝임 효과를 적용합니다."
 
-    -- CVar 모드 옵션
+	-- CVar 모드 옵션
+	L.MODE_DISABLED = "비활성화됨"
+	L.MODE_ENABLED = "활성화됨"
+
     L.MODE_STACKING_DISABLED = "중첩 (Overlapping)"
     L.MODE_STACKING_ALL = "상하 배치 (모두)"
     L.MODE_STACKING_ENEMY = "상하 배치 (적)"
@@ -113,9 +120,11 @@ if GetLocale() == "koKR" then
     L.MODE_MOUSE_RAISE_OCCLUDED = "가려진 이름표 항상 높이기"
     L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT = "가려진 이름표 높이기 (전투 중만)"
 
-    L.MODE_CLAMP_DISABLED = "비활성화"
     L.MODE_CLAMP_ALL = "모든 이름표 화면 고정"
     L.MODE_CLAMP_BOSSES = "우두머리 이름표만 고정"
+
+	L.MODE_OCCLUSION_ALWAYS = "항상 가림"
+	L.MODE_OCCLUSION_NOCOMBAT = "비전투 중에만"
 
     L.MODE_HITBOX_TOP = "상단"
     L.MODE_HITBOX_CENTER = "중앙"
@@ -123,4 +132,8 @@ if GetLocale() == "koKR" then
 
 	L.MODE_LABEL_PLAYER_RADIUS = "플레이어 반경 20yd"
 	L.MODE_LABEL_CONE_ANGLE = "20yd 내 원뿔 각도(도)"
+
+	L.MODE_MSDF_ENABLED_UNSAFE = "활성화 (불안정 글꼴) — 디스턴스 필드(distance fields) 계산 방식의 한계로 인해, 자체 교차하는 윤곽선을 가진 일부 글꼴(예: 'diediedie')은 깨질 수 있습니다."
+
+	L.MODE_HIGHLIGHTS_TRACKED = "추적 대상만"
 end

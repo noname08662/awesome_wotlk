@@ -4,6 +4,7 @@
 #include <ranges>
 
 MSDFManager MSDFCache::s_manager = MSDFManager();
+MSDFCache::BlacklistAutoRunner MSDFCache::s_blacklistAutoRunner;
 
 MSDFCache::MSDFCache(const FT_Byte* fontData, FT_Long dataSize, const char* familyName, const char* styleName,
     uint32_t sdfRenderSize, uint32_t sdfSpread)
@@ -44,6 +45,12 @@ std::string MSDFCache::SanitizeName(std::string_view name) {
     return out.empty() ? "unnamed" : out;
 }
 
+uint64_t MSDFCache::HashNormalizedString(std::string_view str) {
+	std::string normalized = SanitizeName(str); 
+	std::ranges::transform(normalized, normalized.begin(), ::tolower);
+	return HashFont(reinterpret_cast<const uint8_t*>(normalized.data()), normalized.size());
+}
+
 std::string MSDFCache::GetCacheBasePath(const char* familyName, const char* styleName,
     uint32_t sdfRenderSize, uint32_t sdfSpread) {
     std::string fam = SanitizeName(familyName);
@@ -51,6 +58,59 @@ std::string MSDFCache::GetCacheBasePath(const char* familyName, const char* styl
     std::string folderName = fam + "_" + sty + "_s" + std::to_string(sdfRenderSize) + "_sp" + std::to_string(sdfSpread);
     std::filesystem::path base = std::filesystem::current_path() / CACHE_DIR / folderName;
     return base.string();
+}
+
+void MSDFCache::InitializeBlacklist() {
+	s_blacklistHashes.clear();
+    
+	std::filesystem::path blacklistDir = std::filesystem::current_path() / BLACKLIST_DIR;
+	std::error_code ec;
+    
+	if (!std::filesystem::exists(blacklistDir, ec)) {
+		std::filesystem::create_directories(blacklistDir, ec);
+		return;
+	}
+
+	for (const auto& entry : std::filesystem::directory_iterator(blacklistDir, ec)) {
+		if (!entry.is_regular_file()) continue;
+
+		std::string ext = entry.path().extension().string();
+		std::ranges::transform(ext, ext.begin(), ::tolower);
+
+		if (ext == ".ttf" || ext == ".otf") {
+			std::ifstream file(entry.path(), std::ios::binary | std::ios::ate);
+			if (file) {
+				std::streamsize size = file.tellg();
+				if (size > 0) {
+					std::vector<uint8_t> buffer(size);
+					file.seekg(0, std::ios::beg);
+					if (file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+						s_blacklistHashes.insert(HashFont(buffer.data(), buffer.size()));
+					}
+				}
+			}
+		}
+        
+		std::string nameWithoutExt = entry.path().stem().string();
+		if (!nameWithoutExt.empty()) {
+			s_blacklistHashes.insert(HashNormalizedString(nameWithoutExt));
+		}
+	}
+}
+
+bool MSDFCache::IsFontBlacklisted(const char* familyName, const char* styleName, const uint8_t* fontData, size_t dataSize) {
+	if (s_blacklistHashes.empty()) return false;
+	if (fontData && dataSize > 0) {
+		if (s_blacklistHashes.contains(HashFont(fontData, dataSize))) return true;
+	}
+	if (familyName) {
+		if (s_blacklistHashes.contains(HashNormalizedString(familyName))) return true;
+	}
+	if (familyName && styleName) {
+		std::string combined = std::string(familyName) + "_" + styleName;
+		if (s_blacklistHashes.contains(HashNormalizedString(combined))) return true;
+	}
+	return false;
 }
 
 void MSDFCache::BuildBlockLockPath(uint32_t blockId, std::filesystem::path& outPath) const {

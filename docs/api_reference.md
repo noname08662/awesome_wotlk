@@ -214,6 +214,14 @@ Restricts nameplates from moving beyond the top edge of the screen.
 
 Sets the vertical screen boundary for clamping (0.0 is the very top). Requires `nameplateClampTop` to be enabled.
 
+## nameplateOcclusionMode `CVar`
+**Arguments:** `mode` (number)  
+**Default:** 0
+
+Controls when to apply the transparency level for nameplates blocked by line-of-sight (objects or terrain).
+- **0** = Always
+- **1** = Out of Combat
+
 ## nameplateOcclusionAlpha `CVar`
 **Arguments:** `alpha` (number)  
 **Default:** 1
@@ -487,6 +495,16 @@ MSDF-based font rendering utilizes vector distance data instead of rasterized te
 - **0** = Disabled  
 - **1** = Enabled  
 - **2** = Enabled (unsafe fonts) — Due to how distance fields are calculated, some fonts with self-intersecting contours (e.g., 'diediedie') may break.
+
+## objectHighlightMode `CVar`
+**Arguments:** `mode` (number)  
+**Default:** 0
+
+MSDF-based font rendering utilizes vector distance data instead of rasterized textures, allowing crisp, high-quality text at any scale with minimal blurring or aliasing. Applies to all in-game text.
+
+- **0** = Disabled  
+- **1** = Everything
+- **2** = Tracked (low level quest giver objects, gathering), and Containers 
 
 ## cursor `macro`
 

@@ -95,6 +95,7 @@ ___
   - `nameplatePullSpeed`
   - `nameplateRaiseDistance`
   - `nameplatePullDistance`
+  - `nameplateOcclusionMode`
   - `nameplateOcclusionAlpha`
   - `nameplateNonTargetAlpha`
   - `nameplateAlphaSpeed`
@@ -115,6 +116,7 @@ ___
 - **Miscellaneous:**
   - `enableStancePatch`
   - `MSDFMode`
+  - `objectHighlightMode`
 
 ### New Interaction Keybind
 A new keybind for smart interaction with the game world:
@@ -133,8 +135,22 @@ New nameplate stacking system to prevent overlapping:
 
 **Recommended:** Use the AwesomeCVar addon and the `/awesome` command to configure all CVars through an intuitive in-game interface.
 
+### Font Blacklisting
+You can exempt specific fonts from vector-based (MSDF) rendering by blacklisting them. Follow these steps:
+1. Locate the target folder: Go to your game directory and find the `Fonts_AwesomeWotLK` folder. (If it does not exist, create it manually or launch the game once to let it generate automatically.)
+2. Exempt the font: Choose one of the following two methods:
+   * Method A: Locate the `.ttf` or `.otf` file of the font you want to exclude (typically found within your `./Interface/AddOns/...` addon directories) and copy-paste it directly into the `Fonts_AwesomeWotLK` folder.
+   * Method B: Create an empty file with no extension inside the `Fonts_AwesomeWotLK` folder, and name it after the font.
+   
+   Note for Method B: The file name must match the font's internal name, not the display name shown by your addons (e.g., 'Homespun TT BRK'). You can find the real internal name by double-clicking the font file to open it in Windows Font Viewer (or a similar tool) and checking the font title.
+3. Apply changes: Relaunch the game. The target font will now bypass the MSDF pipeline and render normally.
+
 ### AwesomeCVar Addon
-![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/preview_v4.png)
+![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/preview_v5.png)
+
+### Nameplate Features
+Please note that in order to benefit from some of the new nameplate functionality (such as castbars on all targets or class-colored bars), you must use AwesomeWotLK-aware addons. 
+If you are using [ElvUI](https://github.com/ElvUI-WotLK/ElvUI) (or any of its forks), you will need [this plugin](https://github.com/noname08662/ElvUI_Extras), [this plugin](https://github.com/Zidras/ElvUI_ProjectZidras), or both to take full advantage of this mod.
 
 ___
 

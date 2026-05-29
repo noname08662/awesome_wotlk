@@ -8,6 +8,12 @@
 // most of the header is either copied from somewhere else or LLM-assisted estimation
 // so don't trust it blindly
 
+class CSimpleTop;
+class CSimpleFrame;
+class CGNamePlate;
+class CSimpleCamera;
+class CGWorldFrame;
+
 // ObjectMgr
 namespace ObjectMgr {
     template <typename T>
@@ -49,254 +55,19 @@ namespace ObjectMgr {
     inline guid_t GetPlayerGuid() { return reinterpret_cast<guid_t(*)()>(0x004D3790)(); }
 }
 
-// CGame
-namespace CGame {
-    inline void __stdcall SetLastError(int code) {
-        return (reinterpret_cast<void(__stdcall*)(int)>(0x00771870))(code);
-    }
-}
-
-// CGInputControl
-namespace CGInputControl {
-    inline uint32_t* GetActive() {
-        return *reinterpret_cast<uint32_t**>(0xC24954);
-    }
-}
-
-// RCString
-namespace RCString {
-    inline uint32_t __stdcall hash(const char* str) {
-        return (reinterpret_cast<uint32_t(__stdcall*)(const char*)>(0x0076F640))(str);
-    }
-}
-
-// ClientDB
-namespace ClientDB {
-    using ClientDb_GetLocalizedRow = int(__thiscall*)(void* pThis, uint32_t index, void* rowBuffer);
-    inline const auto GetLocalizedRow = reinterpret_cast<ClientDb_GetLocalizedRow>(0x004CFD20);
-
-    using ClientDb_GetRow = int(__thiscall*)(void* pThis, int index);
-    inline const auto GetRow = reinterpret_cast<ClientDb_GetRow>(0x004BB1C0);
-
-    inline uintptr_t GetDbcTable(uint32_t dbIndex) {
-        for (uintptr_t tableBase = 0x006337D0; *reinterpret_cast<uint8_t*>(tableBase) != 0xC3; tableBase += 0x11) {
-            if (*reinterpret_cast<uint32_t*>(tableBase + 1) == dbIndex) return *reinterpret_cast<uintptr_t*>(tableBase + 0xB) + 0x18;
-        }
-        return 0;
-    }
-}
-
-// GameUI
-namespace CGGameUI {
-    inline auto g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
-
-    using Target_t = void(__cdecl*)(guid_t);
-    inline auto TargetFn = reinterpret_cast<Target_t>(0x00524BF0);
-
-    using ClearTarget_t = void(__cdecl*)(guid_t, int);
-    inline auto ClearTargetFn = reinterpret_cast<ClearTarget_t>(0x005241B0);
-
-    using WorldCallback_t = void(__fastcall*)();
-    inline auto EnterWorldFn = reinterpret_cast<WorldCallback_t>(0x00528010);
-    inline auto LeaveWorldFn = reinterpret_cast<WorldCallback_t>(0x00528C30);
-
-    inline auto GetGuidByKeywordFn = reinterpret_cast<DummyCallback_t>(0x0060AFAA);
-
-    using GetKeywordsByGuid_t = char** (*)(guid_t* guid, size_t* size);
-    inline auto GetKeywordsByGuidFn = reinterpret_cast<GetKeywordsByGuid_t>(0x0060BB70);
-
-    using GetItemIDByName_t = uint32_t(__cdecl*)(const char* name);
-    inline auto GetItemIDByNameFn = reinterpret_cast<GetItemIDByName_t>(0x00709DE0);
-
-    using HandleTerrainClick_t = void(__cdecl*)(TerrainClickEvent*);
-    inline auto HandleTerrainClickFn = reinterpret_cast<HandleTerrainClick_t>(0x00527830);
-
-    using SecureCmdOptionParse_t = int(__cdecl*)(lua_State* L);
-    inline auto SecureCmdOptionParseFn = reinterpret_cast<SecureCmdOptionParse_t>(0x00564AE0);
-
-    using CursorReleaseSpellTargeting_t = void(__cdecl*)();
-    inline auto CursorReleaseSpellTargetingFn = reinterpret_cast<CursorReleaseSpellTargeting_t>(0x007FCC30);
-
-    using DestroyPlatePool_t = int(__cdecl*)();
-    inline auto DestroyPlatePoolFn = reinterpret_cast<DestroyPlatePool_t>(0x009DE370);
-
-    using WipeActivePlates_t = guid_t* (__cdecl*)();
-    inline auto WipeActivePlatesFn = reinterpret_cast<WipeActivePlates_t>(0x00727130);
-
-    using OsGetAsyncTimeMs_t = int(__cdecl*)();
-    inline auto OsGetAsyncTimeMsFn = reinterpret_cast<OsGetAsyncTimeMs_t>(0x0086AE20);
-
-    using NDCToDDC_t = float(__cdecl*)(float ndcX, float ndcY, float *ddcX, float *ddcY);
-    inline auto NDCToDDCFn = reinterpret_cast<NDCToDDC_t>(0x0047BFF0);
-
-    using DDCToNDC_t = float(__cdecl*)(float ddcX, float ddcY, float *ndcX, float *ndcY);
-    inline auto DDCToNDCFn = reinterpret_cast<DDCToNDC_t>(0x0047C020);
-
-    using TraceLine_t = uint8_t(__cdecl*)(C3Vector*, C3Vector*, C3Vector*, float*, uint32_t, uint32_t);
-    inline auto TraceLineFn = reinterpret_cast<TraceLine_t>(0x007A3B70);
-
-    inline bool TraceLine(const C3Vector& start, const C3Vector& end, uint32_t hitFlags,
-        C3Vector& intersectionPoint, float& completedBeforeIntersection) {
-        completedBeforeIntersection = 1.0f;
-        intersectionPoint = { .X=0.0f, .Y=0.0f, .Z=0.0f };
-
-        uint8_t result = TraceLineFn(
-            const_cast<C3Vector*>(&start),
-            const_cast<C3Vector*>(&end),
-            &intersectionPoint,
-            &completedBeforeIntersection,
-            hitFlags,
-            0
-        );
-        if (result != 0 && result != 1) return false;
-
-        completedBeforeIntersection *= 100.0f;
-        return static_cast<bool>(result);
-    }
-}
-
-// CGlueMgr
-namespace CGlueMgr {
-	inline auto(*LoadGlueXML_site)() = reinterpret_cast<DummyCallback_t>(0x004DA9A7);
-	constexpr uintptr_t LoadGlueXML_site_jmpback = 0x004DA9AC;
-
-    inline auto LoadCharactersFn = reinterpret_cast<DummyCallback_t>(0x004E47E5);
-}
-
-// FrameScript
-namespace FrameScript {
-    struct Event {
-        uint32_t m_hash;
-        unk_t unk_04[4];
-        const char* m_name;
-        unk_t unk_18[12];
-        uint32_t m_field48;
-        uint32_t m_field4C;
-        uint32_t m_field50;
-    };
-
-    struct EventList {
-        size_t m_reserve;
-        size_t m_size;
-        Event** m_buf;
-    };
-
-    struct UnkContainer;
-
-    using FireOnUpdate_t = int(*)(int, int, int, int);
-    inline auto FireOnUpdateFn = reinterpret_cast<FireOnUpdate_t>(0x00495810);
-
-    using FillEvents_t = void (*)(const char** list, size_t count);
-    inline auto FillEventsFn = reinterpret_cast<FillEvents_t>(0x0081B5F0);
-
-    inline UnkContainer* GetUnkContainer() { return reinterpret_cast<UnkContainer*>(0x00D3F7A8); }
-    inline Event* __fastcall FindEvent(UnkContainer* This, void* edx, const char* eventName) { return (reinterpret_cast<Event * (__fastcall*)(UnkContainer*, void*, const char*)>(0x004BC410))(This, edx, eventName); }
-    inline EventList* GetEventList() { return reinterpret_cast<EventList*>(0x00D3F7D0); }
-    inline void FireEvent_inner(int eventId, lua_State* L, int nargs) { return (reinterpret_cast<void(*)(int, lua_State*, int)>(0x0081AA00))(eventId, L, nargs); };
-    inline void vFireEvent(int eventId, const char* format, va_list args) { return (reinterpret_cast<void(*)(int, const char*, va_list)>(0x0081AC90))(eventId, format, args); }
-    inline char* GetText(const char* key, int pluralIdx, int gender) { return (reinterpret_cast<char*(*)(const char*, int, int)>(0x00819D40))(key, pluralIdx, gender); }
-
-    inline int GetEventIdByName(const char* eventName) {
-        EventList* eventList = GetEventList();
-        if (!eventList || eventList->m_size == 0) return -1;
-
-        uint32_t hashValue = RCString::hash(eventName);
-        for (size_t i = 0; i < eventList->m_size; i++) {
-            Event* event = eventList->m_buf[i];
-            if (event && event->m_hash == hashValue && (std::strcmp(event->m_name, eventName) == 0)) {
-                return static_cast<int>(i);
-            }
-        }
-        return -1;
-    }
-
-    inline void FireEvent(const char* eventName, const char* format, ...) {
-        int eventId = GetEventIdByName(eventName);
-        if (eventId == -1) return;
-
-        va_list args;
-        va_start(args, format);
-        vFireEvent(eventId, format, args);
-        va_end(args);
-    }
-}
-
-// NetClient
-namespace NetClient {
-    using Login_t = void(*)(const char*, const char*);
-    inline void Login(const char* login, const char* password) { return (reinterpret_cast<Login_t>(0x004D8A30))(login, password); }
-}
-
-// LoginUI
-namespace LoginUI {
-#pragma pack(push, 1)
-    struct CharData {
-        guid_t m_guid;
-        char m_name[48];
-        int m_map;
-        int m_zone;
-        int m_guildId;
-        VecXYZ m_pos;
-        int m_displayInfoId[23];
-        int m_inventoryType[23];
-        int m_enchantVisual[23];
-        int m_petDisplayId;
-        int m_petLevel;
-        int m_petFamily;
-        int m_flags;
-        int m_charCustomizeFlags;
-        char m_race;
-        char m_class;
-        char m_gender;
-        char m_skin;
-        char m_face;
-        char m_hairStyle;
-        char m_hairColor;
-        char m_facialColor;
-        char m_level;
-        char m_firstLogin;
-        char pad[6];
-    };
-#pragma pack(pop)
-    static_assert(sizeof(CharData) == 0x188);
-
-    struct CharVectorEntry {
-        CharData m_data;
-        // ...
-    };
-
-    struct CharVector {
-        int m_reserved;
-        int m_size;
-        CharVectorEntry* m_buf;
-        int m_fieldC;
-    };
-
-    inline CharVector* GetChars() { return reinterpret_cast<CharVector*>(0x00B6B238); }
-
-    inline void SelectCharacter(int idx) {
-        *reinterpret_cast<int*>(0x00AC436C) = idx;
-        (reinterpret_cast<void(*)()>(0x004E3CD0))();
-    }
-
-    inline void EnterWorld(int idx) {
-        *reinterpret_cast<int*>(0x00B499A4) = *reinterpret_cast<int*>(0x00B1D618);
-        *reinterpret_cast<int*>(0x00AC436C) = idx;
-        (reinterpret_cast<void(*)()>(0x004D9BD0))();
-    }
-}
-
-class CSimpleTop;
-class CSimpleFrame;
-class CGNamePlate;
-class CSimpleCamera;
-class CGWorldFrame;
-
 // CGObject_C
 class CGObject_C {
 public:
+	using GetLockRec_t = const LockRec*(__thiscall*)(const CGObject_C*);
+	inline static const auto GetLockRecFn = reinterpret_cast<GetLockRec_t>(0x0070EF30);
+
+    const LockRec* GetLockRec() const { return GetLockRecFn(this); }
+
     template <typename T>
     T& GetValue(uint32_t index) const { return *reinterpret_cast<T*>(&reinterpret_cast<uintptr_t*>(m_entry)[index]); }
+
+	template <typename T>
+	void SetValue(uint32_t index, const T& value) { *reinterpret_cast<T*>(&reinterpret_cast<uintptr_t*>(m_entry)[index]) = value; }
 
     template <typename T>
     T* GetEntry() const { return reinterpret_cast<T*>(m_entry); }
@@ -390,9 +161,9 @@ public:
     uint32_t m_field10;
     ETypeID m_typeID;
     uint32_t m_spline[29];
-    CM2Model* m_childModel;
-    unk_t unk_90;
-    float m_trueScale;
+    CM2Model* m_questMark;
+    int m_questIconType;
+    int m_questIconType2;
     float m_scaleX;
     float m_renderScale;
     unk_t unk_A0;
@@ -488,6 +259,9 @@ public:
 // CGPlayer_C
 class CGPlayer_C : public CGUnit_C {
 public:
+    using CanTrackObject_t = bool(__thiscall*)(CGPlayer_C*, CGObject_C*);
+    inline static auto CanTrackObjectFn = reinterpret_cast<CanTrackObject_t>(0x006DCA90);
+
     using NotifyCombatChange_t = void(__thiscall*)(CGUnit_C*, int, int);
     inline static auto NotifyCombatChangeFn = reinterpret_cast<NotifyCombatChange_t>(0x0055E550);
 
@@ -497,9 +271,19 @@ public:
 // CGGameObject_C
 class CGGameObject_C : public CGObject_C {
 public:
+	using CheckForPassiveHighlight_t = char(__thiscall*)(CGObject_C*);
+	inline static auto CheckForPassiveHighlightFn = reinterpret_cast<CheckForPassiveHighlight_t>(0x00711210);
+	
+	using ShowLootEffect_t = double(__thiscall*)(CGObject_C*);
+	inline static auto ShowLootEffectFn = reinterpret_cast<ShowLootEffect_t>(0x0070D080);
+	
     bool CanUseNow() const { return CanUseNowFn(this); }
+    bool CanUse() const { return CanUseFn(this); }
 
 private:
+    using CanUse_t = bool(__thiscall*)(const CGGameObject_C*);
+    inline static const auto CanUseFn = reinterpret_cast<CanUse_t>(0x0070BA00);
+
     using CanUseNow_t = bool(__thiscall*)(const CGGameObject_C*);
     inline static const auto CanUseNowFn = reinterpret_cast<CanUseNow_t>(0x0070BA10);
 };
@@ -626,7 +410,9 @@ static_assert(sizeof(CLayoutFrame) == 0x74);
 
 class CSimpleTop : public CLayoutFrame {
 public:
-    unk_t unk_74[1145];         // 0x74
+	unk_t unk_74[1142];         // 0x74
+	bool m_combatLock;
+	unk_t ukn_2[2];
 };
 
 class RCString_Object {
@@ -1607,3 +1393,248 @@ public:
         return GetItemInfoBlockByIdFn(this, id, guid, a4, a5, a6);
     }
 };
+
+
+// CGame
+namespace CGame {
+    inline void __stdcall SetLastError(int code) {
+        return (reinterpret_cast<void(__stdcall*)(int)>(0x00771870))(code);
+    }
+}
+
+// CGInputControl
+namespace CGInputControl {
+    inline uint32_t* GetActive() {
+        return *reinterpret_cast<uint32_t**>(0xC24954);
+    }
+}
+
+// RCString
+namespace RCString {
+    inline uint32_t __stdcall hash(const char* str) {
+        return (reinterpret_cast<uint32_t(__stdcall*)(const char*)>(0x0076F640))(str);
+    }
+}
+
+// ClientDB
+namespace ClientDB {
+    using ClientDb_GetLocalizedRow = int(__thiscall*)(void* pThis, uint32_t index, void* rowBuffer);
+    inline const auto GetLocalizedRow = reinterpret_cast<ClientDb_GetLocalizedRow>(0x004CFD20);
+
+    using ClientDb_GetRow = int(__thiscall*)(void* pThis, int index);
+    inline const auto GetRow = reinterpret_cast<ClientDb_GetRow>(0x004BB1C0);
+
+    inline uintptr_t GetDbcTable(uint32_t dbIndex) {
+        for (uintptr_t tableBase = 0x006337D0; *reinterpret_cast<uint8_t*>(tableBase) != 0xC3; tableBase += 0x11) {
+            if (*reinterpret_cast<uint32_t*>(tableBase + 1) == dbIndex) return *reinterpret_cast<uintptr_t*>(tableBase + 0xB) + 0x18;
+        }
+        return 0;
+    }
+}
+
+// GameUI
+namespace CGGameUI {
+	inline auto** s_simpleTopInstance = reinterpret_cast<CSimpleTop**>(0x00B499A8);
+
+    inline auto g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
+
+    using Target_t = void(__cdecl*)(guid_t);
+    inline auto TargetFn = reinterpret_cast<Target_t>(0x00524BF0);
+
+    using ClearTarget_t = void(__cdecl*)(guid_t, int);
+    inline auto ClearTargetFn = reinterpret_cast<ClearTarget_t>(0x005241B0);
+
+    using WorldCallback_t = void(__fastcall*)();
+    inline auto EnterWorldFn = reinterpret_cast<WorldCallback_t>(0x00528010);
+    inline auto LeaveWorldFn = reinterpret_cast<WorldCallback_t>(0x00528C30);
+
+    inline auto GetGuidByKeywordFn = reinterpret_cast<DummyCallback_t>(0x0060AFAA);
+
+    using GetKeywordsByGuid_t = char** (*)(guid_t* guid, size_t* size);
+    inline auto GetKeywordsByGuidFn = reinterpret_cast<GetKeywordsByGuid_t>(0x0060BB70);
+
+    using GetItemIDByName_t = uint32_t(__cdecl*)(const char* name);
+    inline auto GetItemIDByNameFn = reinterpret_cast<GetItemIDByName_t>(0x00709DE0);
+
+    using HandleTerrainClick_t = void(__cdecl*)(TerrainClickEvent*);
+    inline auto HandleTerrainClickFn = reinterpret_cast<HandleTerrainClick_t>(0x00527830);
+
+    using SecureCmdOptionParse_t = int(__cdecl*)(lua_State* L);
+    inline auto SecureCmdOptionParseFn = reinterpret_cast<SecureCmdOptionParse_t>(0x00564AE0);
+
+    using CursorReleaseSpellTargeting_t = void(__cdecl*)();
+    inline auto CursorReleaseSpellTargetingFn = reinterpret_cast<CursorReleaseSpellTargeting_t>(0x007FCC30);
+
+    using DestroyPlatePool_t = int(__cdecl*)();
+    inline auto DestroyPlatePoolFn = reinterpret_cast<DestroyPlatePool_t>(0x009DE370);
+
+    using WipeActivePlates_t = guid_t * (__cdecl*)();
+    inline auto WipeActivePlatesFn = reinterpret_cast<WipeActivePlates_t>(0x00727130);
+
+    using OsGetAsyncTimeMs_t = int(__cdecl*)();
+    inline auto OsGetAsyncTimeMsFn = reinterpret_cast<OsGetAsyncTimeMs_t>(0x0086AE20);
+
+    using NDCToDDC_t = float(__cdecl*)(float ndcX, float ndcY, float* ddcX, float* ddcY);
+    inline auto NDCToDDCFn = reinterpret_cast<NDCToDDC_t>(0x0047BFF0);
+
+    using DDCToNDC_t = float(__cdecl*)(float ddcX, float ddcY, float* ndcX, float* ndcY);
+    inline auto DDCToNDCFn = reinterpret_cast<DDCToNDC_t>(0x0047C020);
+
+    using TraceLine_t = uint8_t(__cdecl*)(C3Vector*, C3Vector*, C3Vector*, float*, uint32_t, uint32_t);
+    inline auto TraceLineFn = reinterpret_cast<TraceLine_t>(0x007A3B70);
+
+    inline bool TraceLine(const C3Vector& start, const C3Vector& end, uint32_t hitFlags,
+        C3Vector& intersectionPoint, float& completedBeforeIntersection) {
+        completedBeforeIntersection = 1.0f;
+        intersectionPoint = { .X = 0.0f, .Y = 0.0f, .Z = 0.0f };
+
+        uint8_t result = TraceLineFn(
+            const_cast<C3Vector*>(&start),
+            const_cast<C3Vector*>(&end),
+            &intersectionPoint,
+            &completedBeforeIntersection,
+            hitFlags,
+            0
+        );
+        if (result != 0 && result != 1) return false;
+
+        completedBeforeIntersection *= 100.0f;
+        return static_cast<bool>(result);
+    }
+
+	inline bool InCombatLockdown() { 
+    	if (s_simpleTopInstance == nullptr || *s_simpleTopInstance == nullptr) return false;
+    	return !(*s_simpleTopInstance)->m_combatLock;
+    }
+}
+
+// CGlueMgr
+namespace CGlueMgr {
+    inline auto(*LoadGlueXML_site)() = reinterpret_cast<DummyCallback_t>(0x004DA9A7);
+    constexpr uintptr_t LoadGlueXML_site_jmpback = 0x004DA9AC;
+
+    inline auto LoadCharactersFn = reinterpret_cast<DummyCallback_t>(0x004E47E5);
+}
+
+// FrameScript
+namespace FrameScript {
+    struct Event {
+        uint32_t m_hash;
+        unk_t unk_04[4];
+        const char* m_name;
+        unk_t unk_18[12];
+        uint32_t m_field48;
+        uint32_t m_field4C;
+        uint32_t m_field50;
+    };
+
+    struct EventList {
+        size_t m_reserve;
+        size_t m_size;
+        Event** m_buf;
+    };
+
+    struct UnkContainer;
+
+    using FireOnUpdate_t = int(*)(int, int, int, int);
+    inline auto FireOnUpdateFn = reinterpret_cast<FireOnUpdate_t>(0x00495810);
+
+    using FillEvents_t = void (*)(const char** list, size_t count);
+    inline auto FillEventsFn = reinterpret_cast<FillEvents_t>(0x0081B5F0);
+
+    inline UnkContainer* GetUnkContainer() { return reinterpret_cast<UnkContainer*>(0x00D3F7A8); }
+    inline Event* __fastcall FindEvent(UnkContainer* This, void* edx, const char* eventName) { return (reinterpret_cast<Event * (__fastcall*)(UnkContainer*, void*, const char*)>(0x004BC410))(This, edx, eventName); }
+    inline EventList* GetEventList() { return reinterpret_cast<EventList*>(0x00D3F7D0); }
+    inline void FireEvent_inner(int eventId, lua_State* L, int nargs) { return (reinterpret_cast<void(*)(int, lua_State*, int)>(0x0081AA00))(eventId, L, nargs); };
+    inline void vFireEvent(int eventId, const char* format, va_list args) { return (reinterpret_cast<void(*)(int, const char*, va_list)>(0x0081AC90))(eventId, format, args); }
+    inline char* GetText(const char* key, int pluralIdx, int gender) { return (reinterpret_cast<char* (*)(const char*, int, int)>(0x00819D40))(key, pluralIdx, gender); }
+
+    inline int GetEventIdByName(const char* eventName) {
+        EventList* eventList = GetEventList();
+        if (!eventList || eventList->m_size == 0) return -1;
+
+        uint32_t hashValue = RCString::hash(eventName);
+        for (size_t i = 0; i < eventList->m_size; i++) {
+            Event* event = eventList->m_buf[i];
+            if (event && event->m_hash == hashValue && (std::strcmp(event->m_name, eventName) == 0)) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
+    inline void FireEvent(const char* eventName, const char* format, ...) {
+        int eventId = GetEventIdByName(eventName);
+        if (eventId == -1) return;
+
+        va_list args;
+        va_start(args, format);
+        vFireEvent(eventId, format, args);
+        va_end(args);
+    }
+}
+
+// NetClient
+namespace NetClient {
+    using Login_t = void(*)(const char*, const char*);
+    inline void Login(const char* login, const char* password) { return (reinterpret_cast<Login_t>(0x004D8A30))(login, password); }
+}
+
+// LoginUI
+namespace LoginUI {
+#pragma pack(push, 1)
+    struct CharData {
+        guid_t m_guid;
+        char m_name[48];
+        int m_map;
+        int m_zone;
+        int m_guildId;
+        VecXYZ m_pos;
+        int m_displayInfoId[23];
+        int m_inventoryType[23];
+        int m_enchantVisual[23];
+        int m_petDisplayId;
+        int m_petLevel;
+        int m_petFamily;
+        int m_flags;
+        int m_charCustomizeFlags;
+        char m_race;
+        char m_class;
+        char m_gender;
+        char m_skin;
+        char m_face;
+        char m_hairStyle;
+        char m_hairColor;
+        char m_facialColor;
+        char m_level;
+        char m_firstLogin;
+        char pad[6];
+    };
+#pragma pack(pop)
+    static_assert(sizeof(CharData) == 0x188);
+
+    struct CharVectorEntry {
+        CharData m_data;
+        // ...
+    };
+
+    struct CharVector {
+        int m_reserved;
+        int m_size;
+        CharVectorEntry* m_buf;
+        int m_fieldC;
+    };
+
+    inline CharVector* GetChars() { return reinterpret_cast<CharVector*>(0x00B6B238); }
+
+    inline void SelectCharacter(int idx) {
+        *reinterpret_cast<int*>(0x00AC436C) = idx;
+        (reinterpret_cast<void(*)()>(0x004E3CD0))();
+    }
+
+    inline void EnterWorld(int idx) {
+        *reinterpret_cast<int*>(0x00B499A4) = *reinterpret_cast<int*>(0x00B1D618);
+        *reinterpret_cast<int*>(0x00AC436C) = idx;
+        (reinterpret_cast<void(*)()>(0x004D9BD0))();
+    }
+}

@@ -1,6 +1,6 @@
 -- File: ruRU.lua
 -- Language: Russian
-local addonName, AwesomeCVar = ...
+local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
     AwesomeCVar.L = {}
@@ -50,6 +50,7 @@ if GetLocale() == "ruRU" then
     L.CVAR_LABEL_STACKING_MODE = "Режим наложения индикаторов"
     L.CVAR_LABEL_MOUSEOVER = "Режим наведения (Mouseover)"
     L.CVAR_LABEL_OCCLUSION_ALPHA = "Прозрачность индикаторов за препятствиями"
+	L.CVAR_LABEL_OCCLUSION_MODE = "Режим перекрытия индикаторов"
     L.CVAR_LABEL_NONTARGET_ALPHA = "Прозрачность индикаторов не-цели"
     L.CVAR_LABEL_ALPHA_SPEED = "Скорость изменения прозрачности"
     L.CVAR_LABEL_CLAMP_TOP = "Прижатие индикаторов к верхнему краю"
@@ -64,7 +65,7 @@ if GetLocale() == "ruRU" then
     L.CVAR_LABEL_SPEED_LOWER = "Скорость опускания при наложении"
     L.CVAR_LABEL_SPEED_PULL = "Скорость гор. сближения при наложении"
 	L.CVAR_LABEL_INERTIA = "Инерция наслоения индикаторов"
-	L.CVAR_HYST_DECAY = "Скорость распада пар индикаторов"
+	L.CVAR_LABEL_HYST_DECAY = "Скорость распада пар индикаторов"
 	L.CVAR_LABEL_HITBOX_ANCHOR = "Якорь хитбокса индикатора"
     L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY = "Высота хитбокса (Враги)"
     L.CVAR_LABEL_HITBOX_WIDTH_ENEMY = "Ширина хитбокса (Враги)"
@@ -72,9 +73,10 @@ if GetLocale() == "ruRU" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Ширина хитбокса (Союзники)"
     L.CVAR_LABEL_INTERACTION_MODE = "Режим взаимодействия"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Угол конуса взаимодействия (град.)"
-    L.CVAR_STANCE_PATCH = "Исправление смены облика/стойки"
-    L.CVAR_SHOW_PLAYER = "Отрисовка модели игрока"
-    L.CVAR_MSDF_MODE = "Режим отрисовки шрифтов (Нужен перезапуск)"
+    L.CVAR_LABEL_STANCE_PATCH = "Исправление смены облика/стойки"
+    L.CVAR_LABEL_SHOW_PLAYER = "Отрисовка модели игрока"
+    L.CVAR_LABEL_MSDF_MODE = "Режим отрисовки шрифтов (Нужен перезапуск)"
+	L.CVAR_LABEL_OBJ_HIGHLIGHT = "Подсветка объектов"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "Косвенная видимость камеры"
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Косвенная прозрачность камеры"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Макс. дистанция камеры"
@@ -89,12 +91,17 @@ if GetLocale() == "ruRU" then
     L.DESC_ALPHA_BLEND = "Управляет скоростью изменения прозрачности индикаторов (1 = Мгновенно)."
     L.DESC_STANCE_PATCH = "Позволяет менять стойку/облик и применять способность одним кликом при использовании макросов."
     L.DESC_OCCLUSION_ALPHA = "Прозрачность индикаторов, когда они перекрыты препятствиями или ландшафтом."
+	L.DESC_OCCLUSION_MODE = "Определяет, когда индикаторы здоровья должны скрываться или тускнеть, если они заблокированы текстурами или стенами."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "Позволяет камере проходить сквозь некоторые объекты мира вместо блокировки."
     L.DESC_CAMERA_INDIRECT_ALPHA = "Задает уровень прозрачности объектов между камерой и персонажем."
     L.DESC_CAMERA_DISTANCE_MAX = "Устанавливает максимальную дистанцию отдаления камеры."
-    L.DESC_MSDF = "Включает векторную отрисовку шрифтов, значительно улучшая четкость.\n0 = Выключено; 1 = Включено;\n2 = Включено (небезопасные шрифты) — из-за особенностей расчета полей расстояний,\nнекоторые шрифты с самопересекающимися контурами могут ломаться."
+    L.DESC_MSDF = "Включает векторную отрисовку шрифтов, значительно улучшая четкость."
+	L.DESC_OBJ_HIGHLIGHT = "Принудительно включает свечение/искры для ресурсов (трава/руда) и интерактивных объектов, таких как ящики или доски объявлений."
 
-    -- Опции режима CVar
+	-- Опции режима CVar
+	L.MODE_DISABLED = "Выключено"
+	L.MODE_ENABLED = "Включено"
+
     L.MODE_STACKING_DISABLED = "Перекрытие"
     L.MODE_STACKING_ALL = "Наслоение (Все)"
     L.MODE_STACKING_ENEMY = "Наслоение (Враги)"
@@ -113,9 +120,11 @@ if GetLocale() == "ruRU" then
     L.MODE_MOUSE_RAISE_OCCLUDED = "Всегда поднимать перекрытые"
     L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT = "Поднимать перекрытые (Только в бою)"
 
-    L.MODE_CLAMP_DISABLED = "Выкл"
     L.MODE_CLAMP_ALL = "Закреплять все"
     L.MODE_CLAMP_BOSSES = "Закреплять только боссов"
+
+	L.MODE_OCCLUSION_ALWAYS = "Перекрывать всегда"
+	L.MODE_OCCLUSION_NOCOMBAT = "Только вне боя"
 
     L.MODE_HITBOX_TOP = "Верх"
     L.MODE_HITBOX_CENTER = "Центр"
@@ -123,4 +132,8 @@ if GetLocale() == "ruRU" then
 
     L.MODE_LABEL_PLAYER_RADIUS = "Радиус игрока (20 ярдов)"
     L.MODE_LABEL_CONE_ANGLE = "Угол конуса (град.) в пределах 20 ярдов"
+
+	L.MODE_MSDF_ENABLED_UNSAFE = "Включено (небезопасные шрифты) — из-за особенностей расчета полей расстояний (distance fields) некоторые шрифты с самопересекающимися контурами (например, 'diediedie') могут отображаться некорректно."
+
+	L.MODE_HIGHLIGHTS_TRACKED = "Только отслеживаемые"
 end

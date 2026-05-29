@@ -1,6 +1,6 @@
 -- File: frFR.lua
 -- Language: French
-local addonName, AwesomeCVar = ...
+local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
     AwesomeCVar.L = {}
@@ -50,6 +50,7 @@ if GetLocale() == "frFR" then
     L.CVAR_LABEL_STACKING_MODE = "Mode d'empilement"
     L.CVAR_LABEL_MOUSEOVER = "Mode de survol (Mouseover)"
     L.CVAR_LABEL_OCCLUSION_ALPHA = "Opacité d'occlusion"
+	L.CVAR_LABEL_OCCLUSION_MODE = "Mode d'occlusion des barres de info"
     L.CVAR_LABEL_NONTARGET_ALPHA = "Opacité (hors cible)"
     L.CVAR_LABEL_ALPHA_SPEED = "Vitesse de transition d'opacité"
     L.CVAR_LABEL_CLAMP_TOP = "Fixer au bord supérieur"
@@ -64,7 +65,7 @@ if GetLocale() == "frFR" then
     L.CVAR_LABEL_SPEED_LOWER = "Vitesse de descente (empilement)"
     L.CVAR_LABEL_SPEED_PULL = "Vitesse d'attraction horizontale"
 	L.CVAR_LABEL_INERTIA = "Inertie d'empilement des plaques"
-	L.CVAR_HYST_DECAY = "Vitesse de séparation des paires"
+	L.CVAR_LABEL_HYST_DECAY = "Vitesse de séparation des paires"
 	L.CVAR_LABEL_HITBOX_ANCHOR = "Ancre de la Hitbox de Plaque"
     L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY = "Hauteur hitbox (Ennemi)"
     L.CVAR_LABEL_HITBOX_WIDTH_ENEMY = "Largeur hitbox (Ennemi)"
@@ -72,9 +73,10 @@ if GetLocale() == "frFR" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Largeur hitbox (Allié)"
     L.CVAR_LABEL_INTERACTION_MODE = "Mode d'interaction"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Angle d'interaction (deg)"
-    L.CVAR_STANCE_PATCH = "Correctif Changement de forme/Posture"
-    L.CVAR_SHOW_PLAYER = "Affichage du modèle du joueur"
-    L.CVAR_MSDF_MODE = "Mode de rendu des polices (Requiert Redémarrage)"
+    L.CVAR_LABEL_STANCE_PATCH = "Correctif Changement de forme/Posture"
+    L.CVAR_LABEL_SHOW_PLAYER = "Affichage du modèle du joueur"
+    L.CVAR_LABEL_MSDF_MODE = "Mode de rendu des polices (Requiert Redémarrage)"
+	L.CVAR_LABEL_OBJ_HIGHLIGHT = "Mise en valeur des objets"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "Visibilité indirecte de la caméra"
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Opacité indirecte de la caméra"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Distance de caméra max"
@@ -89,12 +91,17 @@ if GetLocale() == "frFR" then
     L.DESC_ALPHA_BLEND = "Contrôle la vitesse à laquelle l'opacité des barres s'ajuste (1 = Instantané)."
     L.DESC_STANCE_PATCH = "Permet de changer de posture/forme et de lancer un sort en un seul clic via les macros."
     L.DESC_OCCLUSION_ALPHA = "Contrôle l'opacité des barres lorsqu'elles sont masquées par le décor."
+	L.DESC_OCCLUSION_MODE = "Contrôle quand les barres d'info sont masquées ou estompées lorsqu'elles sont bloquées par le terrain ou les murs."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "Permet à la caméra de traverser certains objets au lieu d'être bloquée."
     L.DESC_CAMERA_INDIRECT_ALPHA = "Définit la transparence des objets se trouvant entre la caméra et le personnage."
     L.DESC_CAMERA_DISTANCE_MAX = "Définit la distance maximale de dézoom de la caméra."
-    L.DESC_MSDF = "Active le rendu vectoriel des polices, améliorant drastiquement la qualité.\n0 = Désactivé ; 1 = Activé ;\n2 = Activé (polices instables) — à cause du calcul des champs de distance,\ncertaines polices aux contours croisés peuvent bugger."
+    L.DESC_MSDF = "Active le rendu vectoriel des polices, améliorant drastiquement la qualité."
+	L.DESC_OBJ_HIGHLIGHT = "Force l'apparition de scintillements brillants sur les ressources (herbes/minerai) et les objets interactifs comme les caisses ou les panneaux de primes."
 
-    -- Options Mode CVar
+	-- Options Mode CVar
+	L.MODE_DISABLED = "Désactivé"
+	L.MODE_ENABLED = "Activé"
+
     L.MODE_STACKING_DISABLED = "Chevauchement"
     L.MODE_STACKING_ALL = "Empilées (Toutes)"
     L.MODE_STACKING_ENEMY = "Empilées (Ennemis)"
@@ -113,9 +120,11 @@ if GetLocale() == "frFR" then
     L.MODE_MOUSE_RAISE_OCCLUDED = "Priorité masquées (Toujours)"
     L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT = "Priorité masquées (Combat)"
 
-    L.MODE_CLAMP_DISABLED = "Désactivé"
     L.MODE_CLAMP_ALL = "Fixer tout"
     L.MODE_CLAMP_BOSSES = "Fixer boss uniquement"
+
+	L.MODE_OCCLUSION_ALWAYS = "Toujours masquer"
+	L.MODE_OCCLUSION_NOCOMBAT = "Uniquement hors combat"
 
     L.MODE_HITBOX_TOP = "Haut"
     L.MODE_HITBOX_CENTER = "Centre"
@@ -123,4 +132,8 @@ if GetLocale() == "frFR" then
 
     L.MODE_LABEL_PLAYER_RADIUS = "Rayon joueur 20yd"
     L.MODE_LABEL_CONE_ANGLE = "Angle du cône (deg) à moins de 20yd"
+
+	L.MODE_MSDF_ENABLED_UNSAFE = "Activé (polices non sécurisées) — En raison de la méthode de calcul des champs de distance, certaines polices ayant des contours qui s'intersectent (par ex. 'diediedie') peuvent s'afficher incorrectement."
+
+	L.MODE_HIGHLIGHTS_TRACKED = "Suivis uniquement"
 end

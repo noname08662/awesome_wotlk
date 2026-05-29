@@ -15,6 +15,9 @@ Locales\ruRU.lua
 Locales\zhCN.lua
 Locales\zhTW.lua
 
+# Load skins
+Skins\ElvUI.lua
+
 # Load XML frame definitions
 AwesomeCVar.xml
 

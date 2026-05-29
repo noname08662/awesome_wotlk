@@ -1,6 +1,6 @@
 -- File: deDE.lua
 -- Language: German
-local addonName, AwesomeCVar = ...
+local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
     AwesomeCVar.L = {}
@@ -50,6 +50,7 @@ if GetLocale() == "deDE" then
     L.CVAR_LABEL_STACKING_MODE = "Plaketten-Stapelmodus"
     L.CVAR_LABEL_MOUSEOVER = "Plaketten-Mouseover-Modus"
     L.CVAR_LABEL_OCCLUSION_ALPHA = "Plaketten-Verdeckungs-Alpha"
+	L.CVAR_LABEL_OCCLUSION_MODE = "Namensplaketten-Verdeckungsmodus"
     L.CVAR_LABEL_NONTARGET_ALPHA = "Plaketten-Nicht-Ziel-Alpha"
     L.CVAR_LABEL_ALPHA_SPEED = "Plaketten-Transparenz-Übergang"
     L.CVAR_LABEL_CLAMP_TOP = "Plaketten am oberen Rand fixieren"
@@ -64,7 +65,7 @@ if GetLocale() == "deDE" then
     L.CVAR_LABEL_SPEED_LOWER = "Stapeln: Geschwindigkeit Absenken"
     L.CVAR_LABEL_SPEED_PULL = "Stapeln: Geschwindigkeit Horizontale"
 	L.CVAR_LABEL_INERTIA = "Namensplaketten-Stapelungsträgheit"
-	L.CVAR_HYST_DECAY = "Namensplatten-Paartrennung"
+	L.CVAR_LABEL_HYST_DECAY = "Namensplatten-Paartrennung"
 	L.CVAR_LABEL_HITBOX_ANCHOR = "Namensplaketten-Trefferbox-Anker"
     L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY = "Hitbox-Höhe (Gegner)"
     L.CVAR_LABEL_HITBOX_WIDTH_ENEMY = "Hitbox-Breite (Gegner)"
@@ -72,9 +73,10 @@ if GetLocale() == "deDE" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Hitbox-Breite (Freundlich)"
     L.CVAR_LABEL_INTERACTION_MODE = "Interaktionsmodus"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Interaktionswinkel (Grad)"
-    L.CVAR_STANCE_PATCH = "Haltungs-/Formwechsel-Patch"
-    L.CVAR_SHOW_PLAYER = "Eigener Charaktermodell rendern"
-    L.CVAR_MSDF_MODE = "Schrift-Rendering-Modus (Neustart erforderlich)"
+    L.CVAR_LABEL_STANCE_PATCH = "Haltungs-/Formwechsel-Patch"
+    L.CVAR_LABEL_SHOW_PLAYER = "Eigener Charaktermodell rendern"
+    L.CVAR_LABEL_MSDF_MODE = "Schrift-Rendering-Modus (Neustart erforderlich)"
+	L.CVAR_LABEL_OBJ_HIGHLIGHT = "Objekthervorhebung"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "Indirekte Kamera-Sichtbarkeit"
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Indirekter Kamera-Alpha"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Max. Kameradistanz"
@@ -89,12 +91,17 @@ if GetLocale() == "deDE" then
     L.DESC_ALPHA_BLEND = "Steuert, wie schnell Plaketten zu neuen Transparenzwerten animieren (1 = Sofort)."
     L.DESC_STANCE_PATCH = "Ermöglicht den Wechsel der Haltung/Form und das Wirken einer Fähigkeit mit einem Klick in Makros."
     L.DESC_OCCLUSION_ALPHA = "Steuert die Transparenz von Plaketten, wenn sie durch Hindernisse oder Gelände verdeckt sind."
+	L.DESC_OCCLUSION_MODE = "Steuert, wann Namensplaketten ausgeblendet oder verblasst werden, wenn sie durch Gelände oder Wände blockiert sind."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "Ermöglicht es der Kamera, durch bestimmte Objekte hindurchzugehen, anstatt blockiert zu werden."
     L.DESC_CAMERA_INDIRECT_ALPHA = "Legt die Transparenz von Objekten fest, die sich zwischen Kamera und Spieler befinden."
     L.DESC_CAMERA_DISTANCE_MAX = "Legt die maximale Entfernung fest, die die Kamera herauszoomen kann."
-    L.DESC_MSDF = "Aktiviert vektorbasiertes Schrift-Rendering, was die Glyphenqualität drastisch verbessert.\n0 = Deaktiviert; 1 = Aktiviert;\n2 = Aktiviert (unsichere Schriften) — aufgrund der Berechnung der Distance Fields\nkönnen einige Schriften mit sich selbst überschneidenden Konturen fehlerhaft sein."
+    L.DESC_MSDF = "Aktiviert vektorbasiertes Schrift-Rendering, was die Glyphenqualität drastisch verbessert."
+	L.DESC_OBJ_HIGHLIGHT = "Zwingt leuchtende Funken auf Ressourcen (Kräuter/Erz) und interaktive Objekte wie Kisten oder Steckbriefe."
 
     -- CVar Mode Optionen
+	L.MODE_DISABLED = "Deaktiviert"
+	L.MODE_ENABLED = "Aktiviert"
+
     L.MODE_STACKING_DISABLED = "Überlappend"
     L.MODE_STACKING_ALL = "Stapelnd (Alle)"
     L.MODE_STACKING_ENEMY = "Stapelnd (Feinde)"
@@ -113,9 +120,11 @@ if GetLocale() == "deDE" then
     L.MODE_MOUSE_RAISE_OCCLUDED = "Verdeckte immer hervorheben"
     L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT = "Verdeckte hervorheben (nur Kampf)"
 
-    L.MODE_CLAMP_DISABLED = "Aus"
     L.MODE_CLAMP_ALL = "Alle fixieren"
     L.MODE_CLAMP_BOSSES = "Nur Bosse fixieren"
+
+	L.MODE_OCCLUSION_ALWAYS = "Immer verdecken"
+	L.MODE_OCCLUSION_NOCOMBAT = "Nur außerhalb des Kampfes"
 
     L.MODE_HITBOX_TOP = "Oben"
     L.MODE_HITBOX_CENTER = "Mitte"
@@ -123,4 +132,8 @@ if GetLocale() == "deDE" then
 
 	L.MODE_LABEL_PLAYER_RADIUS = "Spieler-Radius 20yd"
 	L.MODE_LABEL_CONE_ANGLE = "Kegelwinkel (Grad) innerhalb 20yd"
+
+	L.MODE_MSDF_ENABLED_UNSAFE = "Enabled (unsafe fonts) — due to how distance fields are calculated, some fonts with self-intersecting contours (e.g., 'diediedie') may break."
+
+	L.MODE_HIGHLIGHTS_TRACKED = "Nur verfolgte"
 end

@@ -35,6 +35,7 @@ namespace {
     CVar* s_cvar_nameplateRaiseDistance;
     CVar* s_cvar_nameplatePullDistance;
     CVar* s_cvar_nameplateOcclusionAlpha;
+    CVar* s_cvar_nameplateOcclusionMode;
     CVar* s_cvar_nameplateNonTargetAlpha;
     CVar* s_cvar_nameplateAlphaSpeed;
     CVar* s_cvar_nameplateInertia;
@@ -53,6 +54,11 @@ namespace {
         C_DISABLED = 0,
         C_ALL = 1,
         C_BOSS = 2,
+    };
+
+    enum EOcclusionMode : uint8_t {
+        OC_ALWAYS = 0,
+        OC_NOT_IN_COMBAT = 1,
     };
 
     enum EMouseMode : uint8_t {
@@ -83,6 +89,7 @@ namespace {
     alignas(4) EStackingMode g_stackingMode = EStackingMode::S_DISABLED;
     alignas(4) EMouseMode g_mouseOverMode = EMouseMode::M_DISABLED;
     alignas(4) EClampMode g_clampTop = EClampMode::C_DISABLED;
+    alignas(4) EOcclusionMode g_occlusionMode = EOcclusionMode::OC_ALWAYS;
     alignas(4) CGNamePlate::EHitboxAnchor g_hitAnchor = CGNamePlate::EHitboxAnchor::HB_CENTER;
     float g_bandX = 0.7f;
     float g_bandY = 1.0f;
@@ -106,8 +113,6 @@ namespace {
     auto* const g_alloc = reinterpret_cast<CDataAllocator*>(0x00DCEC44);
     auto* const g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
     auto* const g_nameplateFocus = reinterpret_cast<CGNamePlate**>(0x00CA1204);
-
-    bool g_inCombat = false;
 
     struct alignas(64) Entry {
         enum class IEState : uint8_t {
@@ -500,7 +505,7 @@ namespace {
             if (type & ESortType::ST_OUT) {
                 if (guid_t targetGuid = ObjectMgr::GetTargetGuid()) {
                     CGNamePlate* focus = *g_nameplateFocus;
-                    if (focus && (g_mouseOverMode & EMouseMode::M_OVER_ALWAYS || (g_mouseOverMode & EMouseMode::M_OVER_COMBAT && g_inCombat))) {
+                    if (focus && (g_mouseOverMode & EMouseMode::M_OVER_ALWAYS || (g_mouseOverMode & EMouseMode::M_OVER_COMBAT && CGGameUI::InCombatLockdown()))) {
                         sort<IESortMode::TARGET_FOCUS, true>(targetGuid, focus);
                     }
                     else {
@@ -509,7 +514,7 @@ namespace {
                     return;
                 }
                 else if (CGNamePlate* focus = *g_nameplateFocus) {
-                    if (g_mouseOverMode & EMouseMode::M_OVER_ALWAYS || (g_mouseOverMode & EMouseMode::M_OVER_COMBAT && g_inCombat)) {
+                    if (g_mouseOverMode & EMouseMode::M_OVER_ALWAYS || (g_mouseOverMode & EMouseMode::M_OVER_COMBAT && CGGameUI::InCombatLockdown())) {
                         sort<IESortMode::FOCUS, true>(targetGuid, focus);
                         return;
                     }
@@ -796,10 +801,7 @@ namespace {
 
         for (int i = 0; i < n; ++i) {
             Entry* e1 = buf[i];
-            if (!e1->hasState(Entry::IEState::SHOULD_STACK) || e1->hasState(Entry::IEState::IS_FRESH)) {
-                e1->updVis(g_speedLower, g_speedPull, g_inertia, sceneTime, g_maxRaise, g_clampTopOffset);
-                e1->ptr->SetPoint(1, pThis, 6, e1->getVisX(), e1->getVisY(), 1);
-                e1->ptr->SetFrameDepth(e1->ptr->m_depthZ - pThis->m_depth, 1);
+            if (!e1->hasState(Entry::IEState::SHOULD_STACK) || e1->hasState(Entry::IEState::IS_FRESH) || e1->ptr->m_alpha <= EPS) {
                 continue;
             }
             bool freed = g_stackingMode > EStackingMode::S_DISABLED;
@@ -807,7 +809,7 @@ namespace {
             for (int j = i + 1; j < n; ++j) {
                 Entry* e2 = buf[j];
                 // skip fresh plates, UNIT_ADDED callbacks later might disable collisions
-                if (e2->hasState(Entry::IEState::SHOULD_STACK) && !e2->hasState(Entry::IEState::IS_FRESH)) {
+                if (e2->hasState(Entry::IEState::SHOULD_STACK) && !e2->hasState(Entry::IEState::IS_FRESH) && e2->ptr->m_alpha > EPS) {
                     g_entries.seedPair(e1, e2, ms);
                     auto* ps = g_entries.getPair(e1, e2);
                 	float dx = e1->getReqDXFor(e2);
@@ -918,7 +920,7 @@ namespace {
 
     void __fastcall CGPlayer_C__NotifyCombatChangeHk(CGPlayer_C* pThis, void* edx, int offs, int val) {
         // just in case everything is perfectly stationary (render flags won't get set)
-        g_inCombat = val; CGWorldFrame::GetWorldFrame()->m_renderDirtyFlags |= 1;
+        CGWorldFrame::GetWorldFrame()->m_renderDirtyFlags |= 1;
         return pThis->NotifyCombatChange(offs, val);
     }
 
@@ -935,27 +937,37 @@ namespace {
     }
 
     uint8_t __fastcall CSimpleFrame__SetFrameAlpha_siteWrapper(CGUnit_C* unit) {
-        // original logic + traceline + alpha blending
         if (!unit || !unit->m_nameplate) return 255;
-        uint8_t targetAlpha = (*g_lockedTarget)
-            ? ((unit->GetEntry<UnitEntry>()->m_guid == *g_lockedTarget) ? 255 : 255 * g_nonTargetAlpha)
-            : 255;
-        float current = unit->m_nameplate->m_alpha;
-        if (g_occlusionAlpha < 1.0f) {
+
+        bool isTargetOrMouseOver = *g_lockedTarget ? unit->GetEntry<UnitEntry>()->m_guid == *g_lockedTarget : unit->m_nameplate == *g_nameplateFocus;
+        uint8_t targetAlpha = (*g_lockedTarget) ? (isTargetOrMouseOver ? 255 : static_cast<uint8_t>(255 * g_nonTargetAlpha)) : 255;
+
+        if (!isTargetOrMouseOver && g_occlusionAlpha < 1.0f && (g_occlusionMode == EOcclusionMode::OC_ALWAYS || !CGGameUI::InCombatLockdown())) {
             if (CGCamera* cam = CGCamera::GetActiveCamera()) {
                 C3Vector hitPoint; float dist = 1.0f;
                 C3Vector start = cam->m_pos; C3Vector end;
                 unit->GetPosition(end); end.Z += unit->m_unitHeight * 0.666f;
+
                 if (CGGameUI::TraceLine(start, end, 0x100111, hitPoint, dist)) {
-                    if (unit->m_nameplate->HasPlateState(EFrameState::NP_IS_FRESH)) {
-                        unit->m_nameplate->SetPlateState(EFrameState::NP_IS_FRESH, false);
-                        return static_cast<uint8_t>(targetAlpha * g_occlusionAlpha);
-                    }
-                    return static_cast<uint8_t>(current + (targetAlpha * g_occlusionAlpha - current) * g_alphaSpd);
+                    targetAlpha = static_cast<uint8_t>(targetAlpha * g_occlusionAlpha);
                 }
             }
         }
-        return static_cast<uint8_t>(current + (targetAlpha - current) * g_alphaSpd);
+
+        if (unit->m_nameplate->HasPlateState(EFrameState::NP_IS_FRESH)) {
+            unit->m_nameplate->SetPlateState(EFrameState::NP_IS_FRESH, false);
+            return targetAlpha;
+        }
+
+        float current = unit->m_nameplate->m_alpha;
+        float delta = static_cast<float>(targetAlpha) - current;
+        if (std::abs(delta) < 0.5f) return targetAlpha;
+
+        float step = delta * g_alphaSpd;
+        float nextAlpha = current + (std::abs(step) < 1.0f ? std::copysign(1.0f, delta) : step);
+
+        if (std::abs(static_cast<float>(targetAlpha) - nextAlpha) < 1.0f) return targetAlpha;
+        return (delta > 0.0f && nextAlpha > targetAlpha) || (delta < 0.0f && nextAlpha < targetAlpha) ? targetAlpha : static_cast<uint8_t>(nextAlpha);
     }
 
     guid_t* __cdecl CGGameUI__WipeActivePlatesHk() {
@@ -1138,6 +1150,10 @@ namespace {
         const int result = cvar->Sync(value, &g_occlusionAlpha, 0.0f, 1.0f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
     }
+	int CVarHandler_NameplateOcclusionMode(CVar* cvar, const char*, const char* value, void*) {
+    	const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_occlusionMode), static_cast<int>(EOcclusionMode::OC_ALWAYS), static_cast<int>(EOcclusionMode::OC_NOT_IN_COMBAT), "%d");
+    	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
+    }
     int CVarHandler_NameplateNonTargetAlpha(CVar* cvar, const char*, const char* value, void*) {
         const int result = cvar->Sync(value, &g_nonTargetAlpha, 0.0f, 1.0f, "%.2f");
         if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1; return result;
@@ -1209,6 +1225,7 @@ void NamePlates::initialize() {
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateRaiseDistance, "nameplateRaiseDistance", nullptr, "8.0", CVarHandler_NameplateRaiseDistance);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplatePullDistance, "nameplatePullDistance", nullptr, "0.25", CVarHandler_NameplatePullDistance);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateOcclusionAlpha, "nameplateOcclusionAlpha", nullptr, "1.0", CVarHandler_NameplateOcclusionAlpha);
+    Hooks::FrameXML::registerCVar(&s_cvar_nameplateOcclusionMode, "nameplateOcclusionMode", nullptr, "0", CVarHandler_NameplateOcclusionMode);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateNonTargetAlpha, "nameplateNonTargetAlpha", nullptr, "0.5", CVarHandler_NameplateNonTargetAlpha);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateAlphaSpeed, "nameplateAlphaSpeed", nullptr, "0.25", CVarHandler_NameplateAlphaSpeed);
     Hooks::FrameXML::registerCVar(&s_cvar_nameplateInertia, "nameplateInertia", nullptr, "1", CVarHandler_NameplateInertia);

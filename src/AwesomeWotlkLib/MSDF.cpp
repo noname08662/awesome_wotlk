@@ -412,7 +412,10 @@ namespace {
     }
 
     int __cdecl FreeType_LoadGlyphHk(FT_Face face, FT_ULong glyph_index, FT_Int32 load_flags) {
-        return FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER | FT_LOAD_NO_HINTING); // original flags CTD
+        return FT_Load_Glyph(face, glyph_index,
+			(MSDFFont::Get(face) || load_flags != 8386) ? (FT_LOAD_RENDER | FT_LOAD_NO_HINTING)
+            : (FT_LOAD_RENDER | FT_LOAD_MONOCHROME | FT_LOAD_TARGET_MONO));
+			// no idea how to map the 2004 bitmask to the modern format, this could be wrong potentially
     }
 
     FT_UInt __cdecl FreeType_GetCharIndexHk(FT_Face face, FT_ULong charcode) {

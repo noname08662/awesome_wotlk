@@ -1,6 +1,6 @@
 -- File: esMX.lua
 -- Language: Spanish (Mexico)
-local addonName, AwesomeCVar = ...
+local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
     AwesomeCVar.L = {}
@@ -50,6 +50,7 @@ if GetLocale() == "esMX" then
     L.CVAR_LABEL_STACKING_MODE = "Modo de apilamiento de placas"
     L.CVAR_LABEL_MOUSEOVER = "Modo de mouseover de placas"
     L.CVAR_LABEL_OCCLUSION_ALPHA = "Alfa de oclusión de placas"
+	L.CVAR_LABEL_OCCLUSION_MODE = "Modo de oclusión de placas de nombre"
     L.CVAR_LABEL_NONTARGET_ALPHA = "Alfa de placas sin objetivo"
     L.CVAR_LABEL_ALPHA_SPEED = "Velocidad de fundido de placas"
     L.CVAR_LABEL_CLAMP_TOP = "Fijar placas al borde superior"
@@ -64,7 +65,7 @@ if GetLocale() == "esMX" then
     L.CVAR_LABEL_SPEED_LOWER = "Velocidad de bajada al apilar"
     L.CVAR_LABEL_SPEED_PULL = "Velocidad de atracción horizontal"
 	L.CVAR_LABEL_INERTIA = "Inercia de apilamiento de placas de nombre"
-	L.CVAR_HYST_DECAY = "Velocidad de separación de pares"
+	L.CVAR_LABEL_HYST_DECAY = "Velocidad de separación de pares"
 	L.CVAR_LABEL_HITBOX_ANCHOR = "Anclaje de Hitbox de Placa"
     L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY = "Altura de hitbox (Enemigo)"
     L.CVAR_LABEL_HITBOX_WIDTH_ENEMY = "Ancho de hitbox (Enemigo)"
@@ -72,9 +73,10 @@ if GetLocale() == "esMX" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Ancho de hitbox (Aliado)"
     L.CVAR_LABEL_INTERACTION_MODE = "Modo de interacción"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Ángulo de interacción (grados)"
-    L.CVAR_STANCE_PATCH = "Parche de cambio de forma/actitud"
-    L.CVAR_SHOW_PLAYER = "Renderizado del modelo del jugador"
-    L.CVAR_MSDF_MODE = "Modo de renderizado de fuentes (Requiere Reinicio)"
+    L.CVAR_LABEL_STANCE_PATCH = "Parche de cambio de forma/actitud"
+    L.CVAR_LABEL_SHOW_PLAYER = "Renderizado del modelo del jugador"
+    L.CVAR_LABEL_MSDF_MODE = "Modo de renderizado de fuentes (Requiere Reinicio)"
+	L.CVAR_LABEL_OBJ_HIGHLIGHT = "Resaltado de Objetos"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "Visibilidad indirecta de cámara"
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Alfa indirecto de cámara"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Distancia de cámara"
@@ -89,12 +91,17 @@ if GetLocale() == "esMX" then
     L.DESC_ALPHA_BLEND = "Controla qué tan rápido las placas cambian de opacidad (1 = Instantáneo)."
     L.DESC_STANCE_PATCH = "Permite cambiar de forma/actitud y lanzar una habilidad en un solo clic al usar macros."
     L.DESC_OCCLUSION_ALPHA = "Controla la opacidad de las placas cuando están bloqueadas por obstáculos o terreno."
+	L.DESC_OCCLUSION_MODE = "Controla cuándo se ocultan o se desvanecen las placas de nombre al ser bloqueadas por el terreno o las paredes."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "Permite que la cámara atraviese ciertos objetos del mundo en lugar de ser bloqueada."
     L.DESC_CAMERA_INDIRECT_ALPHA = "Establece el nivel de transparencia de los objetos que se interponen entre la cámara y el jugador."
     L.DESC_CAMERA_DISTANCE_MAX = "Establece la distancia máxima que la cámara puede alejarse del jugador."
-    L.DESC_MSDF = "Activa el renderizado de fuentes basado en vectores, mejorando drásticamente la calidad.\n0 = Desactivado; 1 = Activado;\n2 = Activado (fuentes inseguras) — debido al cálculo de campos de distancia,\nalgunas fuentes con contornos que se cruzan pueden fallar."
+    L.DESC_MSDF = "Activa el renderizado de fuentes basado en vectores, mejorando drásticamente la calidad."
+	L.DESC_OBJ_HIGHLIGHT = "Fuerza destellos brillantes en recursos (hierbas/menas) y objetos interactivos como cajas o tableros de anuncios."
 
-    -- CVar Mode Options
+	-- CVar Mode Options
+	L.MODE_DISABLED = "Desactivado"
+	L.MODE_ENABLED = "Activado"
+
     L.MODE_STACKING_DISABLED = "Superpuesto"
     L.MODE_STACKING_ALL = "Apilado (Todo)"
     L.MODE_STACKING_ENEMY = "Apilado (Enemigos)"
@@ -113,9 +120,11 @@ if GetLocale() == "esMX" then
     L.MODE_MOUSE_RAISE_OCCLUDED = "Siempre resaltar ocluidos"
     L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT = "Resaltar ocluidos (Solo combate)"
 
-    L.MODE_CLAMP_DISABLED = "Desactivado"
     L.MODE_CLAMP_ALL = "Anclar todas"
     L.MODE_CLAMP_BOSSES = "Anclar solo jefes"
+
+	L.MODE_OCCLUSION_ALWAYS = "Ocluir siempre"
+	L.MODE_OCCLUSION_NOCOMBAT = "Solo fuera de combate"
 
     L.MODE_HITBOX_TOP = "Arriba"
     L.MODE_HITBOX_CENTER = "Centro"
@@ -123,4 +132,8 @@ if GetLocale() == "esMX" then
 
     L.MODE_LABEL_PLAYER_RADIUS = "Radio del jugador 20yd"
     L.MODE_LABEL_CONE_ANGLE = "Ángulo de cono (grados) dentro de 20yd"
+
+	L.MODE_MSDF_ENABLED_UNSAFE = "Activado (fuentes no seguras): debido a cómo se calculan los campos de distancia, algunas fuentes con contornos que se cruzan a sí mesmos (por ejemplo, 'diediedie') pueden fallar."
+
+	L.MODE_HIGHLIGHTS_TRACKED = "Solo rastreados"
 end

@@ -7,11 +7,19 @@ namespace {
     bool g_cursorKeywordActive = false;
     bool g_playerLocationKeywordActive = false;
 
+	enum EObjHLMode : int8_t {
+		HL_DISABLED = 0,
+		HL_ALWAYS = 1,
+		HL_TRACKED = 2,
+	};
+
     int g_iAngle = 0;
     int g_iMode = 0;
+    EObjHLMode g_highlightMode = EObjHLMode::HL_DISABLED;
 
     CVar* s_cvar_interactionMode;
     CVar* s_cvar_interactionAngle;
+    CVar* s_cvar_objectHighlightMode;
 
     const std::vector<uint8_t> validTypes = {
             GAMEOBJECT_TYPE_DOOR, GAMEOBJECT_TYPE_BUTTON, GAMEOBJECT_TYPE_QUESTGIVER,
@@ -206,6 +214,24 @@ namespace {
         return 0;
     }
 
+	char __fastcall CGGameObject_C__CheckForPassiveHighlightHk(CGGameObject_C* pThis) {
+    	const char result = CGGameObject_C::CheckForPassiveHighlightFn(pThis);
+    	uint8_t goType = static_cast<uint8_t>((pThis->GetValue<uint32_t>(GAMEOBJECT_BYTES_1) >> 8) & 0xFF);
+    	if (!pThis->CanUse() || (goType != GAMEOBJECT_TYPE_CHEST && goType != GAMEOBJECT_TYPE_GOOBER && goType != GAMEOBJECT_TYPE_QUESTGIVER)) {
+    		return result;
+    	}
+        if (g_highlightMode == EObjHLMode::HL_TRACKED) {
+	        if (goType == GAMEOBJECT_TYPE_QUESTGIVER && pThis->m_questMark == nullptr) return result;
+            if (goType == GAMEOBJECT_TYPE_CHEST) {
+            	if (const LockRec* lockRec = pThis->GetLockRec()) {
+            		if (lockRec->m_type[0] == 2) return result; // gathering node
+            	}  
+            }
+        }
+    	pThis->m_highlightMask |= 0x400000u;
+    	return CGGameObject_C::ShowLootEffectFn(pThis); 
+    }
+
     int lua_openmisclib(lua_State* L) {
         Lua::luaL_Reg funcs[] = {
             { "FlashWindow", lua_FlashWindow },
@@ -224,6 +250,27 @@ namespace {
     }
     int CVarHandler_interactionAngle(CVar* cvar, const char*, const char* value, void*) { return cvar->Sync(value, &g_iAngle, 15, 160, "%d"); }
     int CVarHandler_interactionMode(CVar* cvar, const char*, const char* value, void*) { return cvar->Sync(value, &g_iMode, 0, 1, "%d"); }
+    int CVarHandler_objectHighlightMode(CVar* cvar, const char*, const char* value, void*) {
+    	const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_highlightMode),
+            static_cast<int>(EObjHLMode::HL_DISABLED), static_cast<int>(EObjHLMode::HL_TRACKED), "%d");
+    	DetourTransactionBegin(); DetourUpdateThread(GetCurrentThread());
+        if (g_highlightMode != EObjHLMode::HL_DISABLED) Hooks::Detour(&CGGameObject_C::CheckForPassiveHighlightFn, CGGameObject_C__CheckForPassiveHighlightHk);
+    	else Hooks::Detach(&CGGameObject_C::CheckForPassiveHighlightFn, CGGameObject_C__CheckForPassiveHighlightHk);
+    	DetourTransactionCommit();
+        if (guid_t pg = ObjectMgr::GetPlayerGuid(); ObjectMgr::Get<CGPlayer_C>(pg, TYPEMASK_PLAYER)) {
+        	ObjectMgr::EnumObjects([&](guid_t guid) -> bool {
+				if (guid < 0x1000) return true;
+
+				CGGameObject_C* obj = ObjectMgr::Get<CGGameObject_C>(guid, TYPEMASK_GAMEOBJECT);
+				if (!obj || obj->m_typeID != TYPEID_GAMEOBJECT) return true;
+        			
+        		if (g_highlightMode != EObjHLMode::HL_DISABLED) CGGameObject_C__CheckForPassiveHighlightHk(obj);
+				else CGGameObject_C::CheckForPassiveHighlightFn(obj);
+				return true;
+				});  
+        }
+        return result;
+    }
 
     bool TerrainClick(float x, float y, float z) {
         TerrainClickEvent tc = {
@@ -314,6 +361,7 @@ void Misc::initialize() {
     Hooks::FrameXML::registerLuaLib(lua_openmisclib);
     Hooks::FrameXML::registerCVar(&s_cvar_interactionAngle, "interactionAngle", nullptr, "60", CVarHandler_interactionAngle);
     Hooks::FrameXML::registerCVar(&s_cvar_interactionMode, "interactionMode", nullptr, "1", CVarHandler_interactionMode);
+    Hooks::FrameXML::registerCVar(&s_cvar_objectHighlightMode, "objectHighlightMode", nullptr, "1", CVarHandler_objectHighlightMode);
 
     Hooks::Detour(&CGGameUI::SecureCmdOptionParseFn, SecureCmdOptionParseHk);
     Hooks::Detour(&CGWorldFrame::OnLayerTrackTerrainFn, OnLayerTrackTerrainHk);

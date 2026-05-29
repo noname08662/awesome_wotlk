@@ -1,6 +1,6 @@
 -- File: zhTW.lua
 -- Language: Traditional Chinese
-local addonName, AwesomeCVar = ...
+local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
     AwesomeCVar.L = {}
@@ -50,6 +50,7 @@ if GetLocale() == "zhTW" then
     L.CVAR_LABEL_STACKING_MODE = "姓名板堆疊模式"
     L.CVAR_LABEL_MOUSEOVER = "姓名板鼠標懸停模式"
     L.CVAR_LABEL_OCCLUSION_ALPHA = "姓名板被遮擋透明度"
+	L.CVAR_LABEL_OCCLUSION_MODE = "姓名板遮蔽模式"
     L.CVAR_LABEL_NONTARGET_ALPHA = "非目標姓名板透明度"
     L.CVAR_LABEL_ALPHA_SPEED = "姓名板透明度漸變速度"
     L.CVAR_LABEL_CLAMP_TOP = "姓名板頂部鎖定模式"
@@ -64,7 +65,7 @@ if GetLocale() == "zhTW" then
     L.CVAR_LABEL_SPEED_LOWER = "姓名板堆疊下降速度"
     L.CVAR_LABEL_SPEED_PULL = "姓名板堆疊水平拉伸速度"
 	L.CVAR_LABEL_INERTIA = "姓名板堆疊慣性"
-	L.CVAR_HYST_DECAY = "姓名板配對分離速度"
+	L.CVAR_LABEL_HYST_DECAY = "姓名板配對分離速度"
 	L.CVAR_LABEL_HITBOX_ANCHOR = "姓名板碰撞盒錨點"
     L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY = "敵方姓名板點擊判定高度"
     L.CVAR_LABEL_HITBOX_WIDTH_ENEMY = "敵方姓名板點擊判定寬度"
@@ -72,9 +73,10 @@ if GetLocale() == "zhTW" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "友好姓名板點擊判定寬度"
     L.CVAR_LABEL_INTERACTION_MODE = "互動模式"
     L.CVAR_LABEL_INTERACTION_ANGLE = "互動錐形角度 (度)"
-    L.CVAR_STANCE_PATCH = "姿態/形態切換補丁"
-    L.CVAR_SHOW_PLAYER = "自身角色模型渲染"
-    L.CVAR_MSDF_MODE = "字體渲染模式 (需要重啟遊戲)"
+    L.CVAR_LABEL_STANCE_PATCH = "姿態/形態切換補丁"
+    L.CVAR_LABEL_SHOW_PLAYER = "自身角色模型渲染"
+    L.CVAR_LABEL_MSDF_MODE = "字體渲染模式 (需要重啟遊戲)"
+	L.CVAR_LABEL_OBJ_HIGHLIGHT = "物件高亮顯示"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "鏡頭間接可見性"
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "鏡頭間接透明度"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "鏡頭最大距離"
@@ -89,12 +91,17 @@ if GetLocale() == "zhTW" then
     L.DESC_ALPHA_BLEND = "控制姓名板切換到新透明度的動畫速度 (1 = 瞬間)。"
     L.DESC_STANCE_PATCH = "允許在使用巨集時，透過單次點擊完成姿態/形態切換並施放技能。"
     L.DESC_OCCLUSION_ALPHA = "控制當姓名板被障礙物或地形阻擋時的透明度。"
+	L.DESC_OCCLUSION_MODE = "控制當姓名板被地形或牆壁遮擋時，何時隱藏或淡出。"
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "允許鏡頭穿過某些世界物體而非被阻擋。"
     L.DESC_CAMERA_INDIRECT_ALPHA = "設置鏡頭與玩家角色之間的遮擋物透明度。"
     L.DESC_CAMERA_DISTANCE_MAX = "設置鏡頭可以從玩家身上拉遠的最大距離。"
-    L.DESC_MSDF = "開啟基於向量的字體渲染，大幅提升字型品質。\n0 = 禁用；1 = 開啟；\n2 = 開啟（不安全字體）——由於距離場計算方式，\n某些具有自交輪廓的字體可能會顯示異常。"
+    L.DESC_MSDF = "開啟基於向量的字體渲染，大幅提升字型品質。"
+	L.DESC_OBJ_HIGHLIGHT = "強制在資源（草藥/礦石）和可互動的物件（如箱子或懸賞通緝令告示牌）上顯示閃爍光芒效果。"
 
-    -- CVar 模式選項
+	-- CVar 模式選項
+	L.MODE_DISABLED = "已停用"
+	L.MODE_ENABLED = "已啟用"
+
     L.MODE_STACKING_DISABLED = "重疊"
     L.MODE_STACKING_ALL = "堆疊 (全部)"
     L.MODE_STACKING_ENEMY = "堆疊 (敵人)"
@@ -113,9 +120,11 @@ if GetLocale() == "zhTW" then
     L.MODE_MOUSE_RAISE_OCCLUDED = "總是提升被遮擋的姓名板"
     L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT = "提升被遮擋姓名板 (僅戰鬥)"
 
-    L.MODE_CLAMP_DISABLED = "停用"
     L.MODE_CLAMP_ALL = "全部置於螢幕內"
     L.MODE_CLAMP_BOSSES = "僅首領置於螢幕內"
+
+	L.MODE_OCCLUSION_ALWAYS = "總是遮蔽"
+	L.MODE_OCCLUSION_NOCOMBAT = "僅在非戰鬥狀態"
 
     L.MODE_HITBOX_TOP = "頂部"
     L.MODE_HITBOX_CENTER = "置中"
@@ -123,4 +132,8 @@ if GetLocale() == "zhTW" then
 
     L.MODE_LABEL_PLAYER_RADIUS = "玩家半徑 20碼"
     L.MODE_LABEL_CONE_ANGLE = "20碼內的錐形角度 (度)"
+
+	L.MODE_MSDF_ENABLED_UNSAFE = "啟用（不安全字型）— 由於距離場（distance fields）的計算方式，某些具有自相交輪廓的字型（例如 'diediedie'）可能會發生錯亂。"
+
+	L.MODE_HIGHLIGHTS_TRACKED = "僅已追蹤"
 end

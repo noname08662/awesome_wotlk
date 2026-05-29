@@ -1,7 +1,7 @@
 -- File: Constants.lua
 -- Holds all static definitions for the addon.
 
-local addonName, ACVar = ...
+local _, ACVar = ...
 local L = ACVar.L or {} -- Get the locale table loaded previously
 _G["AwesomeCVar"] = {} -- Public API table
 
@@ -34,7 +34,7 @@ ACVar.TTS_VOICES = {}
 
 local function updateTts()
     wipe(ACVar.TTS_VOICES)
-    for i, voiceInfo in pairs(C_VoiceChat and C_VoiceChat.GetTtsVoices() or {}) do
+    for _, voiceInfo in pairs(C_VoiceChat and C_VoiceChat.GetTtsVoices() or {}) do
         ACVar.TTS_VOICES[voiceInfo.voiceID] = voiceInfo.name
     end
 end
@@ -77,7 +77,7 @@ ACVar.CVARS = {
             { value = 8, label = L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT },
         }},
         { name = "nameplateClampTop", label = L.CVAR_LABEL_CLAMP_TOP, type = "mode", default = 0, modes = {
-            { value = 0, label = L.MODE_CLAMP_DISABLED },
+            { value = 0, label = L.MODE_DISABLED },
             { value = 1, label = L.MODE_CLAMP_ALL },
             { value = 2, label = L.MODE_CLAMP_BOSSES },
         }},
@@ -86,13 +86,17 @@ ACVar.CVARS = {
             { value = 1, label = L.MODE_HITBOX_CENTER },
             { value = 2, label = L.MODE_HITBOX_BOTTOM },
 		}},
+        { name = "nameplateOcclusionMode", label = L.CVAR_LABEL_OCCLUSION_MODE, desc = L.DESC_OCCLUSION_MODE, type = "mode", default = 0, modes = {
+            { value = 0, label = L.MODE_OCCLUSION_ALWAYS },
+            { value = 1, label = L.MODE_OCCLUSION_NOCOMBAT },
+		}},
         -- Sliders
         { name = "nameplatePlacement", label = L.CVAR_LABEL_PLACEMENT, desc = L.DESC_PLACEMENT, type = "slider", min = -1, max = 2, step = 0.01, default = 0.66 },
         { name = "nameplateDistance", label = L.CVAR_LABEL_NAMEPLATE_DISTANCE, type = "slider", min = 41, max = 100, step = 1, default = 41 },
-        { name = "nameplateHysteresisDecay", label = L.CVAR_HYST_DECAY, desc = L.DESC_HYST_DECAY, type = "slider", min = 0.25, max = 30, step = 0.05, default = 1 },
+        { name = "nameplateHysteresisDecay", label = L.CVAR_LABEL_HYST_DECAY, desc = L.DESC_HYST_DECAY, type = "slider", min = 0.25, max = 30, step = 0.05, default = 1 },
         { name = "nameplateOcclusionAlpha", label = L.CVAR_LABEL_OCCLUSION_ALPHA, desc = L.DESC_OCCLUSION_ALPHA, type = "slider", min = 0, max = 1, step = 0.01, default = 1 },
         { name = "nameplateNonTargetAlpha", label = L.CVAR_LABEL_NONTARGET_ALPHA, type = "slider", min = 0, max = 1, step = 0.01, default = 0.5 },
-        { name = "nameplateAlphaSpeed", label = L.CVAR_LABEL_ALPHA_SPEED, desc = L.DESC_ALPHA_BLEND, type = "slider", min = 0.01, max = 1, step = 0.01, default = 0.25 },
+        { name = "nameplateAlphaSpeed", label = L.CVAR_LABEL_ALPHA_SPEED, desc = L.DESC_ALPHA_BLEND, type = "slider", min = 0.01, max = 1, step = 0.01, default = 1 },
         { name = "nameplateClampTopOffset", label = L.CVAR_LABEL_UPPER_BORDER, type = "slider", min = 0, max = 0.15, step = 0.01, default = 0.1 },
         { name = "nameplateRaiseDistance", label = L.CVAR_LABEL_MAX_RAISE_DISTANCE, type = "slider", min = 1, max = 20, step = 0.25, default = 8 },
         { name = "nameplatePullDistance", label = L.CVAR_LABEL_MAX_PULL_DISTANCE, type = "slider", min = 0, max = 0.75, step = 0.01, default = 0.25 },
@@ -117,8 +121,17 @@ ACVar.CVARS = {
         { name = "interactionAngle", label = L.CVAR_LABEL_INTERACTION_ANGLE, type = "slider", min = 1, max = 360, step = 1, default = 90 },
     },
     [L.CATEGORY_OTHER] = {
-        { name = "enableStancePatch", label = L.CVAR_STANCE_PATCH, desc = L.DESC_STANCE_PATCH, type = "toggle", min = 0, max = 1 },
-        { name = "showPlayer", label = L.CVAR_SHOW_PLAYER, type = "toggle", min = 0, max = 1, default = 1 },
-        { name = "MSDFMode", label = L.CVAR_MSDF_MODE, desc = L.DESC_MSDF, type = "slider", min = 0, max = 2, step = 1, default = 1 },
+        { name = "enableStancePatch", label = L.CVAR_LABEL_STANCE_PATCH, desc = L.DESC_STANCE_PATCH, type = "toggle", min = 0, max = 1 },
+        { name = "showPlayer", label = L.CVAR_LABEL_SHOW_PLAYER, type = "toggle", min = 0, max = 1, default = 1 },
+        { name = "MSDFMode", label = L.CVAR_LABEL_MSDF_MODE, desc = L.DESC_MSDF, type = "mode", default = 1, modes = {
+            { value = 0, label = L.MODE_DISABLED },
+            { value = 1, label = L.MODE_ENABLED },
+            { value = 2, label = L.MODE_MSDF_ENABLED_UNSAFE },
+		}},
+		{ name = "objectHighlightMode", label = L.CVAR_LABEL_OBJ_HIGHLIGHT, desc = L.DESC_OBJ_HIGHLIGHT, type = "mode", default = 0, modes = {
+            { value = 0, label = L.MODE_DISABLED },
+            { value = 1, label = L.MODE_ENABLED },
+            { value = 2, label = L.MODE_HIGHLIGHTS_TRACKED },
+		}},
     }
 }

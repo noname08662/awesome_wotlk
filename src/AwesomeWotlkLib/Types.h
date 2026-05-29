@@ -247,6 +247,14 @@ struct PlayerEntry : UnitEntry {
     PlayerVisibleItem m_visibleItems[19];
 };
 
+struct LockRec {
+    int m_id;
+    int m_type[8];
+    int m_index[8];
+    int m_skill[8];
+    int m_action[8];
+};
+
 struct ItemCacheRec {
     int m_id;
     int m_class;

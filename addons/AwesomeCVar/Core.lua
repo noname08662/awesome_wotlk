@@ -27,12 +27,16 @@ function ACVar:PrintMessage(message, ...)
     _G.DEFAULT_CHAT_FRAME:AddMessage(formatMessage(message, ...))
 end
 
-function ACVar:PrintCVarChange(cvarName, value)
-    ACVar:PrintMessage(
+function ACVar:PrintCVarChange(cvarName, value, label)
+    local baseMessage = format(
         L.MSG_SET_VALUE,
         CONSTANTS.COLORS.HIGHLIGHT..cvarName..CONSTANTS.COLORS.RESET,
         CONSTANTS.COLORS.VALUE..tostring(value)..CONSTANTS.COLORS.RESET
     )
+	ACVar:PrintMessage(
+		label and format("%s %s(%s)%s", baseMessage, CONSTANTS.COLORS.VALUE, label, CONSTANTS.COLORS.RESET)
+		or baseMessage
+	)
 end
 
 function ACVar:GetCVarValue(cvarName)
@@ -79,19 +83,28 @@ end
 
 -- ### Initialization and Event Handling ###
 function ACVar:OnLoad()
+	if self.isLoaded then return end
     self:CreateMainFrame()
     self:CreateReloadPopup()
     self:CreateDefaultConfirmationPopup()
     self:AddGameMenuButton()
     self:PrintMessage(L.MSG_LOADED)
+	self.isLoaded = true
 end
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:SetScript("OnEvent", function(self, event, arg)
-    if event == "ADDON_LOADED" and arg == addonName then
-        ACVar:OnLoad()
-        self:UnregisterEvent(event)
+    if event == "ADDON_LOADED" then
+		if arg == addonName then
+			ACVar:OnLoad()
+		end
+	elseif event == "PLAYER_ENTERING_WORLD" then
+		for _, f in pairs(ACVar.Skins) do
+			f()
+		end
+		self:UnregisterEvent(event)
     end
 end)
 

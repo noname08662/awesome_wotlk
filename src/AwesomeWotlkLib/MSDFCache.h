@@ -41,6 +41,7 @@ public:
 
 private:
     static constexpr auto* CACHE_DIR = "Cache_AwesomeWotLK";
+	static constexpr auto* BLACKLIST_DIR = "Fonts_AwesomeWotLK";
     static constexpr uint32_t CACHE_VERSION = 1;
     static constexpr uint32_t BLOCK_MAGIC = 0x4D534442;
     static constexpr uint32_t MANIFEST_MAGIC = 0x4D534D46;
@@ -127,6 +128,10 @@ private:
         uint32_t sdfRenderSize, uint32_t sdfSpread);
     static std::string SanitizeName(std::string_view name);
 
+	static void InitializeBlacklist();
+	static bool IsFontBlacklisted(const char* familyName, const char* styleName, const uint8_t* fontData, size_t dataSize);
+	static uint64_t HashNormalizedString(std::string_view str);
+
     std::filesystem::path m_cacheBasePath;
     std::filesystem::path m_cacheManifestPath;
     std::filesystem::path m_cacheManifestLockPath;
@@ -145,7 +150,15 @@ private:
 
     std::deque<GlyphMetricsToStore> m_pendingWrites;
     
-    ankerl::unordered_dense::map<uint32_t, BlockWrap> m_blockWrap;
+	ankerl::unordered_dense::map<uint32_t, BlockWrap> m_blockWrap;
+
+	struct BlacklistAutoRunner {
+		BlacklistAutoRunner() {
+			InitializeBlacklist();
+		}
+	};
+	static BlacklistAutoRunner s_blacklistAutoRunner;
+	inline static ankerl::unordered_dense::set<FontHash> s_blacklistHashes;
 
     static MSDFManager s_manager;
 };

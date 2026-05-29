@@ -1,6 +1,6 @@
 -- File: zhCN.lua
 -- Language: Simplified Chinese
-local addonName, AwesomeCVar = ...
+local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
     AwesomeCVar.L = {}
@@ -50,6 +50,7 @@ if GetLocale() == "zhCN" then
     L.CVAR_LABEL_STACKING_MODE = "姓名板堆叠模式"
     L.CVAR_LABEL_MOUSEOVER = "姓名板鼠标悬停模式"
     L.CVAR_LABEL_OCCLUSION_ALPHA = "姓名板被遮挡透明度"
+	L.CVAR_LABEL_OCCLUSION_MODE = "姓名板 translucent/遮挡模式"
     L.CVAR_LABEL_NONTARGET_ALPHA = "非目标姓名板透明度"
     L.CVAR_LABEL_ALPHA_SPEED = "姓名板透明度渐变速度"
     L.CVAR_LABEL_CLAMP_TOP = "姓名板顶部锁定模式"
@@ -64,7 +65,7 @@ if GetLocale() == "zhCN" then
     L.CVAR_LABEL_SPEED_LOWER = "姓名板堆叠下降速度"
     L.CVAR_LABEL_SPEED_PULL = "姓名板堆叠水平拉伸速度"
 	L.CVAR_LABEL_INERTIA = "姓名板堆叠惯性"
-	L.CVAR_HYST_DECAY = "姓名板配对分离速度"
+	L.CVAR_LABEL_HYST_DECAY = "姓名板配对分离速度"
 	L.CVAR_LABEL_HITBOX_ANCHOR = "姓名板碰撞盒锚点"
     L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY = "敌方姓名板点击判定高度"
     L.CVAR_LABEL_HITBOX_WIDTH_ENEMY = "敌方姓名板点击判定宽度"
@@ -72,9 +73,10 @@ if GetLocale() == "zhCN" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "友好姓名板点击判定宽度"
     L.CVAR_LABEL_INTERACTION_MODE = "交互模式"
     L.CVAR_LABEL_INTERACTION_ANGLE = "交互锥形角度 (度)"
-    L.CVAR_STANCE_PATCH = "姿态/形态切换补丁"
-    L.CVAR_SHOW_PLAYER = "自身角色模型渲染"
-    L.CVAR_MSDF_MODE = "字体渲染模式 (需要重启游戏)"
+    L.CVAR_LABEL_STANCE_PATCH = "姿态/形态切换补丁"
+    L.CVAR_LABEL_SHOW_PLAYER = "自身角色模型渲染"
+    L.CVAR_LABEL_MSDF_MODE = "字体渲染模式 (需要重启游戏)"
+	L.CVAR_LABEL_OBJ_HIGHLIGHT = "物体高亮显示"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "镜头间接可见性"
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "镜头间接透明度"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "镜头最大距离"
@@ -89,12 +91,17 @@ if GetLocale() == "zhCN" then
     L.DESC_ALPHA_BLEND = "控制姓名板切换到新透明度的动画速度 (1 = 瞬间)。"
     L.DESC_STANCE_PATCH = "允许在使用宏时，通过单次点击完成姿态/形态切换并施放技能。"
     L.DESC_OCCLUSION_ALPHA = "控制当姓名板被障碍物或地形阻挡时的透明度。"
+	L.DESC_OCCLUSION_MODE = "控制当姓名板被地形或墙壁遮挡时，何时隐藏或淡出。"
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "允许镜头穿过某些世界物体而非被阻挡。"
     L.DESC_CAMERA_INDIRECT_ALPHA = "设置镜头与玩家角色之间的遮挡物透明度。"
     L.DESC_CAMERA_DISTANCE_MAX = "设置镜头可以从玩家身上拉远的最大距离。"
-    L.DESC_MSDF = "开启基于矢量的字体渲染，大幅提升字型质量。\n0 = 禁用；1 = 开启；\n2 = 开启（不安全字体）——由于距离场计算方式，\n某些具有自交轮廓的字体可能会显示异常。"
+    L.DESC_MSDF = "开启基于矢量的字体渲染，大幅提升字型质量。"
+	L.DESC_OBJ_HIGHLIGHT = "强制在资源（草药/矿石）和可交互的物体（如箱子或悬赏通缉令告示牌）上显示闪烁光芒效果。"
 
-    -- CVar 模式选项
+	-- CVar 模式选项
+	L.MODE_DISABLED = "已禁用"
+	L.MODE_ENABLED = "已启用"
+
     L.MODE_STACKING_DISABLED = "重叠"
     L.MODE_STACKING_ALL = "堆叠 (全部)"
     L.MODE_STACKING_ENEMY = "堆叠 (敌人)"
@@ -113,9 +120,11 @@ if GetLocale() == "zhCN" then
     L.MODE_MOUSE_RAISE_OCCLUDED = "总是提升被遮挡的姓名板"
     L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT = "提升被遮挡姓名板 (仅战斗)"
 
-    L.MODE_CLAMP_DISABLED = "禁用"
     L.MODE_CLAMP_ALL = "全部置于屏幕内"
     L.MODE_CLAMP_BOSSES = "仅首领置于屏幕内"
+
+	L.MODE_OCCLUSION_ALWAYS = "总是遮挡"
+	L.MODE_OCCLUSION_NOCOMBAT = "仅在非战斗状态"
 
     L.MODE_HITBOX_TOP = "顶部"
     L.MODE_HITBOX_CENTER = "居中"
@@ -123,4 +132,8 @@ if GetLocale() == "zhCN" then
 
     L.MODE_LABEL_PLAYER_RADIUS = "玩家半径 20码"
     L.MODE_LABEL_CONE_ANGLE = "20码内的锥形角度 (度)"
+
+	L.MODE_MSDF_ENABLED_UNSAFE = "启用（不安全字体）— 由于距离场（distance fields）的计算方式，某些具有自相交轮廓的字体（例如 'diediedie'）可能会发生错乱。"
+
+	L.MODE_HIGHLIGHTS_TRACKED = "仅已追踪"
 end

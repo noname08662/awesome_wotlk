@@ -7,7 +7,12 @@
 MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize)
     : m_ftFace(face), m_msdfFont(nullptr), m_isValid(false), m_oldestPage(0), m_evictionCount(0)
 {
-    if (!face) return;
+	if (!face || MSDFCache::IsFontBlacklisted(
+			face->family_name ? face->family_name : "Unknown",
+			face->style_name ? face->style_name : "",
+			fontData, static_cast<size_t>(dataSize))) {
+		return;
+	}
 
     m_msdfFont = CreateMSDFHandle(fontData, dataSize);
     if (!m_msdfFont) return;
@@ -16,7 +21,7 @@ MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize)
         face->family_name ? face->family_name : "Unknown", face->style_name ? face->style_name : "",
         MSDF::SDF_RENDER_SIZE, MSDF::SDF_SPREAD);
 
-    m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
+	m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
     if (m_isValid) m_glyphPool.reserve(4096);
 }
 

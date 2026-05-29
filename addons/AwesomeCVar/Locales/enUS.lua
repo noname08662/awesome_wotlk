@@ -1,6 +1,6 @@
 -- File: enUS.lua
 -- Language: English (US)
-local addonName, AwesomeCVar = ...
+local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
     AwesomeCVar.L = {}
@@ -50,6 +50,7 @@ if GetLocale() == "enUS" then
     L.CVAR_LABEL_STACKING_MODE = "Nameplate Stacking Mode"
     L.CVAR_LABEL_MOUSEOVER = "Nameplate Mouseover Mode"
     L.CVAR_LABEL_OCCLUSION_ALPHA = "Nameplate Occlusion Alpha"
+    L.CVAR_LABEL_OCCLUSION_MODE = "Nameplate Occlusion Mode"
     L.CVAR_LABEL_NONTARGET_ALPHA = "Nameplate Non-Target Alpha"
     L.CVAR_LABEL_ALPHA_SPEED = "Nameplate Alpha Blending Speed"
     L.CVAR_LABEL_CLAMP_TOP = "Nameplate Clamp Top Mode"
@@ -64,7 +65,7 @@ if GetLocale() == "enUS" then
     L.CVAR_LABEL_SPEED_LOWER = "Nameplate Stacking Vertical Lower Speed"
     L.CVAR_LABEL_SPEED_PULL = "Nameplate Stacking Horizontal Pull Speed"
     L.CVAR_LABEL_INERTIA = "Nameplate Stacking Inertia"
-	L.CVAR_HYST_DECAY = "Nameplate Pair Breakup Rate"
+	L.CVAR_LABEL_HYST_DECAY = "Nameplate Pair Breakup Rate"
     L.CVAR_LABEL_HITBOX_ANCHOR = "Nameplate Hitbox Anchor"
     L.CVAR_LABEL_HITBOX_HEIGHT_ENEMY = "Enemy Nameplate Hitbox Height"
     L.CVAR_LABEL_HITBOX_WIDTH_ENEMY = "Enemy Nameplate Hitbox Width"
@@ -72,9 +73,10 @@ if GetLocale() == "enUS" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Friendly Nameplate Hitbox Width"
     L.CVAR_LABEL_INTERACTION_MODE = "Interaction Mode"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Interaction Cone Angle (deg)"
-    L.CVAR_STANCE_PATCH = "Stance/Form Swap Patch"
-    L.CVAR_SHOW_PLAYER = "Player's Character Model Rendering"
-    L.CVAR_MSDF_MODE = "Font Rendering Mode (Requires Restart)"
+    L.CVAR_LABEL_STANCE_PATCH = "Stance/Form Swap Patch"
+    L.CVAR_LABEL_SHOW_PLAYER = "Player's Character Model Rendering"
+    L.CVAR_LABEL_MSDF_MODE = "Font Rendering Mode (Requires Restart)"
+    L.CVAR_LABEL_OBJ_HIGHLIGHT = "Object Highlighting"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "Camera Indirect Visibility"
 	L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Camera Indirect Alpha"
 	L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Camera Distance"
@@ -89,12 +91,17 @@ if GetLocale() == "enUS" then
     L.DESC_ALPHA_BLEND = "Controls how fast nameplates animate toward new opacity targets (1 = Instant)."
     L.DESC_STANCE_PATCH = "Allows you to change stance/form and cast an ability in a single click when using macros."
     L.DESC_OCCLUSION_ALPHA = "Controls the opacity of nameplates when they are blocked by obstacles or terrain."
+	L.DESC_OCCLUSION_MODE = "Controls when nameplates are hidden or faded when blocked by obstacles or terrain."
 	L.DESC_CAMERA_INDIRECT_VISIBILITY = "When enabled, the camera can move freely through certain world objects rather than being blocked by them."
     L.DESC_CAMERA_INDIRECT_ALPHA = "Sets the transparency level of objects that come between the camera and the player character."
     L.DESC_CAMERA_DISTANCE_MAX = "Sets the maximum distance the camera can zoom out from the player."
-	L.DESC_MSDF = "Enables vector-based font rendering, dramatically improving glyph quality.\n0 = Disabled; 1 = Enabled;\n2 = Enabled (unsafe fonts) — due to how distance fields are calculated,\nsome fonts with self-intersecting contours (e.g., 'diediedie') may break."
+	L.DESC_MSDF = "Enables vector-based font rendering, dramatically improving glyph quality."
+	L.DESC_OBJ_HIGHLIGHT = "Forces glowing sparkles on resources (herbs/ore) and interactive objects like crates or bounty boards."
 
     -- CVar Mode Labels
+	L.MODE_DISABLED = "Disabled"
+	L.MODE_ENABLED = "Enabled"
+
     L.MODE_STACKING_DISABLED = "Overlapping"
     L.MODE_STACKING_ALL = "Stacking (All)"
     L.MODE_STACKING_ENEMY = "Stacking (Enemies)"
@@ -113,9 +120,11 @@ if GetLocale() == "enUS" then
     L.MODE_MOUSE_RAISE_OCCLUDED = "Always Raise Occluded"
     L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT = "Raise Occluded (Combat Only)"
 
-    L.MODE_CLAMP_DISABLED = "Off"
     L.MODE_CLAMP_ALL = "Clamp All"
     L.MODE_CLAMP_BOSSES = "Clamp Bosses Only"
+
+	L.MODE_OCCLUSION_ALWAYS = "Always Occlude"
+	L.MODE_OCCLUSION_NOCOMBAT = "Only Out of Combat"
 
     L.MODE_HITBOX_TOP = "Top"
     L.MODE_HITBOX_CENTER = "Center"
@@ -123,4 +132,8 @@ if GetLocale() == "enUS" then
 
     L.MODE_LABEL_PLAYER_RADIUS = "Player Radius 20yd"
     L.MODE_LABEL_CONE_ANGLE = "Cone Angle (deg) within 20yd"
+
+	L.MODE_MSDF_ENABLED_UNSAFE = "Enabled (unsafe fonts) — due to how distance fields are calculated, some fonts with self-intersecting contours (e.g., 'diediedie') may break."
+
+	L.MODE_HIGHLIGHTS_TRACKED = "Tracked Only"
 end
