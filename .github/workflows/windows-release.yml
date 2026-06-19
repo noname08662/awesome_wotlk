@@ -2,6 +2,7 @@ name: CMake Windows Win32 Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
 env:
   BUILD_TYPE: Release
 jobs:
@@ -14,12 +15,14 @@ jobs:
       - name: Configure and build
         run: |
           $buildDir = "${{ github.workspace }}\build"
-          # Changed generator string to "Visual Studio 18 2026"
           cmake -S "${{ github.workspace }}" -B $buildDir -G "Visual Studio 18 2026" -A Win32 -T host=x64
           cmake --build $buildDir --config ${{ env.BUILD_TYPE }} -- /m
       - name: Package release
         run: |
+          # Safe fallback if run manually: uses the tag name chosen in the UI
           $tag = "${{ github.event.release.tag_name }}"
+          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+
           $staging = "${{ github.workspace }}\staging"
 
           New-Item -ItemType Directory -Force -Path "$staging\Interface\AddOns" | Out-Null
@@ -32,8 +35,11 @@ jobs:
           Copy-Item "${{ github.workspace }}\deps\skia\skia.dll" "$staging\"
 
           Compress-Archive -Path "$staging\*" -DestinationPath "${{ github.workspace }}\AwesomeWotLK_$tag.zip" -Force
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+          
+      - name: Upload Zip to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: win32-release
-          path: AwesomeWotLK_*.zip
+          files: ${{ github.workspace }}/AwesomeWotLK_*.zip
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
