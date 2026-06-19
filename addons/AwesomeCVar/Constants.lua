@@ -76,10 +76,12 @@ ACVar.CVARS = {
             { value = 7, label = L.MODE_MOUSE_RAISE_OCCLUDED },
             { value = 8, label = L.MODE_MOUSE_RAISE_OCCLUDED_COMBAT },
         }},
-        { name = "nameplateClampTop", label = L.CVAR_LABEL_CLAMP_TOP, type = "mode", default = 0, modes = {
+        { name = "nameplateClampMode", label = L.CVAR_LABEL_CLAMP_MODE, type = "mode", default = 0, modes = {
             { value = 0, label = L.MODE_DISABLED },
             { value = 1, label = L.MODE_CLAMP_ALL },
             { value = 2, label = L.MODE_CLAMP_BOSSES },
+            { value = 3, label = L.MODE_CLAMP_ALL_EDGES },
+            { value = 4, label = L.MODE_CLAMP_BOSSES_EDGES },
         }},
         { name = "nameplateHitboxAnchor", label = L.CVAR_LABEL_HITBOX_ANCHOR, desc = L.DESC_HITBOX_ANCHOR, type = "mode", default = 1, modes = {
             { value = 0, label = L.MODE_HITBOX_TOP },
@@ -94,10 +96,11 @@ ACVar.CVARS = {
         { name = "nameplatePlacement", label = L.CVAR_LABEL_PLACEMENT, desc = L.DESC_PLACEMENT, type = "slider", min = -1, max = 2, step = 0.01, default = 0.66 },
         { name = "nameplateDistance", label = L.CVAR_LABEL_NAMEPLATE_DISTANCE, type = "slider", min = 41, max = 100, step = 1, default = 41 },
         { name = "nameplateHysteresisDecay", label = L.CVAR_LABEL_HYST_DECAY, desc = L.DESC_HYST_DECAY, type = "slider", min = 0.25, max = 30, step = 0.05, default = 1 },
-        { name = "nameplateOcclusionAlpha", label = L.CVAR_LABEL_OCCLUSION_ALPHA, desc = L.DESC_OCCLUSION_ALPHA, type = "slider", min = 0, max = 1, step = 0.01, default = 1 },
+        { name = "nameplateOcclusionAlpha", label = L.CVAR_LABEL_OCCLUSION_ALPHA, desc = L.DESC_OCCLUSION_ALPHA, type = "slider", min = -1, max = 1, step = 0.01, default = 1 },
         { name = "nameplateNonTargetAlpha", label = L.CVAR_LABEL_NONTARGET_ALPHA, type = "slider", min = 0, max = 1, step = 0.01, default = 0.5 },
         { name = "nameplateAlphaSpeed", label = L.CVAR_LABEL_ALPHA_SPEED, desc = L.DESC_ALPHA_BLEND, type = "slider", min = 0.01, max = 1, step = 0.01, default = 1 },
-        { name = "nameplateClampTopOffset", label = L.CVAR_LABEL_UPPER_BORDER, type = "slider", min = 0, max = 0.15, step = 0.01, default = 0.1 },
+        { name = "nameplateClampModeVOffset", label = L.CVAR_LABEL_V_OFFSET, type = "slider", min = 0, max = 0.15, step = 0.01, default = 0.1 },
+		{ name = "nameplateClampModeHOffset", label = L.CVAR_LABEL_H_OFFSET, type = "slider", min = 0, max = 0.15, step = 0.01, default = 0.01 },
         { name = "nameplateRaiseDistance", label = L.CVAR_LABEL_MAX_RAISE_DISTANCE, type = "slider", min = 1, max = 20, step = 0.25, default = 8 },
         { name = "nameplatePullDistance", label = L.CVAR_LABEL_MAX_PULL_DISTANCE, type = "slider", min = 0, max = 0.75, step = 0.01, default = 0.25 },
         { name = "nameplateBandX", label = L.CVAR_LABEL_X_SPACE, type = "slider", min = 0.1, max = 1, step = 0.01, default = 0.7 },
@@ -121,6 +124,7 @@ ACVar.CVARS = {
         { name = "interactionAngle", label = L.CVAR_LABEL_INTERACTION_ANGLE, type = "slider", min = 1, max = 360, step = 1, default = 90 },
     },
     [L.CATEGORY_OTHER] = {
+        { name = "portraitResolution", label = L.CVAR_LABEL_PORTRAIT, desc = L.DESC_PORTRAIT, type = "slider", min = 64, max = 2048, step = 64, default = 64 },
         { name = "enableStancePatch", label = L.CVAR_LABEL_STANCE_PATCH, desc = L.DESC_STANCE_PATCH, type = "toggle", min = 0, max = 1 },
         { name = "showPlayer", label = L.CVAR_LABEL_SHOW_PLAYER, type = "toggle", min = 0, max = 1, default = 1 },
         { name = "MSDFMode", label = L.CVAR_LABEL_MSDF_MODE, desc = L.DESC_MSDF, type = "mode", default = 1, modes = {

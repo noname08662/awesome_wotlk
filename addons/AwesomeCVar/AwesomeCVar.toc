@@ -2,7 +2,8 @@
 ## Title: Awesome CVar Manager
 ## Notes: Manage CVars via UI
 ## Author: Widget, Crum
-## Version: 2.5
+## Version: 3.0
+## SavedVariables: AwesomeCVarDB
 
 # Load Localization files from the Locales sub-folder
 Locales\enUS.lua

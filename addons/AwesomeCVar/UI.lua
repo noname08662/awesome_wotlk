@@ -19,6 +19,14 @@ local HideUIPanel = HideUIPanel
 local PlaySound = PlaySound
 local ReloadUI = ReloadUI
 local UIParent = UIParent
+local UIDropDownMenu_SetSelectedValue = UIDropDownMenu_SetSelectedValue
+local UIDropDownMenu_SetText = UIDropDownMenu_SetText
+local UIDropDownMenu_Initialize = UIDropDownMenu_Initialize
+local UIDropDownMenu_CreateInfo = UIDropDownMenu_CreateInfo
+local UIDropDownMenu_AddButton = UIDropDownMenu_AddButton
+local CloseDropDownMenus = CloseDropDownMenus
+local PanelTemplates_SetTab = PanelTemplates_SetTab
+local PanelTemplates_SetNumTabs = PanelTemplates_SetNumTabs
 
 local function getFrameName(prefix, suffix)
     return CONSTANTS.ADDON_NAME.."_"..prefix..(suffix or "")
@@ -29,11 +37,11 @@ local function createButton(parent, name, text, width, height, template)
     button:SetWidth(width or CONSTANTS.FRAME.BUTTON_WIDTH)
     button:SetHeight(height or CONSTANTS.FRAME.BUTTON_HEIGHT)
     button:SetText(text)
-	local fontString = button:GetFontString()
+    local fontString = button:GetFontString()
     if fontString and fontString:GetWidth() > ((width or CONSTANTS.FRAME.BUTTON_WIDTH) - 16) then
-		fontString:ClearAllPoints()
-		fontString:SetPoint("LEFT", button, "LEFT", 8, 0)
-		fontString:SetPoint("RIGHT", button, "RIGHT", -8, 0)
+        fontString:ClearAllPoints()
+        fontString:SetPoint("LEFT", button, "LEFT", 8, 0)
+        fontString:SetPoint("RIGHT", button, "RIGHT", -8, 0)
     end
     return button
 end
@@ -125,6 +133,14 @@ function ACVar:ShowFrame(tabName)
     if self.Frame then
         self.Frame:Show()
         self:UpdateAllUI()
+
+        if _G["AwesomeCVarMinimapCheck"] then
+            _G["AwesomeCVarMinimapCheck"]:SetChecked(not self.DB.minimap.hide)
+        end
+        if _G["AwesomeCVarGameMenuCheck"] then
+            _G["AwesomeCVarGameMenuCheck"]:SetChecked(self.DB.showGameMenuButton)
+        end
+
         if self._SelectTab and self.TabsByName and self.TabsByName[tabName] then
             self._SelectTab(self.TabsByName[tabName])
         end
@@ -143,7 +159,7 @@ function ACVar:ResetFramePosition()
     if self.Frame then
         self.Frame:ClearAllPoints()
         self.Frame:SetPoint("CENTER")
-        self:PrintMessage(L.MSG_FRAME_RESET)
+        self:PrintMessage(L.MSG_FRAME_RESET or "Frame position reset.")
     end
 end
 
@@ -171,7 +187,7 @@ function ACVar:CreateReloadPopup()
 end
 
 function ACVar:CreateDefaultConfirmationPopup()
-	if self.DefaultConfirmationPopup then return end
+    if self.DefaultConfirmationPopup then return end
 
     local frame = createPopupFrame("AwesomeCVarDefaultConfirmationPopup", L.RESET_POPUP_TITLE, L.RESET_POPUP_TEXT)
     self.DefaultConfirmationPopup = frame
@@ -200,38 +216,61 @@ function ACVar:CreateDefaultConfirmationPopup()
 
     frame:SetScript("OnShow", function() PlaySound("igMainMenuOpen") end)
 
-	tinsert(UISpecialFrames, "AwesomeCVarDefaultConfirmationPopup")
+    tinsert(UISpecialFrames, "AwesomeCVarDefaultConfirmationPopup")
 end
 
 function ACVar:AddGameMenuButton()
     local button = ACVar.GameMenuButton or CreateFrame("Button", "GameMenuButtonAwesomeCVar", _G.GameMenuFrame, "GameMenuButtonTemplate")
-    if button then
-        button:SetText(L.ADDON_NAME_SHORT)
-		button:ClearAllPoints()
-		button:SetPoint("TOP", _G.GameMenuButtonContinue, "BOTTOM", 0, -1)
-        button:SetScript("OnClick", function()
-            self:ToggleFrame()
-            HideUIPanel(_G.GameMenuFrame)
-        end)
-		button:SetScript("OnShow", function()
+    if not button then return end
+
+    button:SetText(L.ADDON_NAME_SHORT or "AwesomeCVar")
+    button:ClearAllPoints()
+    button:SetPoint("TOP", _G.GameMenuButtonContinue, "BOTTOM", 0, -1)
+    button:SetScript("OnClick", function()
+        self:ToggleFrame()
+        HideUIPanel(_G.GameMenuFrame)
+    end)
+    button:SetScript("OnShow", function()
+        if not self.DB.showGameMenuButton then
+            button:Hide()
+            return
+        end
+
+        local anchor, anchorBottom
+        for _, child in ipairs({ _G.GameMenuFrame:GetChildren() }) do
+            if child ~= button and child:IsShown() and child:GetObjectType() == "Button" then
+                local bottom = child:GetBottom()
+                if bottom and (not anchorBottom or bottom < anchorBottom) then
+                    anchorBottom, anchor = bottom, child
+                end
+            end
+        end
+
+        button:ClearAllPoints()
+        button:SetPoint("TOP", anchor or _G.GameMenuButtonContinue, "BOTTOM", 0, -1)
+		button:SetScript("OnUpdate", function()
+			button:SetScript("OnUpdate", nil)
 			if not self.MenuExtended then
 				_G.GameMenuFrame:SetHeight(_G.GameMenuFrame:GetHeight() + 24)
 				self.MenuExtended = true
 			end
 		end)
-		button:SetScript("OnHide", function()
-			if self.MenuExtended then
-				_G.GameMenuFrame:SetHeight(_G.GameMenuFrame:GetHeight() - 24)
-			end
-			self.MenuExtended = false
-		end)
-		ACVar.GameMenuButton = button
-    end
+    end)
+    button:SetScript("OnHide", function()
+        if self.MenuExtended then
+            _G.GameMenuFrame:SetHeight(_G.GameMenuFrame:GetHeight() - 24)
+            self.MenuExtended = false
+        end
+    end)
+    ACVar.GameMenuButton = button
 end
 
 function ACVar:CreateMainFrame()
     local frame = CreateFrame("Frame", "AwesomeCVarFrame", UIParent, "UIPanelDialogTemplate")
     self.Frame = frame
+
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetToplevel(true)
     frame:SetWidth(CONSTANTS.FRAME.MAIN_WIDTH)
     frame:SetHeight(CONSTANTS.FRAME.MAIN_HEIGHT)
     frame:SetPoint("CENTER")
@@ -242,7 +281,7 @@ function ACVar:CreateMainFrame()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:Hide()
 
-	frame.numTabs = 0
+    frame.numTabs = 0
 
     tinsert(_G.UISpecialFrames, "AwesomeCVarFrame")
 
@@ -269,17 +308,17 @@ function ACVar:CreateMainFrame()
         if currentPanel then currentPanel:Hide() end
         panels[tab.categoryName]:Show()
         currentPanel = panels[tab.categoryName]
-		PanelTemplates_SetTab(frame, tab:GetID())
+        PanelTemplates_SetTab(frame, tab:GetID())
         ACVar:UpdateAllUI()
     end
     self._SelectTab = selectTab
 
     for categoryName in pairs(CVARS) do
-		frame.numTabs = frame.numTabs + 1
+        frame.numTabs = frame.numTabs + 1
 
         local tab = CreateFrame("CheckButton", "AwesomeCVarFrameTab"..frame.numTabs, tabStrip, "OptionsFrameTabButtonTemplate")
         tab.categoryName = categoryName
-		tab:SetID(frame.numTabs)
+        tab:SetID(frame.numTabs)
 
         tab:SetText(categoryName)
         tab:SetHeight(CONSTANTS.FRAME.TAB_HEIGHT)
@@ -321,7 +360,7 @@ function ACVar:CreateMainFrame()
             PlaySound("igCharacterInfoTab")
         end)
 
-		-- Populate panel content
+        -- Populate panel content
         local cvarList = CVARS[categoryName]
         local lastControl = nil
 
@@ -402,7 +441,7 @@ function ACVar:CreateMainFrame()
                 slider.valueText = valueText
 
                 local resetButton = createButton(widgetFrame, getFrameName(cvarDef.name, "ResetButton"),
-					format(L.RESET_TO, cvarDef.default), 100, 20)
+                    string.format(L.RESET_TO or "Reset to %s", cvarDef.default), 100, 20)
                 resetButton:SetPoint("TOPRIGHT", control, paddingRight, paddingTop)
                 resetButton:Disable()
                 resetButton.cvarDef = cvarDef
@@ -433,13 +472,13 @@ function ACVar:CreateMainFrame()
                 dropdown:SetPoint("TOPLEFT", widgetFrame, -16, 0)
                 dropdown:SetPoint("TOPRIGHT", widgetFrame)
                 dropdown.cvarDef = cvarDef
-				dropdown.relativeTo = dropdown
-				dropdown.point = "TOPLEFT"
-				dropdown.relativePoint = "BOTTOMLEFT"
-				dropdown.xOffset = 18
-				dropdown.yOffset = 2
+                dropdown.relativeTo = dropdown
+                dropdown.point = "TOPLEFT"
+                dropdown.relativePoint = "BOTTOMLEFT"
+                dropdown.xOffset = 18
+                dropdown.yOffset = 2
 
-				UIDropDownMenu_SetWidth(dropdown, control:GetWidth() - 40)
+                UIDropDownMenu_SetWidth(dropdown, control:GetWidth() - 40)
 
                 local function getCurrentValue()
                     return (ACVar and ACVar.GetCVarValue and ACVar:GetCVarValue(cvarDef.name)) or cvarDef.default
@@ -480,12 +519,12 @@ function ACVar:CreateMainFrame()
                             UIDropDownMenu_AddButton(info, level)
                         end
                     end
-					_G["DropDownList"..(level or 1)].maxWidth = _G[dropdown:GetName().."Middle"]:GetWidth() + paddingRight
+                    _G["DropDownList"..(level or 1)].maxWidth = _G[dropdown:GetName().."Middle"]:GetWidth() + paddingRight
                 end)
                 setClosedLabel(getCurrentValue())
 
                 local resetButton = createButton(widgetFrame, getFrameName(cvarDef.name, "ResetButton"),
-                    string.format(L.RESET_TO, tostring(cvarDef.options[cvarDef.default] or cvarDef.default)), 100, 20)
+                    string.format(L.RESET_TO or "Reset to %s", tostring(cvarDef.options[cvarDef.default] or cvarDef.default)), 100, 20)
                 resetButton:SetPoint("TOPRIGHT", control, paddingRight, paddingTop)
                 resetButton:Disable()
                 resetButton.cvarDef = cvarDef
@@ -546,13 +585,13 @@ function ACVar:CreateMainFrame()
             lastControl = control
         end
 
-		-- total scroll content height
-		content:SetScript("OnUpdate", function(self)
-			self:SetScript("OnUpdate", nil)
-			if lastControl and lastControl:GetBottom() then
-				self:SetHeight(self:GetTop() - lastControl:GetBottom() + 20)
-			end
-		end)
+        -- total scroll content height
+        content:SetScript("OnUpdate", function(self)
+            self:SetScript("OnUpdate", nil)
+            if lastControl and lastControl:GetBottom() then
+                self:SetHeight(self:GetTop() - lastControl:GetBottom() + 20)
+            end
+        end)
     end
 
     self.TabsByName = {}
@@ -583,5 +622,27 @@ function ACVar:CreateMainFrame()
     defaultsButton:SetPoint("BOTTOMLEFT", 16, 16)
     defaultsButton:SetScript("OnClick", function()
         self.DefaultConfirmationPopup:Show()
+    end)
+
+    local cbMinimap = CreateFrame("CheckButton", "AwesomeCVarMinimapCheck", frame, "UICheckButtonTemplate")
+    cbMinimap:SetPoint("LEFT", defaultsButton, "RIGHT", 12, 0)
+    local cbMinimapText = _G[cbMinimap:GetName().."Text"]
+    cbMinimapText:SetText(L.MINIMAP_ICON)
+    cbMinimap:SetChecked(not ACVar.DB.minimap.hide)
+    cbMinimap:SetScript("OnClick", function(self)
+        ACVar.DB.minimap.hide = not (self:GetChecked() and true or false)
+        ACVar:UpdateMinimapButton()
+        PlaySound("igMainMenuOptionCheckBoxOn")
+    end)
+
+    local cbGameMenu = CreateFrame("CheckButton", "AwesomeCVarGameMenuCheck", frame, "UICheckButtonTemplate")
+    cbGameMenu:SetPoint("LEFT", cbMinimapText, "RIGHT", 12, 0)
+    local cbGameMenuText = _G[cbGameMenu:GetName().."Text"]
+    cbGameMenuText:SetText(L.GAME_MENU_BUTTON)
+    cbGameMenu:SetChecked(ACVar.DB.showGameMenuButton)
+    cbGameMenu:SetScript("OnClick", function(self)
+        ACVar.DB.showGameMenuButton = self:GetChecked() and true or false
+        ACVar:UpdateGameMenuButton()
+        PlaySound("igMainMenuOptionCheckBoxOn")
     end)
 end
