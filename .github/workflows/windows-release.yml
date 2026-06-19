@@ -14,7 +14,8 @@ jobs:
       - name: Configure and build
         run: |
           $buildDir = "${{ github.workspace }}\build"
-          cmake -S "${{ github.workspace }}" -B $buildDir -G "Visual Studio 17 2022" -A Win32 -T host=x64
+          # Changed generator string to "Visual Studio 18 2026"
+          cmake -S "${{ github.workspace }}" -B $buildDir -G "Visual Studio 18 2026" -A Win32 -T host=x64
           cmake --build $buildDir --config ${{ env.BUILD_TYPE }} -- /m
       - name: Package release
         run: |
