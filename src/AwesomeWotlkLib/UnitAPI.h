@@ -1,2 +1,4 @@
 #pragma once
-namespace UnitAPI { void initialize(); }
+namespace UnitAPI {
+void initialize();
+}

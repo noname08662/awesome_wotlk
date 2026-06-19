@@ -1,6 +1,6 @@
 #include "Utils.h"
 #include "Patch.h"
-#include <Windows.h>
+#include <windows.h>
 #include <filesystem>
 #include <format>
 #include <string>

@@ -69,6 +69,28 @@ for _, nameplate in pairs(C_NamePlate.GetNamePlates()) do
 end
 ```
 
+## GetOcclusionEnabled `Method`
+**Arguments:** none  
+**Returns:** `enabled` (boolean)
+
+Returns whether line-of-sight occlusion alpha handling is enabled for this specific nameplate.
+
+```lua
+local isOccludedAlphaEnabled = C_NamePlate.GetNamePlateForUnit("target"):GetOcclusionEnabled()
+```
+
+## SetOcclusionEnabled `Method`
+**Arguments:** `enabled` (boolean)  
+**Returns:** none
+
+Sets an override to enable or disable line-of-sight occlusion alpha handling on a per-nameplate basis.
+
+```lua
+for _, nameplate in pairs(C_NamePlate.GetNamePlates()) do
+  nameplate:SetOcclusionEnabled(false)
+end
+```
+
 ## NAME_PLATE_CREATED `Event`
 **Parameters:** `namePlateBase` (frame)
 
@@ -199,20 +221,28 @@ Sets the maximum vertical distance (as a ratio of plate height) a nameplate can 
 
 Sets the maximum horizontal distance (as a ratio of plate width) a nameplate can be pulled from its origin.
 
-## nameplateClampTop `CVar`
+## nameplateClampMode `CVar`
 **Arguments:** `mode` (number)  
 **Default:** 0
 
-Restricts nameplates from moving beyond the top edge of the screen.
+Restricts nameplates from moving beyond the screen boundaries.
 - **0** = Disabled  
-- **1** = Enabled (All)
-- **2** = Bosses Only
+- **1** = Clamp All (Top Only)
+- **2** = Clamp Bosses Only (Top Only)
+- **3** = Clamp All (All Sides)
+- **4** = Clamp Bosses Only (All Sides)
 
-## nameplateClampTopOffset `CVar`
+## nameplateClampModeVOffset `CVar`
 **Arguments:** `offset` (number)  
-**Default:** 0.1
+**Default:** 0.10
 
-Sets the vertical screen boundary for clamping (0.0 is the very top). Requires `nameplateClampTop` to be enabled.
+Sets the vertical screen boundary margin for clamping (0.0 is the strict edge). Requires `nameplateClampMode` to be non-zero.
+
+## nameplateClampModeHOffset `CVar`
+**Arguments:** `offset` (number)  
+**Default:** 0.01
+
+Sets the horizontal screen boundary margin for clamping (0.0 is the strict edge). Requires `nameplateClampMode` to be set to a mode that includes all edges (3 or 4).
 
 ## nameplateOcclusionMode `CVar`
 **Arguments:** `mode` (number)  
@@ -224,13 +254,15 @@ Controls when to apply the transparency level for nameplates blocked by line-of-
 
 ## nameplateOcclusionAlpha `CVar`
 **Arguments:** `alpha` (number)  
-**Default:** 1
+**Default:** 1.00
 
-Sets the transparency level for nameplates blocked by line-of-sight (objects or terrain).
+Sets the transparency factor or boundary for nameplates blocked by line-of-sight. Accepts values from **-1.0** to **1.0**. 
+- **Positive values:** Multiplies the current non-target alpha value dynamically.
+- **Negative values:** Restricts the occluded nameplate to a strict maximum alpha ceiling (uses the absolute value).
 
 ## nameplateNonTargetAlpha `CVar`
 **Arguments:** `alpha` (number)  
-**Default:** 0.5
+**Default:** 0.50
 
 Sets the transparency level for all nameplates except the current target.
 
@@ -505,6 +537,12 @@ MSDF-based font rendering utilizes vector distance data instead of rasterized te
 - **0** = Disabled  
 - **1** = Everything
 - **2** = Tracked (low level quest giver objects, gathering), and Containers 
+
+## portraitResolution `CVar`
+**Arguments:** `resolution` (number)  
+**Default:** 64
+
+Increases the rendering texture resolution for all portraits across the entire game client. Accepts values between **64** and **2048** (automatically ceiling-aligned to the nearest power of two).
 
 ## cursor `macro`
 

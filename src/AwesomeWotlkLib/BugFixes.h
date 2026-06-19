@@ -1,2 +1,4 @@
 #pragma once
-namespace BugFixes { void initialize(); }
+namespace BugFixes {
+void initialize();
+}

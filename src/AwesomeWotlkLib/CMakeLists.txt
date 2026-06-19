@@ -22,7 +22,9 @@ add_library(
 		"Item.h" "Item.cpp"
 		"UnitAPI.h" "UnitAPI.cpp"
 		"Spell.h" "Spell.cpp"
-		"VoiceChat.h" "VoiceChat.cpp")
+		"VFX.h" "VFX.cpp"
+		"VoiceChat.h" "VoiceChat.cpp"
+		"ReTools.h")
 
 target_include_directories(
     ${PROJECT_NAME} PRIVATE
@@ -30,7 +32,6 @@ target_include_directories(
 		${CMAKE_SOURCE_DIR}/deps/skia/include
 		${CMAKE_SOURCE_DIR}/deps/msdfgen
 		${CMAKE_BINARY_DIR}/deps/msdfgen
-		${CMAKE_SOURCE_DIR}/unordered_dense/include
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

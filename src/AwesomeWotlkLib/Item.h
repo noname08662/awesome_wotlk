@@ -1,2 +1,4 @@
 #pragma once
-namespace Item { void initialize(); }
+namespace Item {
+void initialize();
+}

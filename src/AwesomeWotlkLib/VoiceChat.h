@@ -1,2 +1,4 @@
 #pragma once
-namespace VoiceChat { void initialize(); void shutdown(); }
+namespace VoiceChat {
+void initialize();
+}

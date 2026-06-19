@@ -1,2 +1,4 @@
 #pragma once
-namespace CommandLine { void initialize(); }
+namespace CommandLine {
+void initialize();
+}

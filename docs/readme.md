@@ -29,6 +29,8 @@ ___
   - `C_NamePlate.GetNamePlateTokenByGUID`
   - `GetStackingEnabled` nameplate method
   - `SetStackingEnabled` nameplate method
+  - `GetOcclusionEnabled` nameplate method
+  - `SetOcclusionEnabled` nameplate method
 - **C_VoiceChat (TTS):**
   - `C_VoiceChat.SpeakText`
   - `C_VoiceChat.StopSpeakingText`
@@ -99,8 +101,9 @@ ___
   - `nameplateOcclusionAlpha`
   - `nameplateNonTargetAlpha`
   - `nameplateAlphaSpeed`
-  - `nameplateClampTop`
-  - `nameplateClampTopOffset`
+  - `nameplateClampMode`
+  - `nameplateClampModeVOffset`
+  - `nameplateClampModeHOffset`
   - `nameplateStacking`
 - **Interaction CVars:**
   - `interactionMode`
@@ -117,6 +120,7 @@ ___
   - `enableStancePatch`
   - `MSDFMode`
   - `objectHighlightMode`
+  - `portraitResolution`
 
 ### New Interaction Keybind
 A new keybind for smart interaction with the game world:
