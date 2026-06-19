@@ -3,25 +3,36 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+
 env:
   BUILD_TYPE: Release
+
 jobs:
   build-windows-win32-release:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fetch Latest Release Tag
+        id: find_tag
+        uses: oprypin/find-latest-tag@v1
+        with:
+          repository: ${{ github.repository }}
+          releases-only: true
+
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+
       - name: Configure and build
         run: |
           $buildDir = "${{ github.workspace }}\build"
-          cmake -S "${{ github.workspace }}" -B $buildDir -G "Visual Studio 18 2026" -A Win32 -T host=x64
+          cmake -S "${{ github.workspace }}" -B $buildDir -G "Visual Studio 17 2022" -A Win32 -T host=x64
           cmake --build $buildDir --config ${{ env.BUILD_TYPE }} -- /m
+
       - name: Package release
         run: |
-          # Safe fallback if run manually: uses the tag name chosen in the UI
           $tag = "${{ github.event.release.tag_name }}"
-          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          if (-not $tag) { $tag = "${{ steps.find_tag.outputs.tag }}" }
 
           $staging = "${{ github.workspace }}\staging"
 
@@ -40,6 +51,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ github.workspace }}/AwesomeWotLK_*.zip
-          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name || steps.find_tag.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
