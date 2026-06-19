@@ -235,25 +235,24 @@ function ACVar:AddGameMenuButton()
             button:Hide()
             return
         end
-
-        local anchor, anchorBottom
-        for _, child in ipairs({ _G.GameMenuFrame:GetChildren() }) do
-            if child ~= button and child:IsShown() and child:GetObjectType() == "Button" then
-                local bottom = child:GetBottom()
-                if bottom and (not anchorBottom or bottom < anchorBottom) then
-                    anchorBottom, anchor = bottom, child
-                end
-            end
-        end
-
-        button:ClearAllPoints()
-        button:SetPoint("TOP", anchor or _G.GameMenuButtonContinue, "BOTTOM", 0, -1)
 		button:SetScript("OnUpdate", function()
-			button:SetScript("OnUpdate", nil)
+			local anchor, anchorBottom
+			for _, child in ipairs({ _G.GameMenuFrame:GetChildren() }) do
+				if child ~= button and child:IsShown() and child:GetObjectType() == "Button" then
+					local bottom = child:GetBottom()
+					if bottom and (not anchorBottom or bottom < anchorBottom) then
+						anchorBottom, anchor = bottom, child
+					end
+				end
+			end
+
+			button:ClearAllPoints()
+			button:SetPoint("TOP", anchor or _G.GameMenuButtonContinue, "BOTTOM", 0, -1)
 			if not self.MenuExtended then
 				_G.GameMenuFrame:SetHeight(_G.GameMenuFrame:GetHeight() + 24)
 				self.MenuExtended = true
 			end
+			button:SetScript("OnUpdate", nil)
 		end)
     end)
     button:SetScript("OnHide", function()
