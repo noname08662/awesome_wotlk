@@ -208,17 +208,23 @@ struct alignas(64) Entry {
 	void updVis(const float spdY, const float spdX, const float inertia, const float delta, const float maxY, const float ceilY, const float ceilX, bool allEdges) {
 		float maxPull = ptr->m_width * g_maxPull;
 		float maxRaise = ptr->m_height * maxY;
+
+		float limMinY = -10000.0f;
+		float limMaxY = maxRaise;
+		float limMinX = -maxPull;
+		float limMaxX = maxPull;
+
 		if (hasState(IEState::SHOULD_CLAMP)) {
-			maxRaise = std::min(maxRaise, NDC_Y - ceilY - getTopNDC());
+			limMaxY = std::min(maxRaise, NDC_Y - ceilY - getTopNDC());
 			if (allEdges) {
-				targetOffsetY = std::max(targetOffsetY, (0.0f + ceilY) - getBotNDC());
-				targetOffsetX = std::clamp(targetOffsetX, (0.0f + ceilX) - (ptr->m_NDCproj.x - ptr->m_width * 0.5f), (NDC_X - ceilX) - ptr->m_NDCproj.x // engine anchors right originally
-				);
+				limMinY = std::min(maxRaise, (0.0f + ceilY) - getBotNDC());
+				limMinX = (0.0f + ceilX) - (ptr->m_NDCproj.x - ptr->m_width * 0.5f);
+				limMaxX = (NDC_X - ceilX) - ptr->m_NDCproj.x; // engine anchors right originally
 			}
-			else { targetOffsetX = std::clamp(targetOffsetX, -maxPull, maxPull); }
 		}
-		else { targetOffsetX = std::clamp(targetOffsetX, -maxPull, maxPull); }
-		targetOffsetY = std::min(targetOffsetY, maxRaise);
+
+		targetOffsetX = std::clamp(targetOffsetX, limMinX, limMaxX);
+		targetOffsetY = std::clamp(targetOffsetY, limMinY, limMaxY);
 
 		float gapY = targetOffsetY - commitTargetY;
 		float gapX = targetOffsetX - commitTargetX;
@@ -248,6 +254,7 @@ struct alignas(64) Entry {
 			momentumY *= 0.1f;
 			momentumX *= 0.1f;
 		}
+
 		float sAlphaY = 1.0f - std::exp(-spdY * std::abs(momentumY) * delta);
 		float sAlphaX = 1.0f - std::exp(-spdX * std::abs(momentumX) * delta);
 		smoothTargetY += (commitTargetY - smoothTargetY) * sAlphaY;
@@ -257,10 +264,23 @@ struct alignas(64) Entry {
 		float a2x = std::pow(std::clamp(spdX * delta, 0.0f, 1.0f), 1.5f) * std::abs(momentumX * momentumX * momentumX);
 		float dy = smoothTargetY - stackOffsetY;
 		float dx = smoothTargetX - stackOffsetX;
+
 		if (std::abs(dy) > EPS) stackOffsetY += dy * std::clamp(a2y, 0.0f, 1.0f);
 		else stackOffsetY = smoothTargetY;
+
 		if (std::abs(dx) > EPS) stackOffsetX += dx * std::clamp(a2x, 0.0f, 1.0f);
 		else stackOffsetX = smoothTargetX;
+
+		if (hasState(IEState::SHOULD_CLAMP)) {
+			if (stackOffsetY > limMaxY || stackOffsetY < limMinY || stackOffsetX > limMaxX || stackOffsetX < limMinX) {
+				stackOffsetY = std::clamp(stackOffsetY, limMinY, limMaxY);
+				stackOffsetX = std::clamp(stackOffsetX, limMinX, limMaxX);
+				smoothTargetY = stackOffsetY;
+				commitTargetY = stackOffsetY;
+				smoothTargetX = stackOffsetX;
+				commitTargetX = stackOffsetX;
+			}
+		}
 	}
 };
 

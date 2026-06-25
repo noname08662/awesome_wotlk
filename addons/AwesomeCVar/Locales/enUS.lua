@@ -129,7 +129,7 @@ if GetLocale() == "enUS" then
 
     L.MODE_CLAMP_ALL = "Clamp All (Top Only)"
     L.MODE_CLAMP_BOSSES = "Clamp Bosses Only (Top Only)"
-    L.MODE_CLAMP_ALL_EDGES = "Clamp Bosses Only (All Sides)"
+    L.MODE_CLAMP_ALL_EDGES = "Clamp All (All Sides)"
     L.MODE_CLAMP_BOSSES_EDGES = "Clamp Bosses Only (All Sides)"
 
 	L.MODE_OCCLUSION_ALWAYS = "Always Occlude"
