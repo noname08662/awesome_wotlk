@@ -462,12 +462,6 @@ Returns information about item transmogrification.
 
 # Spell
 
-## enableStancePatch `CVar`
-**Arguments:** `enabled` (boolean)  
-**Default:** 0
-
-Enables a patch that allows you to swap stance or form and cast the next ability that's not on GCD in a single click.
-
 ## GetSpellBaseCooldown `API`
 **Arguments:** `spellId` (number or string)  
 **Returns:** `cdMs` (number), `gcdMs` (number)
@@ -487,6 +481,12 @@ Returns ID, type, subtype, equipment slot, icon, class ID, and subclass ID if pa
 ---
 
 # Misc
+
+## cameraFov `CVar`
+**Arguments:** `value` (number)  
+**Default:** 100
+
+Changes the camera field of view (fisheye effect), in range **60**-**150**.
 
 ## cameraIndirectVisibility `CVar`
 **Arguments:** `enabled` (number)  
@@ -585,9 +585,3 @@ Brings the game window to the foreground.
 **Returns:** none
 
 Copies text to the clipboard.
-
-## cameraFov `CVar`
-**Arguments:** `value` (number)  
-**Default:** 100
-
-Changes the camera field of view (fisheye effect), in range **60**-**150**.

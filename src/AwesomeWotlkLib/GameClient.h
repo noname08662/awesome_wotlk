@@ -2,6 +2,7 @@
 #include "Types.h"
 #include <cmath>
 #include <cstring>
+#include <string_view>
 
 #include <ft2build.h>
 #include <d3d9.h>
@@ -15,6 +16,8 @@ class CSimpleFrame;
 class CGNamePlate;
 class CSimpleCamera;
 class CGWorldFrame;
+
+inline auto** g_itemIdToStr = reinterpret_cast<const char**>(0x00AC7FD8);
 
 // ObjectMgr
 namespace ObjectMgr {
@@ -211,10 +214,13 @@ public:
 	unk_t unk_AA4[101];                    // 0xAA4
 	CGNamePlate* m_nameplate;              // 0xC38
 
+	using GetShapeshiftFormId_t = ShapeshiftForm(__thiscall*)(CGUnit_C*);
+	inline static auto GetShapeshiftFormIdFn = reinterpret_cast<GetShapeshiftFormId_t>(0x0071AF70);
+
 	using GetCreatureRank_t = ECreatureRank(__thiscall*)(const CGObject_C*);
 	inline static const auto GetCreatureRankFn = reinterpret_cast<GetCreatureRank_t>(0x00718A00);
 
-	using CanAssist_t = bool(__thiscall*)(const CGUnit_C*, const CGUnit_C*, bool ignoreFlags);
+	using CanAssist_t = bool(__thiscall*)(const CGUnit_C*, const CGUnit_C*, bool);
 	inline static const auto CanAssistFn = reinterpret_cast<CanAssist_t>(0x007293D0);
 
 	using UnitReaction_t = EUnitReaction(__thiscall*)(const CGUnit_C*, const CGUnit_C*);
@@ -226,10 +232,10 @@ public:
 	using HideNamePlate_t = CGNamePlate*(__thiscall*)(CGUnit_C*);
 	inline static auto HideNamePlateFn = reinterpret_cast<HideNamePlate_t>(0x00725840);
 
-	using UpdateReaction_t = int(__thiscall*)(CGUnit_C*, int updateAll);
+	using UpdateReaction_t = int(__thiscall*)(CGUnit_C*, int);
 	inline static auto UpdateReactionFn = reinterpret_cast<UpdateReaction_t>(0x0071F8F0);
 
-	using SetNamePlateFocus_t = void(__cdecl*)(C3Vector* pos);
+	using SetNamePlateFocus_t = void(__cdecl*)(C3Vector*);
 	inline static auto SetNamePlateFocusFn = reinterpret_cast<SetNamePlateFocus_t>(0x007271D0);
 
 	using GetName_t = const char*(__thiscall*)(CGUnit_C*, void*, int);
@@ -264,6 +270,13 @@ public:
 // CGPlayer_C
 class CGPlayer_C : public CGUnit_C {
 public:
+	struct CPendingSpellCast {
+		unk_t unk_00[8];
+		uint32_t spellId;
+		unk_t unk_24[73];
+	};
+	inline static auto* s_pendingSpellCast = reinterpret_cast<CPendingSpellCast*>(0x00D3F4E4);
+
 	using CanTrackObject_t = bool(__thiscall*)(CGPlayer_C*, CGObject_C*);
 	inline static auto CanTrackObjectFn = reinterpret_cast<CanTrackObject_t>(0x006DCA90);
 
@@ -293,6 +306,30 @@ private:
 	inline static const auto CanUseNowFn = reinterpret_cast<CanUseNow_t>(0x0070BA10);
 };
 
+// CGItem_C
+class CGItem_C {
+public:
+	using InitLinkContext_t = void(__thiscall*)(void* linkContext);
+	inline static const auto InitLinkContextFn = reinterpret_cast<InitLinkContext_t>(0x0050F590);
+	using GetItemIDByName_t = uint32_t(__cdecl*)(const char* name);
+	inline static const auto GetItemIDByNameFn = reinterpret_cast<GetItemIDByName_t>(0x00709DE0);
+	using GetInventoryArt_t = const char* (*)(uint32_t id);
+	inline static const auto GetInventoryArtFn = reinterpret_cast<GetInventoryArt_t>(0x0070A910);
+	using GetItemIdFromLink_t = uint32_t(__thiscall*)(void*, const char*);
+	inline static const auto GetItemIdFromLinkFn = reinterpret_cast<GetItemIdFromLink_t>(0x0050F630);
+	static uint32_t __fastcall GetItemIdFromLink(const char* link) {
+		uint32_t linkContext[54];
+		InitLinkContextFn(linkContext);
+		return GetItemIdFromLinkFn(linkContext, link);
+	}
+};
+
+// Spell_C
+class Spell_C {
+public:
+	using CastSpell_t = int(*)(CGUnit_C*, uint32_t, CGItem_C*, guid_t, CGPlayer_C::CPendingSpellCast*, bool);
+	inline static const auto CastSpellFn = reinterpret_cast<CastSpell_t>(0x0080CCE0);
+};
 
 // Frame Interface
 class FrameScript_Object {
@@ -512,8 +549,8 @@ public:
 	M2Scene* m_m2scene; // 0x04
 	C3Vector m_pos;     // 0x08
 	C33Matrix m_matrix; // 0x14 (fwd, right, up)
-	float m_farClip;    // 0x38
-	float m_nearClip;   // 0x3C
+	float m_nearClip;	// 0x38
+	float m_farClip;	// 0x3C
 	float m_fov;        // 0x40
 	float m_aspect;     // 0x44
 
@@ -1442,9 +1479,7 @@ class DBItemCache {
 public:
 	using GetItemInfoBlockById_t = uintptr_t(__thiscall*)(DBItemCache*, uint32_t, guid_t*, int, int, int);
 	inline static const auto GetItemInfoBlockByIdFn = reinterpret_cast<GetItemInfoBlockById_t>(0x0067CA30);
-
 	inline static const auto WDB_CACHE_ITEM = reinterpret_cast<DBItemCache*>(0x00C5D828);
-
 	uintptr_t GetItemInfoBlockById(uint32_t id, guid_t* guid, int a4, int a5, int a6) { return GetItemInfoBlockByIdFn(this, id, guid, a4, a5, a6); }
 };
 
@@ -1466,16 +1501,292 @@ inline uint32_t __stdcall hash(const char* str) { return (reinterpret_cast<uint3
 
 // ClientDB
 namespace ClientDB {
-using ClientDb_GetLocalizedRow = int(__thiscall*)(void* pThis, uint32_t index, void* rowBuffer);
-inline const auto GetLocalizedRow = reinterpret_cast<ClientDb_GetLocalizedRow>(0x004CFD20);
+struct DB {
+	void* m_vtbl;
+	bool m_isLoaded;
+	uint32_t m_numRows;
+	uint32_t m_maxIndex;
+	uint32_t m_minIndex;
+	int m_stringTable;
+};
+template <typename Rec>
+struct DBRec : DB {
+	void* m_vtbl2;
+	const Rec* m_firstRow;
+	const Rec** m_rows;
+};
+struct DbcEntry {
+	std::string_view name;
+	uintptr_t address;
+};
+inline constexpr DbcEntry db_src[] = {
+{"achievement", 0x00AD305C},
+{"achievement_Criteria", 0x00AD3080},
+{"achievement_Category", 0x00AD30A4},
+{"animationData", 0x00AD30C8},
+{"areaGroup", 0x00AD30EC},
+{"areaPOI", 0x00AD3110},
+{"areaTable", 0x00AD3134},
+{"areaTrigger", 0x00AD3158},
+{"attackAnimKits", 0x00AD317C},
+{"attackAnimTypes", 0x00AD31A0},
+{"auctionHouse", 0x00AD31C4},
+{"bankBagSlotPrices", 0x00AD31E8},
+{"bannedAddOns", 0x00AD320C},
+{"barberShopStyle", 0x00AD3230},
+{"battlemasterList", 0x00AD3254},
+{"cameraShakes", 0x00AD3278},
+{"cfg_Categories", 0x00AD329C},
+{"cfg_Configs", 0x00AD32C0},
+{"charBaseInfo", 0x00AD32E4},
+{"charHairGeosets", 0x00AD3308},
+{"charSections", 0x00AD332C},
+{"charStartOutfit", 0x00AD3350},
+{"charTitles", 0x00AD3374},
+{"characterFacialHairStyles", 0x00AD3398},
+{"chatChannels", 0x00AD33BC},
+{"chatProfanity", 0x00AD33E0},
+{"chrClasses", 0x00AD3404},
+{"chrRaces", 0x00AD3428},
+{"cinematicCamera", 0x00AD344C},
+{"cinematicSequences", 0x00AD3470},
+{"creatureDisplayInfoExtra", 0x00AD3494},
+{"creatureDisplayInfo", 0x00AD34B8},
+{"creatureFamily", 0x00AD34DC},
+{"creatureModelData", 0x00AD3500},
+{"creatureMovementInfo", 0x00AD3524},
+{"creatureSoundData", 0x00AD3548},
+{"creatureSpellData", 0x00AD356C},
+{"creatureType", 0x00AD3590},
+{"currencyTypes", 0x00AD35B4},
+{"currencyCategory", 0x00AD35D8},
+{"danceMoves", 0x00AD35FC},
+{"deathThudLookups", 0x00AD3620},
+{"destructibleModelData", 0x00AD368C},
+{"dungeonEncounter", 0x00AD36B0},
+{"dungeonMap", 0x00AD36D4},
+{"dungeonMapChunk", 0x00AD36F8},
+{"durabilityCosts", 0x00AD371C},
+{"durabilityQuality", 0x00AD3740},
+{"emotes", 0x00AD3764},
+{"emotesTextData", 0x00AD3788},
+{"emotesTextSound", 0x00AD37AC},
+{"emotesText", 0x00AD37D0},
+{"environmentalDamage", 0x00AD37F4},
+{"exhaustion", 0x00AD3818},
+{"factionGroup", 0x00AD383C},
+{"faction", 0x00AD3860},
+{"factionTemplate", 0x00AD3884},
+{"fileData", 0x00AD38A8},
+{"footprintTextures", 0x00AD38CC},
+{"footstepTerrainLookup", 0x00AD38F0},
+{"gameObjectArtKit", 0x00AD3914},
+{"gameObjectDisplayInfo", 0x00AD3938},
+{"gameTables", 0x00AD395C},
+{"gameTips", 0x00AD3980},
+{"gemProperties", 0x00AD39A4},
+{"glyphProperties", 0x00AD39C8},
+{"glyphSlot", 0x00AD39EC},
+{"gMSurveyAnswers", 0x00AD3A10},
+{"gMSurveyCurrentSurvey", 0x00AD3A34},
+{"gMSurveyQuestions", 0x00AD3A58},
+{"gMSurveySurveys", 0x00AD3A7C},
+{"gMTicketCategory", 0x00AD3AA0},
+{"groundEffectDoodad", 0x00AD3AC4},
+{"groundEffectTexture", 0x00AD3AE8},
+{"gtBarberShopCostBase", 0x00AD3B0C},
+{"gtCombatRatings", 0x00AD3B30},
+{"gtChanceToMeleeCrit", 0x00AD3B54},
+{"gtChanceToMeleeCritBase", 0x00AD3B78},
+{"gtChanceToSpellCrit", 0x00AD3B9C},
+{"gtChanceToSpellCritBase", 0x00AD3BC0},
+{"gtNPCManaCostScaler", 0x00AD3BE4},
+{"gtOCTClassCombatRatingScalar", 0x00AD3C08},
+{"gtOCTRegenHP", 0x00AD3C2C},
+{"gtOCTRegenMP", 0x00AD3C50},
+{"gtRegenHPPerSpt", 0x00AD3C74},
+{"gtRegenMPPerSpt", 0x00AD3C98},
+{"helmetGeosetVisData", 0x00AD3CBC},
+{"holidayDescriptions", 0x00AD3CE0},
+{"holidayNames", 0x00AD3D04},
+{"holidays", 0x00AD3D28},
+{"item", 0x00AD3D4C},
+{"itemBagFamily", 0x00AD3D70},
+{"itemClass", 0x00AD3D94},
+{"itemCondExtCosts", 0x00AD3DB8},
+{"itemDisplayInfo", 0x00AD3DDC},
+{"itemExtendedCost", 0x00AD3E00},
+{"itemGroupSounds", 0x00AD3E24},
+{"itemLimitCategory", 0x00AD3E48},
+{"itemPetFood", 0x00AD3E6C},
+{"itemPurchaseGroup", 0x00AD3E90},
+{"itemRandomProperties", 0x00AD3EB4},
+{"itemRandomSuffix", 0x00AD3ED8},
+{"itemSet", 0x00AD3EFC},
+{"itemSubClassMask", 0x00AD3F20},
+{"itemSubClass", 0x00AD3F44},
+{"itemVisualEffects", 0x00AD3F68},
+{"itemVisuals", 0x00AD3F8C},
+{"languageWords", 0x00AD3FB0},
+{"languages", 0x00AD3FD4},
+{"lfgDungeonExpansion", 0x00AD3FF8},
+{"lfgDungeonGroup", 0x00AD401C},
+{"lfgDungeons", 0x00AD4040},
+{"liquidType", 0x00AD4064},
+{"liquidMaterial", 0x00AD4088},
+{"loadingScreens", 0x00AD40AC},
+{"loadingScreenTaxiSplines", 0x00AD40D0},
+{"lock", 0x00AD40F4},
+{"lockType", 0x00AD4118},
+{"mailTemplate", 0x00AD413C},
+{"map", 0x00AD4160},
+{"mapDifficulty", 0x00AD4184},
+{"material", 0x00AD41A8},
+{"movie", 0x00AD41CC},
+{"movieFileData", 0x00AD41F0},
+{"movieVariation", 0x00AD4214},
+{"nameGen", 0x00AD4238},
+{"nPCSounds", 0x00AD425C},
+{"namesProfanity", 0x00AD4280},
+{"namesReserved", 0x00AD42A4},
+{"overrideSpellData", 0x00AD42C8},
+{"package", 0x00AD42EC},
+{"pageTextMaterial", 0x00AD4310},
+{"paperDollItemFrame", 0x00AD4334},
+{"particleColor", 0x00AD4358},
+{"petPersonality", 0x00AD437C},
+{"powerDisplay", 0x00AD43A0},
+{"pvpDifficulty", 0x00AD43C4},
+{"questFactionReward", 0x00AD43E8},
+{"questInfo", 0x00AD440C},
+{"questSort", 0x00AD4430},
+{"questXP", 0x00AD4454},
+{"resistances", 0x00AD4478},
+{"randPropPoints", 0x00AD449C},
+{"scalingStatDistribution", 0x00AD44C0},
+{"scalingStatValues", 0x00AD44E4},
+{"screenEffect", 0x00AD4508},
+{"serverMessages", 0x00AD452C},
+{"sheatheSoundLookups", 0x00AD4550},
+{"skillCostsData", 0x00AD4574},
+{"skillLineAbility", 0x00AD4598},
+{"skillLineCategory", 0x00AD45BC},
+{"skillLine", 0x00AD45E0},
+{"skillRaceClassInfo", 0x00AD4604},
+{"skillTiers", 0x00AD4628},
+{"soundAmbience", 0x00AD464C},
+{"soundEntries", 0x00AD4670},
+{"soundEmitters", 0x00AD4694},
+{"soundProviderPreferences", 0x00AD46B8},
+{"soundSamplePreferences", 0x00AD46DC},
+{"soundWaterType", 0x00AD4700},
+{"spamMessages", 0x00AD4724},
+{"spellCastTimes", 0x00AD4748},
+{"spellCategory", 0x00AD476C},
+{"spellChainEffects", 0x00AD4790},
+{"spellDescriptionVariables", 0x00AD47B4},
+{"spellDifficulty", 0x00AD47D8},
+{"spellDispelType", 0x00AD47FC},
+{"spellDuration", 0x00AD4820},
+{"spellEffectCameraShakes", 0x00AD4844},
+{"spellFocusObject", 0x00AD4868},
+{"spellIcon", 0x00AD488C},
+{"spellItemEnchantment", 0x00AD48B0},
+{"spellItemEnchantmentCondition", 0x00AD48D4},
+{"spellMechanic", 0x00AD48F8},
+{"spellMissile", 0x00AD491C},
+{"spellMissileMotion", 0x00AD4940},
+{"spellRadius", 0x00AD4964},
+{"spellRange", 0x00AD4988},
+{"spellRuneCost", 0x00AD49AC},
+{"spell", 0x00AD49D0},
+{"spellShapeshiftForm", 0x00AD49F4},
+{"spellVisualEffectName", 0x00AD4A18},
+{"spellVisualKit", 0x00AD4A3C},
+{"spellVisualKitAreaModel", 0x00AD4A60},
+{"spellVisualKitModelAttach", 0x00AD4A84},
+{"spellVisual", 0x00AD4AA8},
+{"stableSlotPrices", 0x00AD4ACC},
+{"stationery", 0x00AD4AF0},
+{"stringLookups", 0x00AD4B14},
+{"summonProperties", 0x00AD4B38},
+{"talent", 0x00AD4B5C},
+{"talentTab", 0x00AD4B80},
+{"taxiNodes", 0x00AD4BA4},
+{"taxiPathNode", 0x00AD4BC8},
+{"taxiPath", 0x00AD4BEC},
+{"teamContributionPoints", 0x00AD4C10},
+{"terrainType", 0x00AD4C34},
+{"terrainTypeSounds", 0x00AD4C58},
+{"totemCategory", 0x00AD4C7C},
+{"transportAnimation", 0x00AD4CA0},
+{"transportPhysics", 0x00AD4CC4},
+{"transportRotation", 0x00AD4CE8},
+{"uISoundLookups", 0x00AD4D0C},
+{"unitBloodLevels", 0x00AD4D30},
+{"unitBlood", 0x00AD4D54},
+{"vehicle", 0x00AD4D78},
+{"vehicleSeat", 0x00AD4D9C},
+{"vehicleUIIndicator", 0x00AD4DC0},
+{"vehicleUIIndSeat", 0x00AD4DE4},
+{"vocalUISounds", 0x00AD4E08},
+{"wMOAreaTable", 0x00AD4E2C},
+{"weaponImpactSounds", 0x00AD4E50},
+{"weaponSwingSounds2", 0x00AD4E74},
+{"weather", 0x00AD4E98},
+{"worldMapArea", 0x00AD4EBC},
+{"worldMapContinent", 0x00AD4EE0},
+{"worldMapOverlay", 0x00AD4F04},
+{"worldMapTransforms", 0x00AD4F28},
+{"worldSafeLocs", 0x00AD4F4C},
+{"worldStateUI", 0x00AD4F70},
+{"zoneIntroMusicTable", 0x00AD4F94},
+{"zoneMusic", 0x00AD4FB8},
+{"worldStateZoneSounds", 0x00AD4FDC},
+{"worldChunkSounds", 0x00AD5000},
+{"soundEntriesAdvanced", 0x00AD5024},
+{"objectEffect", 0x00AD5048},
+{"objectEffectGroup", 0x00AD506C},
+{"objectEffectModifier", 0x00AD5090},
+{"objectEffectPackage", 0x00AD50B4},
+{"objectEffectPackageElem", 0x00AD50D8},
+{"soundFilter", 0x00AD50FC},
+{"soundFilterElem", 0x00AD5120},
+};
 
-using ClientDb_GetRow = int(__thiscall*)(void* pThis, int index);
-inline const auto GetRow = reinterpret_cast<ClientDb_GetRow>(0x004BB1C0);
+struct DbcDatabase {
+	constexpr DBRec<void>* operator[](std::string_view lookup_name) const {
+		for (const auto& [name, address] : db_src) {
+			if (name == lookup_name) return reinterpret_cast<DBRec<void>*>(address);
+		}
+		return nullptr;
+	}
+};
+inline constexpr DbcDatabase g_db;
 
-inline uintptr_t GetDbcTable(uint32_t dbIndex) {
-	for (uintptr_t tableBase = 0x006337D0; *reinterpret_cast<uint8_t*>(tableBase) != 0xC3; tableBase += 0x11) { if (*reinterpret_cast<uint32_t*>(tableBase + 1) == dbIndex) return *reinterpret_cast<uintptr_t*>(tableBase + 0xB) + 0x18; }
-	return 0;
+template <typename Rec>
+const Rec* GetRowById(std::string_view dbName, uint32_t id) {
+	auto* db = reinterpret_cast<const DBRec<Rec>*>(g_db[dbName]);
+	if (!db || id < db->m_minIndex || id > db->m_maxIndex) return nullptr;
+	if (!db->m_rows) return nullptr;
+	return db->m_rows[id - db->m_minIndex];
 }
+
+template <typename Rec, typename Predicate>
+const Rec* FindRow(std::string_view dbName, Predicate pred) {
+	auto* db = reinterpret_cast<const DBRec<Rec>*>(g_db[dbName]);
+	if (!db || !db->m_rows) return nullptr;
+	uint32_t totalSlots = db->m_maxIndex - db->m_minIndex + 1;
+	for (uint32_t i = 0; i < totalSlots; ++i) {
+		const Rec* row = db->m_rows[i];
+		if (!row) continue;
+		if (pred(row)) return row;
+	}
+	return nullptr;
+}
+
+using ClientDb_GetLocalizedRow = int(__thiscall*)(DB* pThis, uint32_t index, void* rowBuffer);
+inline const auto GetLocalizedRow = reinterpret_cast<ClientDb_GetLocalizedRow>(0x004CFD20);
 }
 
 // GameUI
@@ -1498,9 +1809,6 @@ inline auto GetGuidByKeywordFn = reinterpret_cast<DummyCallback_t>(0x0060AFAA);
 
 using GetKeywordsByGuid_t = char** (*)(guid_t* guid, size_t* size);
 inline auto GetKeywordsByGuidFn = reinterpret_cast<GetKeywordsByGuid_t>(0x0060BB70);
-
-using GetItemIDByName_t = uint32_t(__cdecl*)(const char* name);
-inline auto GetItemIDByNameFn = reinterpret_cast<GetItemIDByName_t>(0x00709DE0);
 
 using HandleTerrainClick_t = void(__cdecl*)(TerrainClickEvent*);
 inline auto HandleTerrainClickFn = reinterpret_cast<HandleTerrainClick_t>(0x00527830);
