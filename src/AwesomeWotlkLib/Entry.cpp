@@ -1,4 +1,5 @@
 #include "BugFixes.h"
+#include "CombatLog.h"
 #include "D3D.h"
 #include "Camera.h"
 #include "CommandLine.h"
@@ -50,6 +51,7 @@ void OnAttach() {
 	D3D::initialize();
 	Camera::initialize();
 	BugFixes::initialize();
+	CombatLog::initialize();
 	CommandLine::initialize();
 	Inventory::initialize();
 	Item::initialize();
