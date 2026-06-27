@@ -78,7 +78,6 @@ if GetLocale() == "enUS" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Friendly Nameplate Hitbox Width"
     L.CVAR_LABEL_INTERACTION_MODE = "Interaction Mode"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Interaction Cone Angle (deg)"
-    L.CVAR_LABEL_STANCE_PATCH = "Stance/Form Swap Patch"
     L.CVAR_LABEL_SHOW_PLAYER = "Player's Character Model Rendering"
     L.CVAR_LABEL_MSDF_MODE = "Font Rendering Mode (Requires Restart)"
     L.CVAR_LABEL_OBJ_HIGHLIGHT = "Object Highlighting"
@@ -86,6 +85,8 @@ if GetLocale() == "enUS" then
 	L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Camera Indirect Alpha"
 	L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Camera Distance"
 	L.CVAR_LABEL_PORTRAIT = "Portrait Resolution"
+    L.CVAR_LABEL_CHAT_LOG = "Chat Log Session Keying"
+    L.CVAR_LABEL_COMBAT_LOG = "Combat Log Session Keying"
 
     L.DESC_INFO = "All nameplates include additional methods:\n- SetStackingEnabled(bool)\n- GetStackingEnabled()\n\nExample usage:\nif UnitExists('target') then\n C_NamePlate.GetNamePlateForUnit('target'):SetStackingEnabled(false)\nend\n\nNote: It is too early\nto call upon these methods at NAME_PLATE_CREATED,\nuse NAME_PLATE_UNIT_ADDED instead.\n"
     L.DESC_STACKING_MODE = "'Smart' mode allows nameplates to bypass the stacking push if there is sufficient space below, resulting in a tighter layout at the cost of more frequent rearrangements."
@@ -95,7 +96,6 @@ if GetLocale() == "enUS" then
 	L.DESC_PLACEMENT = "A vertical offset ratio that displaces nameplates from their default anchor point."
 	L.DESC_HITBOX_ANCHOR = "Sets the vertical origin point of the nameplate's clickable area.\nAdjust this to match how your UI addon anchors its nameplate frames (e.g. top-edge or bottom-edge anchoring)."
     L.DESC_ALPHA_BLEND = "Controls how fast nameplates animate toward new opacity targets (1 = Instant)."
-    L.DESC_STANCE_PATCH = "Allows you to change stance/form and cast an ability in a single click when using macros."
     L.DESC_OCCLUSION_ALPHA = "Controls the opacity of nameplates when they are blocked by obstacles or terrain. Positive values multiply the current non-target alpha, negative values enforce a strict maximum ceiling on the occluded alpha."
 	L.DESC_OCCLUSION_MODE = "Controls when nameplates are hidden or faded when blocked by obstacles or terrain."
 	L.DESC_CAMERA_INDIRECT_VISIBILITY = "When enabled, the camera can move freely through certain world objects rather than being blocked by them."
@@ -104,6 +104,7 @@ if GetLocale() == "enUS" then
 	L.DESC_MSDF = "Enables vector-based font rendering, dramatically improving glyph quality."
 	L.DESC_OBJ_HIGHLIGHT = "Forces glowing sparkles on resources (herbs/ore) and interactive objects like crates or bounty boards."
 	L.DESC_PORTRAIT = "Increases the rendering texture resolution for all portraits in the game."
+    L.DESC_SESSION_LOG = "Automatically appends a timestamp to the log file name."
 
     -- CVar Mode Labels
 	L.MODE_DISABLED = "Disabled"

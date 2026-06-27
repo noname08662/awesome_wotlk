@@ -78,7 +78,6 @@ if GetLocale() == "zhTW" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "友好姓名板點擊判定寬度"
     L.CVAR_LABEL_INTERACTION_MODE = "互動模式"
     L.CVAR_LABEL_INTERACTION_ANGLE = "互動錐形角度 (度)"
-    L.CVAR_LABEL_STANCE_PATCH = "姿態/形態切換補丁"
     L.CVAR_LABEL_SHOW_PLAYER = "自身角色模型渲染"
     L.CVAR_LABEL_MSDF_MODE = "字體渲染模式 (需要重啟遊戲)"
 	L.CVAR_LABEL_OBJ_HIGHLIGHT = "物件高亮顯示"
@@ -86,6 +85,8 @@ if GetLocale() == "zhTW" then
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "鏡頭間接透明度"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "鏡頭最大距離"
 	L.CVAR_LABEL_PORTRAIT = "頭像解析度"
+	L.CVAR_LABEL_CHAT_LOG = "聊天記錄會話時間戳"
+	L.CVAR_LABEL_COMBAT_LOG = "戰鬥記錄會話時間戳"
 
     L.DESC_INFO = "所有姓名板現在包含以下額外方法：\n- SetStackingEnabled(bool)\n- GetStackingEnabled()\n\n用法範例：\nif UnitExists('target') then\n C_NamePlate.GetNamePlateForUnit('target'):SetStackingEnabled(false)\nend\n\n注意：在 NAME_PLATE_CREATED 事件下\n調用這些方法過早，\n請改用 NAME_PLATE_UNIT_ADDED。\n"
 	L.DESC_STACKING_MODE = "“智能”模式允許姓名板在下方有足夠空間時跳過堆疊推擠，從而實現更緊湊的佈局，但會導致更頻繁的重新排列。"
@@ -95,7 +96,6 @@ if GetLocale() == "zhTW" then
 	L.DESC_PLACEMENT = "垂直偏移比例值，用於將姓名板從其預設錨點位置移動。"
 	L.DESC_HITBOX_ANCHOR = "設置姓名板可點擊區域的垂直原點。\n根據你的UI插件錨定姓名板框架的方式進行調整（例如頂部或底部錨定）。"
     L.DESC_ALPHA_BLEND = "控制姓名板切換到新透明度的動畫速度 (1 = 瞬間)。"
-    L.DESC_STANCE_PATCH = "允許在使用巨集時，透過單次點擊完成姿態/形態切換並施放技能。"
     L.DESC_OCCLUSION_ALPHA = "控制姓名板被障礙物或地形遮擋時的透明度。正值會與目前非目標透明度相乘，負值則對被遮擋的透明度強制套用嚴格的最高上限。"
 	L.DESC_OCCLUSION_MODE = "控制當姓名板被地形或牆壁遮擋時，何時隱藏或淡出。"
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "允許鏡頭穿過某些世界物體而非被阻擋。"
@@ -104,6 +104,7 @@ if GetLocale() == "zhTW" then
     L.DESC_MSDF = "開啟基於向量的字體渲染，大幅提升字型品質。"
 	L.DESC_OBJ_HIGHLIGHT = "強制在資源（草藥/礦石）和可互動的物件（如箱子或懸賞通緝令告示牌）上顯示閃爍光芒效果。"
 	L.DESC_PORTRAIT = "提高遊戲內所有頭像材質的著色解析度。"
+	L.DESC_SESSION_LOG = "自動在記錄檔案名稱後加入時間戳。"
 
 	-- CVar 模式選項
 	L.MODE_DISABLED = "已停用"

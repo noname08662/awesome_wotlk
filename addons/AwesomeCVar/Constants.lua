@@ -125,7 +125,6 @@ ACVar.CVARS = {
     },
     [L.CATEGORY_OTHER] = {
         { name = "portraitResolution", label = L.CVAR_LABEL_PORTRAIT, desc = L.DESC_PORTRAIT, type = "slider", min = 64, max = 2048, step = 64, default = 64 },
-        { name = "enableStancePatch", label = L.CVAR_LABEL_STANCE_PATCH, desc = L.DESC_STANCE_PATCH, type = "toggle", min = 0, max = 1 },
         { name = "showPlayer", label = L.CVAR_LABEL_SHOW_PLAYER, type = "toggle", min = 0, max = 1, default = 1 },
         { name = "MSDFMode", label = L.CVAR_LABEL_MSDF_MODE, desc = L.DESC_MSDF, type = "mode", default = 1, modes = {
             { value = 0, label = L.MODE_DISABLED },
@@ -137,5 +136,7 @@ ACVar.CVARS = {
             { value = 1, label = L.MODE_ENABLED },
             { value = 2, label = L.MODE_HIGHLIGHTS_TRACKED },
 		}},
+        { name = "chatLogSessionKey", label = L.CVAR_LABEL_CHAT_LOG, desc = L.DESC_SESSION_LOG, type = "toggle", min = 0, max = 1, default = 1 },
+        { name = "combatLogSessionKey", label = L.CVAR_LABEL_COMBAT_LOG, desc = L.DESC_SESSION_LOG, type = "toggle", min = 0, max = 1, default = 1 },
     }
 }

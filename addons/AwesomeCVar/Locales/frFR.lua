@@ -78,7 +78,6 @@ if GetLocale() == "frFR" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Largeur hitbox (Allié)"
     L.CVAR_LABEL_INTERACTION_MODE = "Mode d'interaction"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Angle d'interaction (deg)"
-    L.CVAR_LABEL_STANCE_PATCH = "Correctif Changement de forme/Posture"
     L.CVAR_LABEL_SHOW_PLAYER = "Affichage du modèle du joueur"
     L.CVAR_LABEL_MSDF_MODE = "Mode de rendu des polices (Requiert Redémarrage)"
 	L.CVAR_LABEL_OBJ_HIGHLIGHT = "Mise en valeur des objets"
@@ -86,6 +85,8 @@ if GetLocale() == "frFR" then
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Opacité indirecte de la caméra"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Distance de caméra max"
 	L.CVAR_LABEL_PORTRAIT = "Résolution du portrait"
+	L.CVAR_LABEL_CHAT_LOG = "Horodatage du journal de discussion"
+	L.CVAR_LABEL_COMBAT_LOG = "Horodatage du journal de combat"
 
     L.DESC_INFO = "Toutes les barres d'info incluent des méthodes additionnelles :\n- SetStackingEnabled(bool)\n- GetStackingEnabled()\n\nExemple d'utilisation :\nif UnitExists('target') then\n C_NamePlate.GetNamePlateForUnit('target'):SetStackingEnabled(false)\nend\n\nNote : Il est trop tôt pour appeler\nces méthodes lors de NAME_PLATE_CREATED,\nutilisez NAME_PLATE_UNIT_ADDED à la place.\n"
 	L.DESC_STACKING_MODE = "Le mode 'Intelligent' permet aux plaques de contourner l'empilement s'il y a suffisamment d'espace en dessous, offrant une disposition plus compacte au prix de réarrangements plus fréquents."
@@ -95,7 +96,6 @@ if GetLocale() == "frFR" then
 	L.DESC_PLACEMENT = "Un ratio de décalage vertical qui déplace les barres d'info depuis leur point d'ancrage par défaut."
 	L.DESC_HITBOX_ANCHOR = "Définit le point d'origine vertical de la zone cliquable de la barre.\nAjustez cette valeur selon la façon dont votre addon ancre ses cadres de barres (ex. : ancrage par le haut ou le bas)."
     L.DESC_ALPHA_BLEND = "Contrôle la vitesse à laquelle l'opacité des barres s'ajuste (1 = Instantané)."
-    L.DESC_STANCE_PATCH = "Permet de changer de posture/forme et de lancer un sort en un seul clic via les macros."
     L.DESC_OCCLUSION_ALPHA = "Contrôle l'opacité des barres d'info lorsqu'elles sont masquées par des obstacles ou le terrain. Les valeurs positives multiplient l'opacité actuelle hors-cible, les valeurs négatives imposent un plafond strict à l'opacité masquée."
 	L.DESC_OCCLUSION_MODE = "Contrôle quand les barres d'info sont masquées ou estompées lorsqu'elles sont bloquées par le terrain ou les murs."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "Permet à la caméra de traverser certains objets au lieu d'être bloquée."
@@ -104,6 +104,7 @@ if GetLocale() == "frFR" then
     L.DESC_MSDF = "Active le rendu vectoriel des polices, améliorant drastiquement la qualité."
 	L.DESC_OBJ_HIGHLIGHT = "Force l'apparition de scintillements brillants sur les ressources (herbes/minerai) et les objets interactifs comme les caisses ou les panneaux de primes."
 	L.DESC_PORTRAIT = "Augmente la résolution de la texture de rendu de tous les portraits en jeu."
+	L.DESC_SESSION_LOG = "Ajoute automatiquement un horodatage au nom du fichier journal."
 
 	-- Options Mode CVar
 	L.MODE_DISABLED = "Désactivé"

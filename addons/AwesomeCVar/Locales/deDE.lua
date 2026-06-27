@@ -78,7 +78,6 @@ if GetLocale() == "deDE" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Hitbox-Breite (Freundlich)"
     L.CVAR_LABEL_INTERACTION_MODE = "Interaktionsmodus"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Interaktionswinkel (Grad)"
-    L.CVAR_LABEL_STANCE_PATCH = "Haltungs-/Formwechsel-Patch"
     L.CVAR_LABEL_SHOW_PLAYER = "Eigener Charaktermodell rendern"
     L.CVAR_LABEL_MSDF_MODE = "Schrift-Rendering-Modus (Neustart erforderlich)"
 	L.CVAR_LABEL_OBJ_HIGHLIGHT = "Objekthervorhebung"
@@ -86,6 +85,8 @@ if GetLocale() == "deDE" then
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Indirekter Kamera-Alpha"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Max. Kameradistanz"
 	L.CVAR_LABEL_PORTRAIT = "Porträtauflösung"
+	L.CVAR_LABEL_CHAT_LOG = "Chatlog mit Zeitstempel"
+	L.CVAR_LABEL_COMBAT_LOG = "Kampflog mit Zeitstempel"
 
     L.DESC_INFO = "Alle Namensplaketten enthalten zusätzliche Methoden:\n- SetStackingEnabled(bool)\n- GetStackingEnabled()\n\nBeispiel:\nif UnitExists('target') then\n C_NamePlate.GetNamePlateForUnit('target'):SetStackingEnabled(false)\nend\n\nHinweis: Es ist zu früh,\ndiese Methoden bei NAME_PLATE_CREATED aufzurufen,\nnutze stattdessen NAME_PLATE_UNIT_ADDED.\n"
 	L.DESC_STACKING_MODE = "Der 'Smart'-Modus ermöglicht es Namensplaketten, das Stapeln zu umgehen, wenn darunter genügend Platz ist. Dies führt zu einem kompakteren Layout, erfordert jedoch häufigere Neuanordnungen."
@@ -95,7 +96,6 @@ if GetLocale() == "deDE" then
 	L.DESC_PLACEMENT = "Ein vertikaler Versatz-Verhältniswert, der Namensplaketten von ihrem Standard-Ankerpunkt verschiebt."
 	L.DESC_HITBOX_ANCHOR = "Legt den vertikalen Ursprungspunkt des anklickbaren Bereichs der Namensplakette fest.\nPasse diesen Wert an, wenn dein UI-Addon die Namensplatten-Rahmen anders verankert (z. B. am oberen oder unteren Rand)."
     L.DESC_ALPHA_BLEND = "Steuert, wie schnell Plaketten zu neuen Transparenzwerten animieren (1 = Sofort)."
-    L.DESC_STANCE_PATCH = "Ermöglicht den Wechsel der Haltung/Form und das Wirken einer Fähigkeit mit einem Klick in Makros."
     L.DESC_OCCLUSION_ALPHA = "Steuert die Transparenz von Namensplaketten, wenn sie durch Hindernisse oder Gelände blockiert sind. Positive Werte multiplizieren das aktuelle Nicht-Ziel-Alpha, negative Werte erzwingen eine strikte Obergrenze für das verdeckte Alpha."
 	L.DESC_OCCLUSION_MODE = "Steuert, wann Namensplaketten ausgeblendet oder verblasst werden, wenn sie durch Gelände oder Wände blockiert sind."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "Ermöglicht es der Kamera, durch bestimmte Objekte hindurchzugehen, anstatt blockiert zu werden."
@@ -104,6 +104,7 @@ if GetLocale() == "deDE" then
     L.DESC_MSDF = "Aktiviert vektorbasiertes Schrift-Rendering, was die Glyphenqualität drastisch verbessert."
 	L.DESC_OBJ_HIGHLIGHT = "Zwingt leuchtende Funken auf Ressourcen (Kräuter/Erz) und interaktive Objekte wie Kisten oder Steckbriefe."
 	L.DESC_PORTRAIT = "Erhöht die Auflösung der Rendering-Texturen für alle Porträts im Spiel."
+	L.DESC_SESSION_LOG = "Fügt dem Namen der Protokolldatei automatisch einen Zeitstempel hinzu."
 
     -- CVar Mode Optionen
 	L.MODE_DISABLED = "Deaktiviert"

@@ -78,7 +78,6 @@ if GetLocale() == "esMX" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Ancho de hitbox (Aliado)"
     L.CVAR_LABEL_INTERACTION_MODE = "Modo de interacción"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Ángulo de interacción (grados)"
-    L.CVAR_LABEL_STANCE_PATCH = "Parche de cambio de forma/actitud"
     L.CVAR_LABEL_SHOW_PLAYER = "Renderizado del modelo del jugador"
     L.CVAR_LABEL_MSDF_MODE = "Modo de renderizado de fuentes (Requiere Reinicio)"
 	L.CVAR_LABEL_OBJ_HIGHLIGHT = "Resaltado de Objetos"
@@ -86,6 +85,8 @@ if GetLocale() == "esMX" then
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Alfa indirecto de cámara"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Distancia de cámara"
 	L.CVAR_LABEL_PORTRAIT = "Resolución de retrato"
+	L.CVAR_LABEL_CHAT_LOG = "Marca de tiempo del registro de chat"
+	L.CVAR_LABEL_COMBAT_LOG = "Marca de tiempo del registro de combate"
 
     L.DESC_INFO = "Todas las placas de nombre incluyen métodos adicionales:\n- SetStackingEnabled(bool)\n- GetStackingEnabled()\n\nEjemplo de uso:\nif UnitExists('target') then\n C_NamePlate.GetNamePlateForUnit('target'):SetStackingEnabled(false)\nend\n\nNota: Es demasiado pronto\npara llamar a estos métodos en NAME_PLATE_CREATED,\nusa NAME_PLATE_UNIT_ADDED en su lugar.\n"
 	L.DESC_STACKING_MODE = "El modo 'Inteligente' permite que las placas omitan el empilado si hay suficiente espacio debajo, resultando en un diseño más compacto pero con reajustes más frecuentes."
@@ -95,7 +96,6 @@ if GetLocale() == "esMX" then
 	L.DESC_PLACEMENT = "Un valor de desplazamiento vertical que aleja las placas de su punto de anclaje predeterminado."
 	L.DESC_HITBOX_ANCHOR = "Establece el punto de origen vertical del área interactiva de la placa.\nAjústalo para que coincida con cómo tu addon ancla los marcos de las placas (p. ej., anclaje por borde superior o inferior)."
     L.DESC_ALPHA_BLEND = "Controla qué tan rápido las placas cambian de opacidad (1 = Instantáneo)."
-    L.DESC_STANCE_PATCH = "Permite cambiar de forma/actitud y lanzar una habilidad en un solo clic al usar macros."
     L.DESC_OCCLUSION_ALPHA = "Controla la opacidad de las placas de nombre cuando están bloqueadas por obstáculos o el terreno. Los valores positivos multiplican la opacidad actual de no-objetivo, los negativos imponen un límite máximo estricto sobre la opacidad ocluida."
 	L.DESC_OCCLUSION_MODE = "Controla cuándo se ocultan o se desvanecen las placas de nombre al ser bloqueadas por el terreno o las paredes."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "Permite que la cámara atraviese ciertos objetos del mundo en lugar de ser bloqueada."
@@ -104,6 +104,7 @@ if GetLocale() == "esMX" then
     L.DESC_MSDF = "Activa el renderizado de fuentes basado en vectores, mejorando drásticamente la calidad."
 	L.DESC_OBJ_HIGHLIGHT = "Fuerza destellos brillantes en recursos (hierbas/menas) y objetos interactivos como cajas o tableros de anuncios."
 	L.DESC_PORTRAIT = "Aumenta la resolución de la textura de renderizado para todos los retratos del juego."
+	L.DESC_SESSION_LOG = "Añade automáticamente una marca de tiempo al nombre del archivo de registro."
 
 	-- CVar Mode Options
 	L.MODE_DISABLED = "Desactivado"

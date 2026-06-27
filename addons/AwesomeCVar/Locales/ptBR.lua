@@ -78,7 +78,6 @@ if GetLocale() == "ptBR" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "Largura da Hitbox (Aliado)"
     L.CVAR_LABEL_INTERACTION_MODE = "Modo de Interação"
     L.CVAR_LABEL_INTERACTION_ANGLE = "Ângulo de Interação (graus)"
-    L.CVAR_LABEL_STANCE_PATCH = "Correção de Troca de Postura/Forma"
     L.CVAR_LABEL_SHOW_PLAYER = "Renderizar Modelo do Jogador"
     L.CVAR_LABEL_MSDF_MODE = "Modo de Renderização de Fonte (Requer Reinício)"
 	L.CVAR_LABEL_OBJ_HIGHLIGHT = "Destaque de Objetos"
@@ -86,6 +85,8 @@ if GetLocale() == "ptBR" then
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Alfa Indireto da Câmera"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Distância Máxima da Câmera"
 	L.CVAR_LABEL_PORTRAIT = "Resolução do Retrato"
+	L.CVAR_LABEL_CHAT_LOG = "Carimbo de tempo do log de bate-papo"
+	L.CVAR_LABEL_COMBAT_LOG = "Carimbo de tempo do log de combate"
 
     L.DESC_INFO = "Todas as placas de nome incluem métodos adicionais:\n- SetStackingEnabled(bool)\n- GetStackingEnabled()\n\nExemplo de uso:\nif UnitExists('target') then\n C_NamePlate.GetNamePlateForUnit('target'):SetStackingEnabled(false)\nend\n\nNota: É cedo demais para chamar\nesses métodos em NAME_PLATE_CREATED,\nuse NAME_PLATE_UNIT_ADDED em vez disso.\n"
 	L.DESC_STACKING_MODE = "O modo 'Inteligente' permite que as placas ignorem o empilhamento se houver espaço suficiente abaixo, resultando em um layout mais compacto, porém com rearranjos mais frequentes."
@@ -95,7 +96,6 @@ if GetLocale() == "ptBR" then
 	L.DESC_PLACEMENT = "Um valor de deslocamento vertical que afasta as placas do seu ponto de ancoragem padrão."
 	L.DESC_HITBOX_ANCHOR = "Define o ponto de origem vertical da área clicável da placa.\nAjuste de acordo com como seu addon ancora os quadros das placas (ex.: ancoragem pela borda superior ou inferior)."
     L.DESC_ALPHA_BLEND = "Controla a velocidade com que as placas animam para novos alvos de opacidade (1 = Instantâneo)."
-    L.DESC_STANCE_PATCH = "Permite trocar de postura/forma e usar uma habilidade com um único clique ao usar macros."
     L.DESC_OCCLUSION_ALPHA = "Controla a opacidade das placas de identificação quando bloqueadas por obstáculos ou terreno. Valores positivos multiplicam a opacidade atual do não-alvo, valores negativos impõem um limite máximo estrito à opacidade ocluída."
 	L.DESC_OCCLUSION_MODE = "Controla quando as placas de nome são ocultadas ou suavizadas quando bloqueadas pelo terreno ou paredes."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "Permite que a câmera atravesse certos objetos em vez de ser bloqueada."
@@ -104,6 +104,7 @@ if GetLocale() == "ptBR" then
     L.DESC_MSDF = "Ativa a renderização de fonte baseada em vetores, melhorando drasticamente a qualidade."
 	L.DESC_OBJ_HIGHLIGHT = "Força faíscas brilhantes em recursos (ervas/minérios) e objetos interativos como caixas ou murais de missões."
 	L.DESC_PORTRAIT = "Aumenta a resolução da textura de renderização para todos os retratos no jogo."
+	L.DESC_SESSION_LOG = "Adiciona automaticamente um carimbo de data/hora ao nome do arquivo de log."
 
 	-- Opções de Modo CVar
     L.MODE_DISABLED = "Desativado"

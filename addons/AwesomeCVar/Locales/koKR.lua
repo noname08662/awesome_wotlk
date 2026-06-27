@@ -78,7 +78,6 @@ if GetLocale() == "koKR" then
     L.CVAR_LABEL_HITBOX_WIDTH_FRIENDLY = "아군 이름표 히트박스 너비"
     L.CVAR_LABEL_INTERACTION_MODE = "상호작용 모드"
     L.CVAR_LABEL_INTERACTION_ANGLE = "상호작용 원뿔 각도(도)"
-    L.CVAR_LABEL_STANCE_PATCH = "태세/형태 변환 패치"
     L.CVAR_LABEL_SHOW_PLAYER = "내 캐릭터 모델 렌더링"
     L.CVAR_LABEL_MSDF_MODE = "글꼴 렌더링 모드 (재시작 필요)"
 	L.CVAR_LABEL_OBJ_HIGHLIGHT = "오브젝트 강조"
@@ -86,6 +85,8 @@ if GetLocale() == "koKR" then
     L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "카메라 간접 투명도"
     L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "카메라 최대 거리"
 	L.CVAR_LABEL_PORTRAIT = "초상화 해상도"
+	L.CVAR_LABEL_CHAT_LOG = "대화 기록 시간 표시"
+	L.CVAR_LABEL_COMBAT_LOG = "전투 기록 시간 표시"
 
     L.DESC_INFO = "모든 이름표에 다음 추가 메서드가 포함됩니다:\n- SetStackingEnabled(bool)\n- GetStackingEnabled()\n\n사용 예시:\nif UnitExists('target') then\n C_NamePlate.GetNamePlateForUnit('target'):SetStackingEnabled(false)\nend\n\n참고: NAME_PLATE_CREATED 시점은\n메서드 호출에 너무 이릅니다.\n대신 NAME_PLATE_UNIT_ADDED를 사용하세요.\n"
 	L.DESC_STACKING_MODE = "'스마트' 모드는 아래에 충분한 공간이 있는 경우 이름표가 쌓기 동작을 건너뛰도록 허용합니다. 결과적으로 레이아웃은 더 조밀해지지만 재배치가 더 자주 발생합니다."
@@ -95,7 +96,6 @@ if GetLocale() == "koKR" then
 	L.DESC_PLACEMENT = "이름표를 기본 앵커 지점에서 수직으로 이동시키는 비율 오프셋입니다."
 	L.DESC_HITBOX_ANCHOR = "이름표 클릭 영역의 수직 기준점을 설정합니다.\nUI 애드온이 이름표 프레임을 상단 또는 하단 기준으로 앵커할 경우 이 값을 맞게 조정하세요."
     L.DESC_ALPHA_BLEND = "이름표가 새로운 투명도에 도달하는 속도를 조절합니다 (1 = 즉시)."
-    L.DESC_STANCE_PATCH = "매크로 사용 시 단 한 번의 클릭으로 태세/형태 변환과 기술 시전을 동시에 가능하게 합니다."
     L.DESC_OCCLUSION_ALPHA = "장애물이나 지형에 의해 가려진 이름표의 불투명도를 조절합니다. 양수 값은 비대상 대상의 현재 불투명도에 곱해지며, 음수 값은 가려진 이름표의 불투명도에 절대적인 최대 상한선으로 적용됩니다."
 	L.DESC_OCCLUSION_MODE = "지형이나 벽에 가려졌을 때 이름표를 숨기거나 흐리게 처리할 타이밍을 제어합니다."
     L.DESC_CAMERA_INDIRECT_VISIBILITY = "카메라가 지형지물에 막히지 않고 통과할 수 있게 합니다."
@@ -104,6 +104,7 @@ if GetLocale() == "koKR" then
     L.DESC_MSDF = "벡터 기반 글꼴 렌더링을 활성화하여 글자 품질을 획기적으로 향상시킵니다."
 	L.DESC_OBJ_HIGHLIGHT = "자원(약초/광석) 및 상자나 현상 수배 게시판 같은 상호작용 가능한 오브젝트에 강제로 반짝임 효과를 적용합니다."
 	L.DESC_PORTRAIT = "게임 내 모든 초상화 텍스처의 렌더링 해상도를 높입니다."
+	L.DESC_SESSION_LOG = "로그 파일 이름에 자동으로 타임스탬프를 추가합니다."
 
 	-- CVar 모드 옵션
 	L.MODE_DISABLED = "비활성화됨"
