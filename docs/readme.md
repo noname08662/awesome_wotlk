@@ -119,6 +119,8 @@ ___
   - `MSDFMode`
   - `objectHighlightMode`
   - `portraitResolution`
+  - `chatLogSessionKey`
+  - `combatLogSessionKey`
 
 ### New Interaction Keybind
 A new keybind for smart interaction with the game world:

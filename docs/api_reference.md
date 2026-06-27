@@ -544,6 +544,12 @@ MSDF-based font rendering utilizes vector distance data instead of rasterized te
 
 Increases the rendering texture resolution for all portraits across the entire game client. Accepts values between **64** and **2048** (automatically ceiling-aligned to the nearest power of two).
 
+## chatLogSessionKey/combatLogSessionKey `CVar`
+**Arguments:** `enabled` (number)  
+**Default:** 1
+
+When enabled, each game launch generates its own isolated log file instead of appending to a single, ever-growing file. This creates clean logging session boundaries.
+
 ## cursor `macro`
 
 Backported `cursor` macro conditional for quick-casting AoE spells at cursor position.
