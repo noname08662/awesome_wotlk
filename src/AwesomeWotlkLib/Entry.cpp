@@ -1,5 +1,4 @@
 #include "BugFixes.h"
-#include "CombatLog.h"
 #include "D3D.h"
 #include "Camera.h"
 #include "CommandLine.h"
@@ -13,6 +12,7 @@
 #include "Spell.h"
 #include "UnitAPI.h"
 #include "VoiceChat.h"
+#include "VFX.h"
 #include <windows.h>
 #include <Detours/detours.h>
 
@@ -51,7 +51,6 @@ void OnAttach() {
 	D3D::initialize();
 	Camera::initialize();
 	BugFixes::initialize();
-	CombatLog::initialize();
 	CommandLine::initialize();
 	Inventory::initialize();
 	Item::initialize();
@@ -60,6 +59,7 @@ void OnAttach() {
 	Misc::initialize();
 	UnitAPI::initialize();
 	Spell::initialize();
+	VFX::initialize();
 	VoiceChat::initialize();
 
 	DetourTransactionCommit();
@@ -74,6 +74,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved) {
 		//Toolkit::ToolkitManager::Instance().Start();
 		OnAttach();
 	}
-	//else if (reason == DLL_PROCESS_DETACH) { if (lpReserved == nullptr) { Toolkit::ToolkitManager::Instance().Stop(); } }
+	//else if (reason == DLL_PROCESS_DETACH) { if (lpReserved == nullptr) { Toolkit::ToolkitManager::Instance().EmergencyStop(); } }
 	return TRUE;
 }

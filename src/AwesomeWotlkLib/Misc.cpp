@@ -17,7 +17,9 @@ bool g_cursorKeywordActive = false;
 bool g_playerLocationKeywordActive = false;
 
 enum EObjHLMode : uint32_t {
-	HL_DISABLED = 0, HL_ALWAYS = 1, HL_TRACKED = 2,
+	HL_DISABLED = 0,
+	HL_ALWAYS = 1,
+	HL_TRACKED = 2,
 };
 
 int g_iAngle = 0;
@@ -29,6 +31,25 @@ CVar* s_cvar_interactionMode;
 CVar* s_cvar_interactionAngle;
 CVar* s_cvar_objectHighlightMode;
 CVar* s_cvar_portraitResolution;
+CVar* s_cvar_chatLogSessionKey;
+CVar* s_cvar_combatLogSessionKey;
+
+int g_chatLogSessionKey = 1;
+int g_combatLogSessionKey = 1;
+
+char g_customChatLogPath[MAX_PATH];
+char g_customCombatLogPath[MAX_PATH];
+
+const char* sessionStamp() {
+	static const std::string stamp = [] {
+		char s[40] = {0};
+		SYSTEMTIME t;
+		GetLocalTime(&t);
+		std::sprintf(s, "%04d-%02d-%02d-%02d.%02d.%02d ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+		return std::string(s);
+	}();
+	return stamp.c_str();
+}
 
 const std::vector<uint8_t> validTypes = {GAMEOBJECT_TYPE_DOOR, GAMEOBJECT_TYPE_BUTTON, GAMEOBJECT_TYPE_QUESTGIVER, GAMEOBJECT_TYPE_CHEST, GAMEOBJECT_TYPE_BINDER, GAMEOBJECT_TYPE_CHAIR, GAMEOBJECT_TYPE_SPELL_FOCUS, GAMEOBJECT_TYPE_GOOBER, GAMEOBJECT_TYPE_FISHINGNODE, GAMEOBJECT_TYPE_MAILBOX, GAMEOBJECT_TYPE_MEETINGSTONE, GAMEOBJECT_TYPE_GUILD_BANK};
 
@@ -255,6 +276,32 @@ int CVarHandler_objectHighlightMode(CVar* cvar, const char*, const char* value, 
 	return result;
 }
 
+int CVarHandler_chatLogSessionKey(CVar* cvar, const char*, const char* value, void*) {
+	const int result = cvar->Sync(value, &g_chatLogSessionKey, 0, 1, "%d");
+	DWORD oldProtect;
+	VirtualProtect(reinterpret_cast<void*>(0x00AC7A40), 4, PAGE_EXECUTE_READWRITE, &oldProtect);
+	if (g_chatLogSessionKey) {
+		std::sprintf(g_customChatLogPath, "Logs\\%sWoWChatLog.txt", sessionStamp());
+		*reinterpret_cast<const char**>(0x00AC7A40) = g_customChatLogPath;
+	}
+	else { *reinterpret_cast<const char**>(0x00AC7A40) = reinterpret_cast<const char*>(0x009FA4E4); }
+	VirtualProtect(reinterpret_cast<void*>(0x00AC7A40), 4, oldProtect, &oldProtect);
+	return result;
+}
+
+int CVarHandler_combatLogSessionKey(CVar* cvar, const char*, const char* value, void*) {
+	const int result = cvar->Sync(value, &g_combatLogSessionKey, 0, 1, "%d");
+	DWORD oldProtect;
+	VirtualProtect(reinterpret_cast<void*>(0x00AC7A44), 4, PAGE_EXECUTE_READWRITE, &oldProtect);
+	if (g_combatLogSessionKey) {
+		std::sprintf(g_customCombatLogPath, "Logs\\%sWoWCombatLog.txt", sessionStamp());
+		*reinterpret_cast<const char**>(0x00AC7A44) = g_customCombatLogPath;
+	}
+	else { *reinterpret_cast<const char**>(0x00AC7A44) = reinterpret_cast<const char*>(0x009FA4CC); }
+	VirtualProtect(reinterpret_cast<void*>(0x00AC7A44), 4, oldProtect, &oldProtect);
+	return result;
+}
+
 bool TerrainClick(float x, float y, float z) {
 	TerrainClickEvent tc = {.m_guid = 0, .m_pos = {.X = x, .Y = y, .Z = z}, .m_button = 1};
 	CGGameUI::HandleTerrainClickFn(&tc);
@@ -323,7 +370,7 @@ void __declspec(naked) SpellCastResetHk() {
 		call ResetKeywordFlags;
 		call CGGameUI::CursorReleaseSpellTargetingFn;
 		jmp SpellCastReset_jmpback;
-		}
+	}
 }
 
 void __declspec(naked) PortraitInitialize_site1Hk() {
@@ -332,7 +379,7 @@ void __declspec(naked) PortraitInitialize_site1Hk() {
 		push g_portraitRes;
 		push esi;
 		jmp PortraitInitialize_site2_jmpback;
-		}
+	}
 }
 
 void __declspec(naked) PortraitSet_siteHk() {
@@ -342,12 +389,23 @@ void __declspec(naked) PortraitSet_siteHk() {
 		push g_portraitRes;
 		push g_portraitRes;
 		jmp PortraitSet_site_jmpback;
-		}
+	}
 }
 
 void OnEnterWorld() {
 	Lua::RegisterSlashCommand("INTERACTCMD", "/interact", InteractFunction_C);
 	Lua::RegisterLuaBinding("AWESOME_KEYBIND", "INTERACTIONKEYBIND", "Interaction Button", "AWESOME_WOTLK_KEYBINDS", "Awesome Wotlk Keybinds", "QueueInteract()");
+
+	if (lua_State* L = Lua::GetLuaState()) {
+		char buf[256];
+		sprintf(buf, "Chat being logged to %s", *reinterpret_cast<const char**>(0x00AC7A40));
+		Lua::lua_pushstring(L, buf);
+		Lua::lua_setglobal(L, "CHATLOGENABLED");
+
+		sprintf(buf, "Combat being logged to %s", *reinterpret_cast<const char**>(0x00AC7A44));
+		Lua::lua_pushstring(L, buf);
+		Lua::lua_setglobal(L, "COMBATLOGENABLED");
+	}
 }
 }
 
@@ -357,6 +415,8 @@ void Misc::initialize() {
 	Hooks::FrameXML::registerCVar(&s_cvar_interactionMode, "interactionMode", nullptr, "1", CVarHandler_interactionMode);
 	Hooks::FrameXML::registerCVar(&s_cvar_objectHighlightMode, "objectHighlightMode", nullptr, "0", CVarHandler_objectHighlightMode);
 	Hooks::FrameXML::registerCVar(&s_cvar_portraitResolution, "portraitResolution", nullptr, "64", CVarHandler_portraitResolution);
+	Hooks::FrameXML::registerCVar(&s_cvar_chatLogSessionKey, "chatLogSessionKey", nullptr, "1", CVarHandler_chatLogSessionKey);
+	Hooks::FrameXML::registerCVar(&s_cvar_combatLogSessionKey, "combatLogSessionKey", nullptr, "1", CVarHandler_combatLogSessionKey);
 
 	std::uint8_t mov_eax[5] = {0xA1, 0x00, 0x00, 0x00, 0x00};
 	uintptr_t varAddress = reinterpret_cast<uintptr_t>(&g_portraitRes);

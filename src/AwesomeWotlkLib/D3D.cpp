@@ -29,7 +29,7 @@ namespace {
 void LogShaderError(ID3DBlob* pError, uint32_t type) {
 	if (pError) {
 #ifdef _DEBUG
-		//Toolkit::Log(Toolkit::LogLevel::Error, "%s Shader Error: %s\n", type == 1 ? "Vertex" : "Pixel", pError->GetBufferPointer());
+		//Toolkit::Log(Toolkit::LogLevel::Error, "{} Shader Error: {}\n", type == 1 ? "Vertex" : "Pixel", static_cast<const char*>(pError->GetBufferPointer()));
 #endif
 		pError->Release();
 	}

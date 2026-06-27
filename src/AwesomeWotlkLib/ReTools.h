@@ -16,11 +16,12 @@ public:
 	void Stop() {
 	}
 
+	ToolkitManager(const ToolkitManager&) = delete;
+	ToolkitManager& operator=(const ToolkitManager&) = delete;
+
 private:
 	ToolkitManager() = default;
 	~ToolkitManager() = default;
-	ToolkitManager(const ToolkitManager&) = delete;
-	ToolkitManager& operator=(const ToolkitManager&) = delete;
 };
 }
 #endif

@@ -204,7 +204,7 @@ struct alignas(64) Entry {
 	bool isAtY(float y) const { return std::abs(stackOffsetY - y) < EPS; }
 	bool isAt(float x, float y) const { return isAtX(x) && isAtY(y); }
 	bool isResting() const { return std::abs(stackOffsetX) < EPS && std::abs(stackOffsetY) < EPS; }
-
+	
 	void updVis(const float spdY, const float spdX, const float inertia, const float delta, const float maxY, const float ceilY, const float ceilX, bool allEdges) {
 		float maxPull = ptr->m_width * g_maxPull;
 		float maxRaise = ptr->m_height * maxY;

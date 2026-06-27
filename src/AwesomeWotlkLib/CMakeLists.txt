@@ -12,7 +12,6 @@ add_library(
 		"Hooks.h" "Hooks.cpp"
 		"Misc.h" "Misc.cpp"
 		"BugFixes.h" "BugFixes.cpp"
-		"CombatLog.h" "CombatLog.cpp"
 		"MSDF.h" "MSDF.cpp"
 		"MSDFValidator.h" "MSDFUtils.h" "MSDFShaders.h"
 		"MSDFCache.h" "MSDFCache.cpp"
