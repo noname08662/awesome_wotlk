@@ -25,11 +25,17 @@ enum EObjHLMode : uint32_t {
 int g_iAngle = 0;
 int g_iMode = 0;
 int g_portraitRes = 64;
+constexpr uintptr_t ObjectHighlightScaleInstruction = 0x0070D113;
+constexpr uintptr_t ObjectHighlightScaleOperand = 0x0070D115;
+constexpr float ObjectHighlightBaseEffectScale = 1.15f;
+float g_objectHighlightScale = 1.0f;
+float g_objectHighlightEffectScale = ObjectHighlightBaseEffectScale;
 EObjHLMode g_highlightMode = HL_DISABLED;
 
 CVar* s_cvar_interactionMode;
 CVar* s_cvar_interactionAngle;
 CVar* s_cvar_objectHighlightMode;
+CVar* s_cvar_objectHighlightScale;
 CVar* s_cvar_portraitResolution;
 CVar* s_cvar_chatLogSessionKey;
 CVar* s_cvar_combatLogSessionKey;
@@ -219,19 +225,37 @@ int InteractFunction_C(lua_State* L) {
 }
 
 char __fastcall CGGameObject_C__CheckForPassiveHighlightHk(CGGameObject_C* pThis) {
-	const char result = CGGameObject_C::CheckForPassiveHighlightFn(pThis);
 	uint8_t goType = static_cast<uint8_t>((pThis->GetValue<uint32_t>(GAMEOBJECT_BYTES_1) >> 8) & 0xFF);
-	if (!pThis->CanUse() || (goType != GAMEOBJECT_TYPE_CHEST && goType != GAMEOBJECT_TYPE_GOOBER && goType != GAMEOBJECT_TYPE_QUESTGIVER)) { return result; }
+	bool forceHighlight = pThis->CanUse() &&
+		(goType == GAMEOBJECT_TYPE_CHEST || goType == GAMEOBJECT_TYPE_GOOBER || goType == GAMEOBJECT_TYPE_QUESTGIVER);
+
+	if (!forceHighlight) return CGGameObject_C::CheckForPassiveHighlightFn(pThis);
+
 	if (g_highlightMode == HL_TRACKED) {
-		if (goType == GAMEOBJECT_TYPE_QUESTGIVER && pThis->m_questMark == nullptr) return result;
+		if (goType == GAMEOBJECT_TYPE_QUESTGIVER && pThis->m_questMark == nullptr) return CGGameObject_C::CheckForPassiveHighlightFn(pThis);
 		if (goType == GAMEOBJECT_TYPE_CHEST) {
 			if (const LockRec* lockRec = pThis->GetLockRec()) {
-				if (lockRec->m_type[0] == 2) return result; // gathering node
+				if (lockRec->m_type[0] == 2) return CGGameObject_C::CheckForPassiveHighlightFn(pThis); // gathering node
 			}
 		}
 	}
+
+	// WoW 3.3.5a's passive-highlight path checks bit 0x08 in this cached
+	// client-side state before displaying the sparkle. Servers with object
+	// sparkles disabled leave the bit clear, so spoof it only while running
+	// the highlight code and restore the server-provided value afterwards.
+	auto* highlightState = *reinterpret_cast<uint8_t**>(reinterpret_cast<uintptr_t>(pThis) + 0xD0);
+	if (!highlightState) return CGGameObject_C::CheckForPassiveHighlightFn(pThis);
+
+	const uint8_t originalDynamicFlags = highlightState[0x20];
+	highlightState[0x20] = originalDynamicFlags | 0x08u;
+
+	CGGameObject_C::CheckForPassiveHighlightFn(pThis);
 	pThis->m_highlightMask |= 0x400000u;
-	return CGGameObject_C::ShowLootEffectFn(pThis);
+	const char result = static_cast<char>(CGGameObject_C::ShowLootEffectFn(pThis));
+
+	highlightState[0x20] = originalDynamicFlags;
+	return result;
 }
 
 int lua_openmisclib(lua_State* L) {
@@ -273,6 +297,12 @@ int CVarHandler_objectHighlightMode(CVar* cvar, const char*, const char* value, 
 			return true;
 		});
 	}
+	return result;
+}
+
+int CVarHandler_objectHighlightScale(CVar* cvar, const char*, const char* value, void*) {
+	const int result = cvar->Sync(value, &g_objectHighlightScale, 0.5f, 3.0f, "%.1f");
+	g_objectHighlightEffectScale = ObjectHighlightBaseEffectScale * g_objectHighlightScale;
 	return result;
 }
 
@@ -414,9 +444,19 @@ void Misc::initialize() {
 	Hooks::FrameXML::registerCVar(&s_cvar_interactionAngle, "interactionAngle", nullptr, "60", CVarHandler_interactionAngle);
 	Hooks::FrameXML::registerCVar(&s_cvar_interactionMode, "interactionMode", nullptr, "1", CVarHandler_interactionMode);
 	Hooks::FrameXML::registerCVar(&s_cvar_objectHighlightMode, "objectHighlightMode", nullptr, "0", CVarHandler_objectHighlightMode);
+	Hooks::FrameXML::registerCVar(&s_cvar_objectHighlightScale, "objectHighlightScale", nullptr, "1.0", CVarHandler_objectHighlightScale);
 	Hooks::FrameXML::registerCVar(&s_cvar_portraitResolution, "portraitResolution", nullptr, "64", CVarHandler_portraitResolution);
 	Hooks::FrameXML::registerCVar(&s_cvar_chatLogSessionKey, "chatLogSessionKey", nullptr, "1", CVarHandler_chatLogSessionKey);
 	Hooks::FrameXML::registerCVar(&s_cvar_combatLogSessionKey, "combatLogSessionKey", nullptr, "1", CVarHandler_combatLogSessionKey);
+
+	// ShowLootEffect normally multiplies its computed sparkle size by the stock
+	// 1.15f constant at 0x00A33564. Redirect only that one FMUL operand to our
+	// live CVar-backed value so no unrelated uses of the stock constant change.
+	const std::uint8_t expectedObjectHighlightScaleInstruction[6] = {0xD8, 0x0D, 0x64, 0x35, 0xA3, 0x00};
+	if (std::memcmp(reinterpret_cast<const void*>(ObjectHighlightScaleInstruction), expectedObjectHighlightScaleInstruction, sizeof(expectedObjectHighlightScaleInstruction)) == 0) {
+		const uintptr_t highlightScaleAddress = reinterpret_cast<uintptr_t>(&g_objectHighlightEffectScale);
+		Hooks::PatchBytes(reinterpret_cast<void*>(ObjectHighlightScaleOperand), &highlightScaleAddress, sizeof(highlightScaleAddress));
+	}
 
 	std::uint8_t mov_eax[5] = {0xA1, 0x00, 0x00, 0x00, 0x00};
 	uintptr_t varAddress = reinterpret_cast<uintptr_t>(&g_portraitRes);

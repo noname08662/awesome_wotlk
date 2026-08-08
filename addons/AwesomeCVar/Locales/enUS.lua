@@ -81,6 +81,7 @@ if GetLocale() == "enUS" then
     L.CVAR_LABEL_SHOW_PLAYER = "Player's Character Model Rendering"
     L.CVAR_LABEL_MSDF_MODE = "Font Rendering Mode (Requires Restart)"
     L.CVAR_LABEL_OBJ_HIGHLIGHT = "Object Highlighting"
+    L.CVAR_LABEL_OBJ_HIGHLIGHT_SCALE = "Object Highlight Scale"
     L.CVAR_LABEL_CAMERA_INDIRECT_VISIBILITY = "Camera Indirect Visibility"
 	L.CVAR_LABEL_CAMERA_INDIRECT_ALPHA = "Camera Indirect Alpha"
 	L.CVAR_LABEL_CAMERA_DISTANCE_MAX = "Camera Distance"
@@ -103,6 +104,7 @@ if GetLocale() == "enUS" then
     L.DESC_CAMERA_DISTANCE_MAX = "Sets the maximum distance the camera can zoom out from the player."
 	L.DESC_MSDF = "Enables vector-based font rendering, dramatically improving glyph quality."
 	L.DESC_OBJ_HIGHLIGHT = "Forces glowing sparkles on resources (herbs/ore) and interactive objects like crates or bounty boards."
+	L.DESC_OBJ_HIGHLIGHT_SCALE = "Scales the size of object sparkle effects. 1.0 is the original Wrath size."
 	L.DESC_PORTRAIT = "Increases the rendering texture resolution for all portraits in the game."
     L.DESC_SESSION_LOG = "Automatically appends a timestamp to the log file name."
 

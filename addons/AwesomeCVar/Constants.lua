@@ -136,6 +136,7 @@ ACVar.CVARS = {
             { value = 1, label = L.MODE_ENABLED },
             { value = 2, label = L.MODE_HIGHLIGHTS_TRACKED },
 		}},
+        { name = "objectHighlightScale", label = L.CVAR_LABEL_OBJ_HIGHLIGHT_SCALE or "Object Highlight Scale", desc = L.DESC_OBJ_HIGHLIGHT_SCALE or "Scales object sparkle effects. 1.0 is the original Wrath size.", type = "slider", min = 0.5, max = 3.0, step = 0.1, default = 1.0 },
         { name = "chatLogSessionKey", label = L.CVAR_LABEL_CHAT_LOG, desc = L.DESC_SESSION_LOG, type = "toggle", min = 0, max = 1, default = 1 },
         { name = "combatLogSessionKey", label = L.CVAR_LABEL_COMBAT_LOG, desc = L.DESC_SESSION_LOG, type = "toggle", min = 0, max = 1, default = 1 },
     }

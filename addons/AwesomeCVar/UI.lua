@@ -462,6 +462,14 @@ function ACVar:CreateMainFrame()
                 slider:SetScript("OnMouseUp", function(self)
                     if self.pendingValue then
                         ACVar:PrintCVarChange(self.cvarDef.name, self.pendingValue)
+                        if self.cvarDef.name == "objectHighlightScale" then
+                            local highlightMode = ACVar:GetCVarValue("objectHighlightMode")
+                            if highlightMode and highlightMode ~= 0 then
+                                ACVar:SetCVarValue("objectHighlightMode", 0)
+                                ACVar:SetCVarValue("objectHighlightMode", highlightMode)
+                            end
+                        end
+                        self.pendingValue = nil
                     end
                 end)
 
