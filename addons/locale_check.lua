@@ -1,10 +1,3 @@
--- Offline check of AwesomeCVar's locales with stock Lua 5.1 (no game needed).
--- Usage: lua locale_check.lua [addonDir]   (default: AwesomeCVar next to this script)
--- For every locale: keys missing from or unknown to enUS, %s/%d specifier mismatches, then a full load in
--- TOC order (all locales, then Constants.lua) with that locale active, checking that every tab name, label,
--- description, performance note, reason and mode label is a string and that loading writes no CVar.
--- Any of these fails the run (exit 1). Run by the pre-commit hook and the Luacheck workflow; the release
--- copies only the addon folders, so this file never ships.
 local dir = arg[1] or ((arg[0]:match("^(.*)[/\\]") or ".") .. "/AwesomeCVar")
 local LOCALES = { "enUS", "deDE", "esMX", "frFR", "koKR", "ptBR", "ruRU", "zhCN", "zhTW" }
 

@@ -613,7 +613,7 @@ Forces the loot sparkle on interactive world objects (containers, gathering node
 
 - **0** = Disabled
 - **1** = Everything
-- **2** = Tracked — gathering nodes only while tracked, quest objects only while they show a quest marker
+- **2** = Tracked — containers and other usable objects; gathering nodes only while they are tracked on the minimap; quest-giver objects (bounty boards, wanted posters) only while they show a quest marker. Low-level quests show their marker only while the minimap's *Low Level Quests* tracking is on
 
 ## portraitResolution `CVar`
 **Arguments:** `resolution` (number)  
