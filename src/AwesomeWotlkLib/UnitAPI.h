@@ -1,4 +1,7 @@
 #pragma once
-namespace UnitAPI {
-void initialize();
-}
+
+#include <hookkit/transaction.h>
+
+namespace unit_api {
+void initialize(hookkit::HookTransaction& tx);
+}  // namespace unit_api

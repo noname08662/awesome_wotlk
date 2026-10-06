@@ -1,8 +1,8 @@
-[C_NamePlates](#c_nameplates) - [C_VoiceChat](#c_voicechat) - [Unit](#unit) - [Inventory](#inventory) - [Spell](#spell) - [Item](#item) - [Misc](#misc)
+[C_NamePlates](#c_nameplates) - [C_VoiceChat](#c_voicechat) - [Unit](#unit) - [Inventory](#inventory) - [Spell](#spell) - [Item](#item) - [UI](#ui) - [Misc](#misc)
 
 # C_NamePlates
 Backported C-Lua interfaces from retail  
-All nameplates come equipped with a `unit` field holding relevant `nameplateN` token string
+All nameplates come with a `unit` field holding their `nameplateN` token string
 
 ## C_NamePlate.GetNamePlateForUnit `API`
 **Arguments:** `unitId` (string)  
@@ -51,7 +51,7 @@ local frame = C_NamePlate.GetNamePlateForUnit(token)
 **Arguments:** none  
 **Returns:** `enabled` (boolean)
 
-Returns the per-nameplate stacking override flag. Defaults to true for all relevant units.
+Returns whether this nameplate currently takes part in stacking. True for every nameplate included by `nameplateStacking`, unless disabled with `SetStackingEnabled`.
 
 ```lua
 print(string.format("Target nameplate is %s", C_NamePlate.GetNamePlateForUnit('target'):GetStackingEnabled() and "stacking" or "not stacking"))
@@ -61,7 +61,7 @@ print(string.format("Target nameplate is %s", C_NamePlate.GetNamePlateForUnit('t
 **Arguments:** `enabled` (boolean)  
 **Returns:** none
 
-Sets the per-nameplate stacking override flag.
+Sets a per-nameplate stacking override. Call it from `NAME_PLATE_UNIT_ADDED`; `NAME_PLATE_CREATED` is too early.
 
 ```lua
 for _, nameplate in pairs(C_NamePlate.GetNamePlates()) do
@@ -110,7 +110,7 @@ Fires when a nameplate is detached from a unit and is about to be hidden.
 **Arguments:** `distance` (number)  
 **Default:** 41
 
-Sets the display distance of nameplates in yards.
+Sets the display distance of nameplates in yards, up to **200**. Tab-targeting range follows this value.
 
 ## nameplateStacking `CVar`
 **Arguments:** `mode` (number)  
@@ -129,28 +129,28 @@ Defines the nameplate stacking behavior. 'Smart' mode allows nameplates to bypas
 **Arguments:** `mode` (number)  
 **Default:** 0
 
-Defines nameplate mouse interaction and depth behavior.
-- **0** = Disabled/No Changes  
+Defines nameplate mouse interaction and draw order. Click-through nameplates ignore the mouse. Raising draws the moused-over nameplate above all others except the target's; a raised nameplate that is frozen by `nameplateMouseFreeze` is drawn above the target's as well.
+- **0** = Default
 - **1** = Click-through enemies
-- **2** = Click-through enemies; always raise the frame level of occluded friendly plates on mouseover
-- **3** = Click-through enemies; raise the frame level of occluded friendly plates on mouseover (In Combat Only)
+- **2** = Click-through enemies; raise friendly plates on mouseover
+- **3** = Click-through enemies; raise friendly plates on mouseover (in combat only)
 - **4** = Click-through friendlies
-- **5** = Click-through friendlies; always raise the frame level of occluded enemy plates on mouseover
-- **6** = Click-through friendlies; raise the frame level of occluded enemy plates on mouseover (In Combat Only)
-- **7** = Always raise the frame level of any occluded plate on mouseover
-- **8** = Raise the frame level of any occluded plate on mouseover (In Combat Only)
+- **5** = Click-through friendlies; raise enemy plates on mouseover
+- **6** = Click-through friendlies; raise enemy plates on mouseover (in combat only)
+- **7** = Raise any plate on mouseover
+- **8** = Raise any plate on mouseover (in combat only)
 
 ## nameplateBandX `CVar`
 **Arguments:** `width` (number)  
 **Default:** 0.7
 
-Sets the horizontal overlap tolerance. Represents the maximum combined width ratio nameplates are allowed to overlap during stacking.
+Horizontal stacking threshold, as a fraction of the nameplates' width: nameplates closer than this stack. Lower values allow more sideways overlap.
 
 ## nameplateBandY `CVar`
 **Arguments:** `height` (number)  
 **Default:** 1
 
-Sets the vertical separation margin. Represents the minimum combined height ratio required between nameplates during stacking.
+Vertical spacing between stacked nameplates, as a fraction of their height.
 
 ## nameplateInertia `CVar`
 **Arguments:** `mult` (number)  
@@ -162,7 +162,7 @@ Controls the physical weight of nameplate movement. Higher values increase respo
 **Arguments:** `offset` (number)  
 **Default:** 0
 
-A vertical offset ratio used to displace nameplates from their original anchor points.
+Raises or lowers nameplates relative to their unit, in yards (world units), in range **-1**-**2**.
 
 ## nameplateRaiseSpeed `CVar`
 **Arguments:** `speed` (number)  
@@ -186,7 +186,7 @@ The velocity at which nameplates shift **horizontally** to resolve stacking conf
 **Arguments:** `anchor` (number)  
 **Default:** 1
 
-Sets the vertical origin point used to calculate the clickable hitbox area. Adjusting this ensures that the interactive area aligns correctly with the visual nameplate, particularly when using UI overhauls (like ElvUI) that anchor health bars by their top or bottom edges rather than the center.
+Sets where the clickable area sits within the nameplate when `nameplateHitboxHeightE`/`nameplateHitboxHeightF` is below 1; the width is always centered. Match it to where your nameplate addon draws the health bar (e.g. ElvUI anchors it by its top or bottom edge).
 - **0** = Top  
 - **1** = Center
 - **2** = Bottom
@@ -234,43 +234,74 @@ Restricts nameplates from moving beyond the screen boundaries.
 
 ## nameplateClampModeVOffset `CVar`
 **Arguments:** `offset` (number)  
-**Default:** 0.10
+**Default:** 0.01
 
-Sets the vertical screen boundary margin for clamping (0.0 is the strict edge). Requires `nameplateClampMode` to be non-zero.
+Sets the margin from the top screen edge, and from the bottom edge in the all-sides modes (3 or 4), in range **0**-**0.05** (0.0 is the strict edge). Requires `nameplateClampMode` to be non-zero.
 
 ## nameplateClampModeHOffset `CVar`
 **Arguments:** `offset` (number)  
 **Default:** 0.01
 
-Sets the horizontal screen boundary margin for clamping (0.0 is the strict edge). Requires `nameplateClampMode` to be set to a mode that includes all edges (3 or 4).
+Sets the margin from the left and right screen edges, in range **0**-**0.1** (0.0 is the strict edge). Requires `nameplateClampMode` to be set to a mode that includes all edges (3 or 4).
+
+## nameplateClampModeFilter `CVar`
+**Arguments:** `filter` (number)  
+**Default:** 0
+
+Restricts which nameplates `nameplateClampMode` applies to. Restrictions stack: a plate is clamped only when all of them hold. Plates that fail the filter behave as if clamping were disabled. Requires `nameplateClampMode` to be non-zero.
+- **0** = No Restriction
+- **1** = Target Only
+- **2** = In Combat Only (player in combat)
+- **3** = Target Only, In Combat Only
+
+## nameplateMouseFreeze `CVar`
+**Arguments:** `mode` (number)  
+**Default:** 0
+
+Pins the nameplate under the cursor (the moused-over plate, or your target's plate if it is the one under the cursor) at its current screen position. With `nameplateStacking` enabled, every other nameplate, bosses included, yields and stacks around it for as long as it stays frozen. Clicking keeps it frozen; dragging the camera or hovering another nameplate releases it immediately.
+- **0** = Disabled
+- **1** = Always
+- **2** = In Combat Only (player in combat)
+
+## nameplateMouseFreezeGrace `CVar`
+**Arguments:** `seconds` (number)  
+**Default:** 0.15
+
+How long a frozen nameplate stays pinned after the cursor leaves it, in range **0**-**1**. Returning within this time keeps it frozen.
+
+## nameplateMouseFreezeTime `CVar`
+**Arguments:** `seconds` (number)  
+**Default:** 0.30
+
+Duration of the eased slide from the frozen position back to the stacked position, in range **0**-**2**, independent of the stacking speeds. **0** snaps back instantly. Below 50 FPS the slide takes proportionally longer.
 
 ## nameplateOcclusionMode `CVar`
 **Arguments:** `mode` (number)  
 **Default:** 0
 
-Controls when to apply the transparency level for nameplates blocked by line-of-sight (objects or terrain).
+Controls when `nameplateOcclusionAlpha` applies. Has no effect while `nameplateOcclusionAlpha` is 1 or -1.
 - **0** = Always
-- **1** = Out of Combat
+- **1** = Only out of combat (also skips the line-of-sight checks in combat)
 
 ## nameplateOcclusionAlpha `CVar`
 **Arguments:** `alpha` (number)  
 **Default:** 1.00
 
-Sets the transparency factor or boundary for nameplates blocked by line-of-sight. Accepts values from **-1.0** to **1.0**. 
-- **Positive values:** Multiplies the current non-target alpha value dynamically.
-- **Negative values:** Restricts the occluded nameplate to a strict maximum alpha ceiling (uses the absolute value).
+Sets the opacity of nameplates whose unit is out of line of sight (blocked by objects or terrain), in range **-1.0**-**1.0**. Your target's nameplate is never affected. **1** or **-1** turns occlusion off.
+- **Positive values:** multiply the nameplate's normal opacity.
+- **Negative values:** cap the opacity at the absolute value (e.g. -0.3 = at most 30%).
 
 ## nameplateNonTargetAlpha `CVar`
 **Arguments:** `alpha` (number)  
 **Default:** 0.50
 
-Sets the transparency level for all nameplates except the current target.
+Sets the opacity of all nameplates except the target's. Applies only while you have a target.
 
 ## nameplateAlphaSpeed `CVar`
 **Arguments:** `speed` (number)  
 **Default:** 0.25
 
-Determines the transition speed for `nameplateOcclusionAlpha` and `nameplateNonTargetAlpha` alpha state changes.
+How quickly nameplates fade to a new opacity (from `nameplateOcclusionAlpha` or `nameplateNonTargetAlpha`), in range **0.01**-**1**, where **1** is instant.
 
 ---
 
@@ -303,11 +334,11 @@ Same as `GetTtsVoices()`.
 - `rate` (number, optional)
 - `volume` (number, optional)
 
-**Returns:** `utteranceID` (number)
+**Returns:** none
 
-Speaks text asynchronously.
-- `destination = 1` → speak immediately (FIFO)
-- `destination = 4` → accepted, no special handling (async)
+Speaks text asynchronously. Utterances are queued and played in order (FIFO); their `utteranceID` is reported through the playback events.
+- `destination = 1` → local playback
+- `destination = 4` → accepted, played the same way; any other value is treated as 1
 
 ```lua
 C_VoiceChat.SpeakText(1, "Hello World", 1, 0, 100)
@@ -476,7 +507,32 @@ Returns cooldown and global cooldown in milliseconds if passed a valid spellId, 
 **Arguments:** `itemId/itemName/itemHyperlink` (string or number)  
 **Returns:** `itemID` (number), `itemType` (string), `itemSubType` (string), `itemEquipLoc` (string), `icon` (string), `classID` (number), `subclassID` (number)
 
-Returns ID, type, subtype, equipment slot, icon, class ID, and subclass ID if passed a valid argument, otherwise returns nothing.
+Returns ID, type, subtype, equipment slot, icon, class ID, and subclass ID. Raises an error if the item is not in the client's item cache.
+
+---
+
+# UI
+
+## uiHalfPixelFix `CVar`
+**Arguments:** `enabled` (boolean)  
+**Default:** 1
+
+Fixes the engine's half-pixel offset, which shifts the whole UI off the pixel grid and slightly blurs textures drawn at their native size.
+
+## uiTextureSampling `CVar`
+**Arguments:** `mode` (number)  
+**Default:** 1
+
+Improves sampling of UI textures drawn smaller than their native size, so thin borders and fine details no longer flicker or get swallowed. With multisampling at 1x (`gxMultisample` 1), `uiPixelSnap` should be enabled as well.
+- **0** = Default client behavior
+- **1** = Box (sharper)
+- **2** = Tent (smoother)
+
+## uiPixelSnap `CVar`
+**Arguments:** `enabled` (boolean)  
+**Default:** 1
+
+Snaps UI elements to whole pixels, keeping edges crisp at any UI scale.
 
 ---
 
@@ -486,28 +542,33 @@ Returns ID, type, subtype, equipment slot, icon, class ID, and subclass ID if pa
 **Arguments:** `value` (number)  
 **Default:** 100
 
-Changes the camera field of view (fisheye effect), in range **60**-**150**.
+Changes the camera field of view (fisheye effect), in range **90**-**150**.
 
 ## cameraIndirectVisibility `CVar`
 **Arguments:** `enabled` (number)  
 **Default:** 0
 
-Toggles camera behavior when obstructed by objects in the world.  
-- **0** = Default client behavior  
-- **1** = Allows camera to move freely through some world objects without being blocked
+Toggles camera behavior when doodads such as trees or props block the view.
+- **0** = Default client behavior (the camera zooms in)
+- **1** = The camera passes through them and fades them out to `cameraIndirectAlpha`. Buildings and terrain still block the camera.
 
 ## cameraIndirectAlpha `CVar`
 **Arguments:** `alpha` (number)  
 **Default:** 0.6
 
-Controls the transparency level of objects between the camera and the player character when `cameraIndirectVisibility` is enabled.  
-Limited to [0.6 - 1] range.
+Opacity that obstructing objects fade to when `cameraIndirectVisibility` is enabled (1 = fully opaque), in range **0.6**-**1**.
 
-## interactionMode `CVar`
-**Arguments:** `mode` (boolean)  
+## showPlayer `CVar`
+**Arguments:** `show` (boolean)  
 **Default:** 1
 
-Toggles behavior of interaction keybind or macro.  
+Toggles rendering of your own character model.
+
+## interactionMode `CVar`
+**Arguments:** `mode` (number)  
+**Default:** 1
+
+Selects which target the interaction keybind and `/interact` pick.  
 - **1** = Interaction is limited to entities in front of the player within the angle defined by `interactionAngle` and within 20 yards  
 - **0** = Interaction occurs with the nearest entity within 20 yards, regardless of direction
 
@@ -515,40 +576,56 @@ Toggles behavior of interaction keybind or macro.
 **Arguments:** `angle` (number)  
 **Default:** 60
 
-The size of the cone-shaped area in front of the player (in degrees) within which a mob or entity must be located to be eligible for interaction.  
+The size of the cone-shaped area in front of the player (in degrees, **15**-**160**) within which a mob or entity must be located to be eligible for interaction.  
 Only used if `interactionMode` is set to 1 (default).
+
+## interactionHighlight `CVar`
+**Arguments:** `highlight` (boolean)  
+**Default:** 1
+
+Toggles the highlight on the object or unit the interaction keybind would currently interact with.
 
 ## MSDFMode `CVar`
 **Arguments:** `mode` (number)  
 **Default:** 1
 
-MSDF-based font rendering utilizes vector distance data instead of rasterized textures, allowing crisp, high-quality text at any scale with minimal blurring or aliasing. Applies to all in-game text.
+MSDF-based font rendering uses vector distance data instead of rasterized textures, allowing crisp, high-quality text at any scale with minimal blurring or aliasing. Applies to all in-game text, except fonts set with the `MONOCHROME` flag, which keep the default rendering. Requires a client restart.
 
-- **0** = Disabled  
-- **1** = Enabled  
-- **2** = Enabled (unsafe fonts) — Due to how distance fields are calculated, some fonts with self-intersecting contours (e.g., 'diediedie') may break.
+- **0** = Disabled
+- **1** = Enabled
+- **2** = Enabled, including unsafe fonts: fonts that fail the compatibility check (self-intersecting contours, e.g. 'diediedie') are converted too and may render incorrectly. Mode 1 leaves them on the default rendering.
+
+Each character is generated the first time it appears in a font, which can cause a brief stutter, and is then saved to a disk cache in `Cache_AwesomeWotLK\Fonts\<locale>\` that is kept across game launches, so each character is generated only once. Every font, and every style of it (such as Bold), has its own cache folder, kept separately for each game locale.
+
+Type `/msdfpregen` (available while MSDF is enabled) to fill the cache in advance. It opens a console window that lists the fonts loaded by the game and every font under `Interface\AddOns`; choose fonts, a range (option 1 = the standard range for your locale, option 2 = a custom range) and a CPU limit, and their glyphs are generated and written to the cache. On Chinese and Korean clients (zhCN, zhTW, koKR) this is mandatory: a font is rendered with MSDF only after at least its standard range (option 1) has been pre-generated; until then, it keeps the default rendering.
+
+## MSDFOutlinePass `CVar`
+**Arguments:** `enabled` (number)  
+**Default:** 1
+
+Draws MSDF font outlines in a separate pass so they don't overlap neighboring characters. Disabling it draws text and outline in one pass, which halves the vertex count but can leave outline artifacts between tightly packed characters.
 
 ## objectHighlightMode `CVar`
 **Arguments:** `mode` (number)  
 **Default:** 0
 
-MSDF-based font rendering utilizes vector distance data instead of rasterized textures, allowing crisp, high-quality text at any scale with minimal blurring or aliasing. Applies to all in-game text.
+Forces the loot sparkle on interactive world objects (containers, gathering nodes, quest objects, bounty boards, etc.).
 
-- **0** = Disabled  
+- **0** = Disabled
 - **1** = Everything
-- **2** = Tracked (low level quest giver objects, gathering), and Containers 
+- **2** = Tracked — gathering nodes only while tracked, quest objects only while they show a quest marker
 
 ## portraitResolution `CVar`
 **Arguments:** `resolution` (number)  
 **Default:** 64
 
-Increases the rendering texture resolution for all portraits across the entire game client. Accepts values between **64** and **2048** (automatically ceiling-aligned to the nearest power of two).
+Sets the texture resolution used to render 3D unit portraits. Accepts values between **64** and **2048** (rounded up to the nearest power of two). Each portrait uses its own texture of this size.
 
-## chatLogSessionKey/combatLogSessionKey `CVar`
-**Arguments:** `enabled` (number)  
+## chatLogSessionKey / combatLogSessionKey `CVar`
+**Arguments:** `enabled` (boolean)  
 **Default:** 1
 
-When enabled, each game launch generates its own isolated log file instead of appending to a single, ever-growing file. This creates clean logging session boundaries.
+Prefixes the chat/combat log file name with the client launch time (e.g. `Logs\2026-10-05-18.30.00 WoWCombatLog.txt`), so every launch is logged to a new file. Disable if a log uploader expects the default file name.
 
 ## cursor `macro`
 
@@ -591,3 +668,46 @@ Brings the game window to the foreground.
 **Returns:** none
 
 Copies text to the clipboard.
+
+## CaptureFrame `API`
+**Arguments:** `frame` (Frame), `size` (number or string, optional)  
+**Returns:** none
+
+Renders `frame` and everything parented to it (child frames, textures, text, 3D models, cooldowns, scroll children) off-screen and saves it as a PNG with a transparent background, cropped to the pixels actually drawn, to `Screenshots\FrameCapture_<Name>_<YYYYMMDD>_<HHMMSS>_<ms>.png`. The name keeps only letters, digits and `_`; unnamed frames are saved as `Anonymous`.
+
+`size` sets how large the frame is rendered:
+- a number, or a string of digits (`2048`) = target length of the longer side in pixels (approximate: it is measured from the frames' rectangles, while the image is cropped to what is drawn). A bare `2` means 2 pixels, not twice the size; use `2x` for that
+- a string ending in `x` (`"2x"`, `"0.5x"`) = multiple of the frame's on-screen size
+- omitted = on-screen size (`1x`)
+
+The scale is clamped to at least **0.25x** and to what the GPU and memory allow; the chat message mentions it when it was reduced. The upper limit applies to the whole game window, which is rendered at that scale, so it doesn't depend on the frame's size: about **4x** at 1920×1080 and **2x** at 3840×2160. Only what lies inside the game window is captured; parts of the frame off-screen are cut off. Edges are antialiased with up to 8x MSAA. Text enlarged past 1x stays sharp only with `MSDFMode` enabled; default font rendering is upscaled and looks blurry.
+
+The capture is asynchronous: it is taken on the next rendered frame and its result (file name, image size, scale, MSAA level, or the reason it failed) is printed to chat. Calling it again before then replaces the pending capture, and a pending capture is dropped on logout. `WorldFrame` can't be captured, and a hidden or zero-size frame fails with a message.
+
+The slash command `/fcapture` (or `/framecapture`) `[FrameName] [size]` calls it, with the arguments in any order. Without a name it captures the mouse-enabled frame under the cursor; frames that ignore the mouse, such as `ChatFrame1`, have to be named (`/fstack` shows frame names).
+
+```lua
+CaptureFrame(PlayerFrame)          -- on-screen size
+CaptureFrame(PlayerFrame, "2x")    -- twice the on-screen size
+CaptureFrame(ChatFrame1, 2048)     -- longer side about 2048 pixels, if the scale limit allows it
+```
+```
+/fcapture
+/fcapture PlayerFrame 2x
+/fcapture ChatFrame1 2048
+```
+
+## AwesomeWotlk `Global`
+**Type:** number
+
+The mod's version, or `nil` if the mod is not loaded. AwesomeCVar compares it with the version it was made for and suggests updating whichever is older.
+
+```lua
+if AwesomeWotlk then print("Awesome WotLK version", AwesomeWotlk) end
+```
+
+## QueueInteract `API`
+**Arguments:** `unitId` (string, optional)  
+**Returns:** none
+
+Interacts with the current interaction target, or with `unitId` if given. This is what the interaction keybind and `/interact` call.

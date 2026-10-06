@@ -1,4 +1,7 @@
 #pragma once
-namespace Item {
-void initialize();
-}
+
+#include <hookkit/transaction.h>
+
+namespace item {
+void initialize(hookkit::HookTransaction& tx);
+}  // namespace item

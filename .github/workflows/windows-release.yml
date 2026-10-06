@@ -41,9 +41,10 @@ jobs:
           Copy-Item "${{ github.workspace }}\addons\AwesomeCVar" "$staging\Interface\AddOns\AwesomeCVar" -Recurse
           Copy-Item "${{ github.workspace }}\addons\Flash" "$staging\Interface\AddOns\Flash" -Recurse
 
-          Copy-Item "${{ github.workspace }}\build\Release\AwesomeWotlkPatch.exe" "$staging\"
-          Copy-Item "${{ github.workspace }}\build\Release\AwesomeWotlkLib.dll" "$staging\"
+          Copy-Item "${{ github.workspace }}\build\bin\Release\AwesomeWotlkPatch.exe" "$staging\"
+          Copy-Item "${{ github.workspace }}\build\bin\Release\AwesomeWotlkLib.dll" "$staging\"
           Copy-Item "${{ github.workspace }}\deps\skia\skia.dll" "$staging\"
+          Copy-Item "${{ github.workspace }}\licenses" "$staging\licenses" -Recurse
 
           Compress-Archive -Path "$staging\*" -DestinationPath "${{ github.workspace }}\AwesomeWotLK_$tag.zip" -Force
           

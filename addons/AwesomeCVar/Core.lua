@@ -2,7 +2,7 @@
 -- Main addon logic, event handling, and slash command processing.
 
 local addonName, ACVar = ...
-local L = ACVar.L or {}
+local L = ACVar.L
 local CONSTANTS = ACVar.CONSTANTS
 
 local _G = _G
@@ -24,10 +24,10 @@ local SlashCmdList = SlashCmdList
 local GetCursorPosition = GetCursorPosition
 local InterfaceOptions_AddCategory = InterfaceOptions_AddCategory
 
-ACVar.reloadIsPending = false
-
+-- Formats only when arguments are given, so a plain message may contain a literal "%".
 local function formatMessage(template, ...)
-    return CONSTANTS.COLORS.SUCCESS..L.ADDON_NAME..":"..CONSTANTS.COLORS.RESET.." "..string.format(template, ...)
+    local text = select("#", ...) > 0 and format(template, ...) or template
+    return CONSTANTS.COLORS.SUCCESS..L.ADDON_NAME..":"..CONSTANTS.COLORS.RESET.." "..text
 end
 
 function ACVar:PrintMessage(message, ...)
@@ -35,11 +35,12 @@ function ACVar:PrintMessage(message, ...)
 end
 
 function ACVar:PrintCVarChange(cvarName, value, label)
-    ACVar:PrintMessage(format(
+    if not self.DB.showChatMessages then return end
+    ACVar:PrintMessage(
         L.MSG_SET_VALUE,
         CONSTANTS.COLORS.HIGHLIGHT..cvarName..CONSTANTS.COLORS.RESET,
         CONSTANTS.COLORS.VALUE..tostring(value)..(label and format(" (%s)", label) or "")..CONSTANTS.COLORS.RESET
-    ))
+    )
 end
 
 function ACVar:GetCVarValue(cvarName)
@@ -47,11 +48,11 @@ function ACVar:GetCVarValue(cvarName)
     return tonumber(value) or value
 end
 
-function ACVar:SetCVarValue(cvarName, value, cvarDef)
+function ACVar:SetCVarValue(cvarName, value)
     if self:GetCVarValue(cvarName) then
         SetCVar(cvarName, value)
-        if cvarDef and cvarDef.reloadRequired then
-            self.reloadIsPending = true
+        if self.Frame then
+            self:UpdateDependencies()
         end
     end
 end
@@ -80,7 +81,7 @@ local function processSlashCommand(msg)
         ACVar:PrintMessage(L.MSG_HELP_RESET)
         ACVar:PrintMessage(L.MSG_HELP_HELP)
     else
-        _G.DEFAULT_CHAT_FRAME:AddMessage(CONSTANTS.COLORS.ERROR..L.MSG_UNKNOWN_COMMAND)
+        ACVar:PrintMessage("%s", CONSTANTS.COLORS.ERROR..L.MSG_UNKNOWN_COMMAND..CONSTANTS.COLORS.RESET)
     end
 end
 
@@ -164,7 +165,7 @@ end
 -- ### Blizz UI Options Entry ###
 function ACVar:CreateBlizzOptions()
     local panel = CreateFrame("Frame", "AwesomeCVarBlizzPanel", UIParent)
-    panel.name = L.ADDON_NAME_SHORT or addonName
+    panel.name = L.ADDON_NAME_SHORT
 
     local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
@@ -199,12 +200,16 @@ end
 function ACVar:OnLoad()
     if self.isLoaded then return end
     self:CreateMainFrame()
-    self:CreateReloadPopup()
     self:CreateDefaultConfirmationPopup()
     self:AddGameMenuButton()
     self:CreateMinimapButton()
     self:CreateBlizzOptions()
-    self:PrintMessage(L.MSG_LOADED)
+    if self.DB.showChatMessages then
+        self:PrintMessage(L.MSG_LOADED)
+    end
+    if self.GetVersionStatus() ~= "ok" then
+        self:PrintMessage("%s", self.GetVersionStatusText())
+    end
     self.isLoaded = true
 end
 
@@ -213,17 +218,18 @@ eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:SetScript("OnEvent", function(self, event, arg)
     if event == "ADDON_LOADED" then
-		if arg == addonName then
-			_G.AwesomeCVarDB = _G.AwesomeCVarDB or {}
-			_G.AwesomeCVarDB.minimap = _G.AwesomeCVarDB.minimap or {}
+        if arg == addonName then
+            local db = _G.AwesomeCVarDB or {}
+            _G.AwesomeCVarDB = db
+            db.minimap = db.minimap or {}
+            if db.minimap.hide == nil then db.minimap.hide = false end
+            if db.minimap.minimapPos == nil then db.minimap.minimapPos = 220 end
+            if db.showGameMenuButton == nil then db.showGameMenuButton = true end
+            if db.showChatMessages == nil then db.showChatMessages = true end
 
-			if _G.AwesomeCVarDB.minimap.hide == nil then _G.AwesomeCVarDB.minimap.hide = false end
-			if _G.AwesomeCVarDB.minimap.minimapPos == nil then _G.AwesomeCVarDB.minimap.minimapPos = 220 end
-			if _G.AwesomeCVarDB.showGameMenuButton == nil then _G.AwesomeCVarDB.showGameMenuButton = true end
-
-			ACVar.DB = _G.AwesomeCVarDB
-			ACVar:OnLoad()
-		end
+            ACVar.DB = db
+            ACVar:OnLoad()
+        end
     elseif event == "PLAYER_ENTERING_WORLD" then
         for _, f in pairs(ACVar.Skins or {}) do
             f()
@@ -232,7 +238,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg)
     end
 end)
 
--- Register Slash Commands
 SLASH_AWESOME1 = "/awesome"
 SLASH_AWESOME2 = "/awesomecvar"
 SlashCmdList["AWESOME"] = processSlashCommand

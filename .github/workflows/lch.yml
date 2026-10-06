@@ -62,3 +62,6 @@ jobs:
 
     - name: Luacheck
       run: .luarocks/bin/luacheck addons --config=.luacheckrc -q
+
+    - name: Locale check
+      run: .lua/bin/lua addons/locale_check.lua

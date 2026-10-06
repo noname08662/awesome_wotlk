@@ -1,31 +1,40 @@
 #include "Inventory.h"
-#include "Lua.h"
-#include "Hooks.h"
-#include "GameClient.h"
+
+#include <iterator>
+
+#include "Extensions.h"
+
+#include "include/Lib/Lua.h"
+#include "include/ObjectManager/CGPlayer_C.h"
+#include "include/ObjectManager/Descriptors.h"
+#include "include/ObjectManager/ObjectManager.h"
+#include "include/ObjectManager/ObjectManagerEnums.h"
 
 namespace {
-int lua_GetInventoryItemTransmog(lua_State* L) {
-	const char* playerKey = Lua::luaL_checkstring(L, 1);
-	if (!playerKey) return 0;
-	lua_Number raw = Lua::luaL_checknumber(L, 2);
-	int idx = static_cast<int>(raw) - 1;
-	if (raw != static_cast<lua_Number>(static_cast<int>(raw))) return 0;
-	CGPlayer_C* player = ObjectMgr::Get<CGPlayer_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER);
-	if (!player) return 0;
-	if (idx < 0 || idx >= 19) return 0;
-	if (PlayerEntry* entry = player->GetEntry<PlayerEntry>()) {
-		Lua::lua_pushnumber(L, entry->m_visibleItems[idx].m_entryId);
-		Lua::lua_pushnumber(L, entry->m_visibleItems[idx].m_enchant);
-		return 2;
-	}
-	return 0;
+int luaGetInventoryItemTransmog(LuaState* l) {
+    if (!lua::isString(l, 1) || !lua::isNumber(l, 2)) { lua::throwError(l, "Usage: %s(unitID, slotID)"); }
+    const char* uint_id = lua::checkString(l, 1);
+    LuaNumber raw = lua::checkNumber(l, 2);
+    int idx = static_cast<int>(raw) - 1;
+    guid_t guid = object_mgr::string2Guid(uint_id);
+    if (raw != static_cast<LuaNumber>(static_cast<int>(raw)) || (guid == 0u)) {
+        lua::throwError(l, "Usage: %s(unitID, slotID)");
+    }
+    auto* player = object_mgr::get<CGPlayer_C>(guid, eTypemaskPlayer);
+    if (player == nullptr) { return 0; }
+    auto* entry = player->descriptors_;
+    if (entry == nullptr) { return 0; }
+    if (idx < 0 || idx >= std::ssize(entry->player_entry.visible_items)) { return 0; }
+    lua::pushNumber(l, entry->player_entry.visible_items[idx].entry_id);
+    lua::pushNumber(l, entry->player_entry.visible_items[idx].enchant);
+    return 2;
 }
 
-int lua_openlibinventory(lua_State* L) {
-	Lua::lua_pushcfunction(L, lua_GetInventoryItemTransmog);
-	Lua::lua_setglobal(L, "GetInventoryItemTransmog");
-	return 0;
+int luaOpenInventory(LuaState* l) {
+    lua::pushCFunction(l, luaGetInventoryItemTransmog);
+    lua::setGlobal(l, "GetInventoryItemTransmog");
+    return 0;
 }
-}
+}  // namespace
 
-void Inventory::initialize() { Hooks::FrameXML::registerLuaLib(lua_openlibinventory); }
+void inventory::initialize(hookkit::HookTransaction&) { extensions::console::kLuaLibRegistry->add(luaOpenInventory); }

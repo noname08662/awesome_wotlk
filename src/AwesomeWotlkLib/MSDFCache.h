@@ -1,164 +1,225 @@
-﻿#pragma once
+#pragma once
+
+#include <ankerl/unordered_dense.h>
+#include <ft2build.h>
+
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <filesystem>
+#include <functional>
+#include <span>
+#include <string>
+#include <vector>
+
 #include "MSDF.h"
 #include "MSDFUtils.h"
-#include "unordered_dense/include/ankerl/unordered_dense.h"
-#include <filesystem>
-#include <deque>
+#include "MSDFValidator.h"
+
+#include FT_FREETYPE_H
 
 class MSDFManager;
-class MSDFPregen;
-class MSDFFont;
 
 class MSDFCache {
-	struct BlockKey {
-		uint32_t fontId;
-		uint32_t blockId;
+    static constexpr uint32_t kInvalidId = 0xFFFFFFFF;
 
-		BlockKey() : fontId(0xFFFFFFFF), blockId(0xFFFFFFFF) {
-		}
+    struct BlockKey {
+        uint32_t font_id;
+        uint32_t block_id;
 
-		BlockKey(uint32_t font, uint32_t block) : fontId(font), blockId(block) {
-		}
+        BlockKey() : font_id(kInvalidId), block_id(kInvalidId) {}
 
-		bool operator==(const BlockKey& other) const { return fontId == other.fontId && blockId == other.blockId; }
-		uint64_t pack() const { return (static_cast<uint64_t>(fontId) << 32) | blockId; }
-	};
+        BlockKey(uint32_t font, uint32_t block) : font_id(font), block_id(block) {}
 
-	friend class MSDFFont;
-	friend class MSDFPregen;
-	friend class MSDFManager;
-	friend struct std::hash<BlockKey>;
+        bool operator==(const BlockKey& other) const { return font_id == other.font_id && block_id == other.block_id; }
+
+        [[nodiscard]]
+        uint64_t pack() const {
+            return (static_cast<uint64_t>(font_id) << 32) | block_id;
+        }
+    };
+
+    friend class MSDFFont;
+    friend class MSDFPregen;
+    friend class MSDFManager;
+    friend class MSDFFaceSweep;
+    friend struct std::hash<BlockKey>;
 
 public:
-	MSDFCache(const FT_Byte* fontData, FT_Long dataSize, const char* familyName, const char* styleName, uint32_t sdfRenderSize, uint32_t sdfSpread);
-	~MSDFCache();
+    MSDFCache(const FT_Byte* font_data, FT_Long data_size, const char* family_name, const char* style_name,
+        uint32_t sdf_render_size, uint32_t sdf_spread);
+    ~MSDFCache();
 
-	MSDFCache(const MSDFCache&) = delete;
-	MSDFCache& operator=(const MSDFCache&) = delete;
-	MSDFCache(MSDFCache&&) = delete;
-	MSDFCache& operator=(MSDFCache&&) = delete;
+    MSDFCache(const MSDFCache&) = delete;
+    MSDFCache& operator=(const MSDFCache&) = delete;
+    MSDFCache(MSDFCache&&) = delete;
+    MSDFCache& operator=(MSDFCache&&) = delete;
 
 private:
-	static constexpr auto* CACHE_DIR = "Cache_AwesomeWotLK";
-	static constexpr auto* BLACKLIST_DIR = "Fonts_AwesomeWotLK";
-	static constexpr uint32_t CACHE_VERSION = 1;
-	static constexpr uint32_t BLOCK_MAGIC = 0x4D534442;
-	static constexpr uint32_t MANIFEST_MAGIC = 0x4D534D46;
-	static constexpr size_t WRITE_BATCH_SIZE = 64;
-	static constexpr size_t BLOCK_SIZE = 512;
-	static constexpr size_t MAX_SAFE_ALLOCATION = 32 * 1024 * 1024;
+    static constexpr auto* kCacheDir = "Cache_AwesomeWotLK";
+    static constexpr auto* kManifestFile = "manifest.dat";
+    static constexpr auto* kManifestLockFile = "manifest.lock";
+    static constexpr auto* kManifestJournalFile = "manifest.jrn";
+    static constexpr uint32_t kCacheVersion = 3;
+    static constexpr uint32_t kBlockMagic = 0x4D534442;
+    static constexpr uint32_t kManifestMagic = 0x4D534D46;
+    static constexpr uint32_t kPregenCompleteMagic = 0x47455250;  // "PREG"
+    static constexpr size_t kWriteBatchSize = 64;
+    static constexpr size_t kBlockSize = 512;
+    static constexpr size_t kMaxSafeAllocation = 32 * 1024 * 1024;
 
-	struct CacheKey {
-		uint32_t sdfRenderSize = 0;
-		uint32_t sdfSpread = 0;
-		bool operator==(const CacheKey& other) const { return sdfRenderSize == other.sdfRenderSize && sdfSpread == other.sdfSpread; }
-	};
+    struct CacheKey {
+        uint32_t sdf_render_size = 0;
+        uint32_t sdf_spread = 0;
 
-	struct BlockWrap {
-		BlockKey key;
-		std::filesystem::path path;
-	};
+        bool operator==(const CacheKey& other) const {
+            return sdf_render_size == other.sdf_render_size && sdf_spread == other.sdf_spread;
+        }
+    };
+
+    enum class ManifestState : uint8_t { eUnloaded, eLoaded, eFailed };
+
+    enum class FaceVerdict : uint32_t { eUnknown, eCompatible, eIncompatible };
+
+    struct FaceRecord {
+        FaceVerdict verdict = FaceVerdict::eUnknown;
+        msdf_validator::FaceMetrics metrics;
+        bool pregen_complete = false;
+    };
+
+    struct CacheSummary {
+        size_t glyph_count = 0;
+        bool pregen_complete = false;
+    };
+
+    struct BlockWrap {
+        BlockKey key;
+        std::filesystem::path path;
+    };
 
 #pragma pack(push, 1)
-	struct ManifestHeader {
-		uint32_t magic;
-		uint32_t version;
-		CacheKey key;
-		uint32_t entryCount;
-		uint32_t pad;
-	};
 
-	struct ManifestEntry {
-		uint32_t codepoint;
-		uint32_t blockId;
-	};
+    struct alignas(64) ManifestHeader {
+        uint32_t magic{};
+        uint32_t version{};
+        CacheKey key;
+        uint32_t entry_count{};
+        uint32_t face_revision{};
+        FontHash font_hash{};
+        FaceVerdict verdict{};
+        msdf_validator::FaceMetrics metrics;
+        uint32_t pregen_state{};
+    };
 
-	struct alignas(64) BlockFileHeader {
-		uint32_t magic;
-		uint32_t version;
-		uint32_t blockId;
-		uint32_t entryCount;
-	};
+    struct ManifestEntry {
+        uint32_t codepoint;
+        uint32_t block_id;
+    };
 
-	struct alignas(64) GlyphEntry {
-		uint32_t codepoint;
-		uint16_t width;
-		uint16_t height;
-		FT_Int bitmapTop;
-		FT_Int bitmapLeft;
-		uint32_t dataOffset;
-		uint32_t dataSize;
+    struct alignas(64) BlockFileHeader {
+        uint32_t magic;
+        uint32_t version;
+        uint32_t block_id;
+        uint32_t entry_count;
+    };
 
-		bool operator<(const GlyphEntry& other) const { return codepoint < other.codepoint; }
-	};
+    struct alignas(64) GlyphEntry {
+        uint32_t codepoint;
+        uint16_t width;
+        uint16_t height;
+        FT_Int bitmap_top;
+        FT_Int bitmap_left;
+        uint32_t data_offset;
+        uint32_t data_size;
+
+        bool operator<(const GlyphEntry& other) const { return codepoint < other.codepoint; }
+    };
+
 #pragma pack(pop)
 
-	static_assert(sizeof(ManifestHeader) == 24);
-	static_assert(sizeof(ManifestEntry) == 8);
-	static_assert(sizeof(BlockFileHeader) == 64);
-	static_assert(sizeof(GlyphEntry) == 64);
+    static_assert(sizeof(ManifestHeader) == 64);
+    static_assert(sizeof(ManifestEntry) == 8);
+    static_assert(sizeof(BlockFileHeader) == 64);
+    static_assert(sizeof(GlyphEntry) == 64);
 
-	bool TryLoadGlyph(uint32_t codepoint, GlyphMetrics& outMetrics);
-	bool StoreGlyph(GlyphMetricsToStore&& metrics);
-	size_t GetManifestSize();
+    using ManifestMap = ankerl::unordered_dense::map<uint32_t, ManifestEntry>;
 
-	using ManifestMap = ankerl::unordered_dense::map<uint32_t, ManifestEntry>;
+    bool tryLoadGlyph(uint32_t codepoint, GlyphMetrics& out_metrics);
+    size_t prefetchBlock(std::span<const uint32_t> codepoints);
+    const BlockWrap& blockWrap(uint32_t block_id);
+    bool storeGlyph(GlyphMetricsToStore&& metrics);
+    size_t getManifestSize();
+    void refresh();
 
-	bool LoadManifest();
-	bool SaveManifest(bool isLocked = false);
-	bool LoadManifestFromFile(const std::filesystem::path& path, ManifestMap& outMap) const;
-	static bool LoadManifestJournal(const std::filesystem::path& journalPath, ManifestMap& outMap, size_t& outEntriesApplied);
-	bool AppendManifestJournal(const std::vector<ManifestEntry>& entries);
+    [[nodiscard]]
+    FaceRecord getFaceRecord();
+    void setFaceRecord(const FaceRecord& record);
+    bool markPregenComplete();
 
-	void BuildBlockLockPath(uint32_t blockId, std::filesystem::path& outPath) const;
-	void BuildBlockPath(uint32_t blockId, std::filesystem::path& outPath) const;
+    bool loadManifest();
+    bool saveManifest(bool is_locked = false);
 
-	bool FlushPendingWrites();
-	bool WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore*>& pending, std::vector<ManifestEntry>& outEntries);
-	void CleanupOrphans() const;
+    static bool readManifest(const std::filesystem::path& manifest_path, const std::filesystem::path& journal_path,
+        const CacheKey& key, FontHash font_hash, ManifestMap& out_map, FaceRecord& out_record,
+        std::vector<ManifestEntry>& scratch);
+    static bool writeManifest(const std::filesystem::path& manifest_path, const std::filesystem::path& journal_path,
+        const CacheKey& key, FontHash font_hash, const ManifestMap& map, const FaceRecord& record,
+        std::vector<ManifestEntry>& scratch);
+    static bool loadManifestFromFile(const std::filesystem::path& path, const CacheKey& key, FontHash font_hash,
+        ManifestMap& out_map, FaceRecord& out_record, std::vector<ManifestEntry>& scratch);
+    static bool loadManifestJournal(
+        const std::filesystem::path& journal_path, ManifestMap& out_map, size_t& out_entries_applied);
+    [[nodiscard]]
+    static CacheSummary summarizeCache(const char* family_name, const char* style_name, FontHash font_hash);
+    [[nodiscard]]
+    static bool readPregenComplete(const std::filesystem::path& manifest_path, const CacheKey& key, FontHash font_hash);
+    [[nodiscard]]
+    bool appendManifestJournal(const std::vector<ManifestEntry>& entries) const;
 
-	static uint32_t GetBlockId(uint32_t codepoint);
-	static std::string GetCacheBasePath(const char* familyName, const char* styleName, uint32_t sdfRenderSize, uint32_t sdfSpread);
-	static std::string SanitizeName(std::string_view name);
+    [[nodiscard]]
+    std::filesystem::path buildBlockLockPath(uint32_t block_id) const;
+    [[nodiscard]]
+    std::filesystem::path buildBlockPath(uint32_t block_id) const;
 
-	static void InitializeBlacklist();
-	static bool IsFontBlacklisted(const char* familyName, const char* styleName, const uint8_t* fontData, size_t dataSize);
-	static uint64_t HashNormalizedString(std::string_view str);
+    bool flushPendingWrites();
+    bool writeBlockFile(
+        uint32_t block_id, std::vector<GlyphMetricsToStore*>& pending, std::vector<ManifestEntry>& out_entries);
+    void cleanupOrphans() const;
 
-	std::filesystem::path m_cacheBasePath;
-	std::filesystem::path m_cacheManifestPath;
-	std::filesystem::path m_cacheManifestLockPath;
-	std::filesystem::path m_cacheManifestJournalPath;
+    static uint32_t getBlockId(uint32_t codepoint);
+    static std::string getCacheBasePath(const char* family_name, const char* style_name, uint32_t sdf_render_size,
+        uint32_t sdf_spread, FontHash font_hash);
 
-	CacheKey m_key;
-	ManifestMap m_manifest;
+    static bool isFontBlacklisted(
+        const char* family_name, const char* style_name, const uint8_t* font_data, size_t data_size);
 
-	bool m_manifestLoaded = false;
-	uint32_t m_fontID = 0xFFFFFFFF;
+    std::filesystem::path cache_base_path_;
+    std::filesystem::path cache_manifest_path_;
+    std::filesystem::path cache_manifest_lock_path_;
+    std::filesystem::path cache_manifest_journal_path_;
 
-	VectorPool<uint8_t> m_vecPool;
-	VectorPool<uint32_t> m_hashPool;
-	VectorPool<GlyphEntry> m_gEntryPool;
-	VectorPool<ManifestEntry> m_mEntryPool;
+    CacheKey key_;
+    ManifestMap manifest_;
+    FaceRecord face_record_;
 
-	std::deque<GlyphMetricsToStore> m_pendingWrites;
+    ManifestState manifest_state_ = ManifestState::eUnloaded;
+    FontHash font_hash_ = 0;
+    uint32_t font_id_ = kInvalidId;
 
-	ankerl::unordered_dense::map<uint32_t, BlockWrap> m_blockWrap;
+    VectorPool<uint8_t> vec_pool_;
+    VectorPool<uint32_t> hash_pool_;
+    VectorPool<GlyphEntry> glyph_entry_pool_;
+    VectorPool<ManifestEntry> manifest_entry_pool_;
 
-	struct BlacklistAutoRunner {
-		BlacklistAutoRunner() { InitializeBlacklist(); }
-	};
+    std::deque<GlyphMetricsToStore> pending_writes_;
 
-	static BlacklistAutoRunner s_blacklistAutoRunner;
-	inline static ankerl::unordered_dense::set<FontHash> s_blacklistHashes;
-
-	static MSDFManager s_manager;
+    ankerl::unordered_dense::map<uint32_t, BlockWrap> block_wrap_;
 };
 
 template <>
 struct std::hash<MSDFCache::BlockKey> {
-	size_t operator()(const MSDFCache::BlockKey& k) const noexcept {
-		uint64_t packed = k.pack();
-		return ankerl::unordered_dense::detail::wyhash::hash(&packed, sizeof(packed));
-	}
+    size_t operator()(const MSDFCache::BlockKey& k) const noexcept {
+        uint64_t packed = k.pack();
+        return ankerl::unordered_dense::detail::hash_int(packed);
+    }
 };

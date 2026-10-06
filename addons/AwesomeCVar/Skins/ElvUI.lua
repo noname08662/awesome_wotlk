@@ -6,12 +6,13 @@ end
 ACVar.Skins.ElvUI = function()
     if not ElvUI then return end
 
-    local E, L, V, P, G = unpack(ElvUI)
+    local E = unpack(ElvUI)
     local S = E:GetModule("Skins")
     local _G = _G
     local match = string.match
 
     local function SkinCVarControl(cvarDef)
+        if cvarDef.type == "header" then return end
         local name = cvarDef.name
         local PREFIX = "AwesomeCVar_"
 
@@ -22,17 +23,17 @@ ACVar.Skins.ElvUI = function()
             control.__elvSkinned = true
         end
 
+        local resetBtn = _G[PREFIX..name.."ResetButton"]
+        if resetBtn and not resetBtn.__elvSkinned then
+            S:HandleButton(resetBtn)
+            resetBtn.__elvSkinned = true
+        end
+
         if cvarDef.type == "slider" then
             local slider = _G[PREFIX..name.."Slider"]
             if slider and not slider.__elvSkinned then
                 S:HandleSliderFrame(slider)
                 slider.__elvSkinned = true
-            end
-
-            local resetBtn = _G[PREFIX..name.."ResetButton"]
-            if resetBtn and not resetBtn.__elvSkinned then
-                S:HandleButton(resetBtn)
-                resetBtn.__elvSkinned = true
             end
 
         elseif cvarDef.type == "toggle" then
@@ -60,10 +61,22 @@ ACVar.Skins.ElvUI = function()
                 dropdown.__elvSkinned = true
             end
 
-            local resetBtn = _G[PREFIX..name.."ResetButton"]
-            if resetBtn and not resetBtn.__elvSkinned then
-                S:HandleButton(resetBtn)
-                resetBtn.__elvSkinned = true
+        elseif cvarDef.type == "link" then
+            local editBox = _G[PREFIX..name.."EditBox"]
+            if editBox and not editBox.__elvSkinned then
+                editBox:SetTemplate()
+                local editBoxName = editBox:GetName()
+                for _, part in ipairs({ "Left", "Middle", "Right", "Mid" }) do
+                    local region = _G[editBoxName..part]
+                    if region then region:SetAlpha(0) end
+                end
+                editBox.__elvSkinned = true
+            end
+
+            local copyBtn = _G[PREFIX..name.."CopyButton"]
+            if copyBtn and not copyBtn.__elvSkinned then
+                S:HandleButton(copyBtn)
+                copyBtn.__elvSkinned = true
             end
 
         elseif cvarDef.type == "mode" then
@@ -117,25 +130,15 @@ ACVar.Skins.ElvUI = function()
             end
         end
 
-        local closeBtn = _G["AwesomeCVarCloseButton"]
         local okayBtn = _G["AwesomeCVarOkayButton"]
         local defaultsBtn = _G["AwesomeCVarDefaultsButton"]
-        if closeBtn then S:HandleButton(closeBtn) end
         if okayBtn then S:HandleButton(okayBtn) end
         if defaultsBtn then S:HandleButton(defaultsBtn) end
 
-        local reloadPopup = _G["AwesomeCVarReloadPopup"]
-        if reloadPopup then
-            reloadPopup:StripTextures()
-            reloadPopup:SetTemplate("Transparent")
-            local acceptBtn = _G["AwesomeCVarAcceptButton"]
-            if acceptBtn then S:HandleButton(acceptBtn) end
-        end
-
-		local minimapCheck = _G["AwesomeCVarMinimapCheck"]
+        local minimapCheck = _G["AwesomeCVarMinimapCheck"]
         if minimapCheck then
             S:HandleCheckBox(minimapCheck)
-			minimapCheck:Size(24, 24)
+            minimapCheck:Size(24, 24)
             local text = _G["AwesomeCVarMinimapCheckText"]
             if text then
                 text:ClearAllPoints()
@@ -146,11 +149,22 @@ ACVar.Skins.ElvUI = function()
         local gameMenuCheck = _G["AwesomeCVarGameMenuCheck"]
         if gameMenuCheck then
             S:HandleCheckBox(gameMenuCheck)
-			gameMenuCheck:Size(24, 24)
+            gameMenuCheck:Size(24, 24)
             local text = _G["AwesomeCVarGameMenuCheckText"]
             if text then
                 text:ClearAllPoints()
                 text:Point("LEFT", gameMenuCheck, "RIGHT", 5, 0)
+            end
+        end
+
+        local chatCheck = _G["AwesomeCVarChatMessagesCheck"]
+        if chatCheck then
+            S:HandleCheckBox(chatCheck)
+            chatCheck:Size(24, 24)
+            local text = _G["AwesomeCVarChatMessagesCheckText"]
+            if text then
+                text:ClearAllPoints()
+                text:Point("LEFT", chatCheck, "RIGHT", 5, 0)
             end
         end
 
@@ -177,17 +191,19 @@ ACVar.Skins.ElvUI = function()
         if btn then S:HandleButton(btn) end
     end)
 
-    hooksecurefunc(ACVar, "CreateDefaultConfirmationPopup", function()
-        if ACVar.DefaultConfirmationPopup and not ACVar.DefaultConfirmationPopup.__elvSkinned then
-            ACVar.DefaultConfirmationPopup:StripTextures()
-            ACVar.DefaultConfirmationPopup:SetTemplate("Transparent")
-            local okayPopupBtn = _G["AwesomeCVar_ConfirmResetButton"]
-            local cancelBtn = _G["AwesomeCVar_CancelResetButton"]
-            if cancelBtn then S:HandleButton(cancelBtn) end
-            if okayPopupBtn then S:HandleButton(okayPopupBtn) end
-            ACVar.DefaultConfirmationPopup.__elvSkinned = true
-        end
-    end)
+    local function SkinDefaultConfirmationPopup()
+        local popup = ACVar.DefaultConfirmationPopup
+        if not popup or popup.__elvSkinned then return end
+        popup:StripTextures()
+        popup:SetTemplate("Transparent")
+        local okayPopupBtn = _G["AwesomeCVar_ConfirmResetButton"]
+        local cancelBtn = _G["AwesomeCVar_CancelResetButton"]
+        if cancelBtn then S:HandleButton(cancelBtn) end
+        if okayPopupBtn then S:HandleButton(okayPopupBtn) end
+        popup.__elvSkinned = true
+    end
+
+    hooksecurefunc(ACVar, "CreateDefaultConfirmationPopup", SkinDefaultConfirmationPopup)
 
     hooksecurefunc(ACVar, "CreateMainFrame", SkinMainFrame)
     hooksecurefunc(ACVar, "CreateBlizzOptions", SkinBlizzOptions)
@@ -204,13 +220,5 @@ ACVar.Skins.ElvUI = function()
         S:HandleButton(ACVar.GameMenuButton)
     end
 
-    if ACVar.DefaultConfirmationPopup then
-        ACVar.DefaultConfirmationPopup:StripTextures()
-        ACVar.DefaultConfirmationPopup:SetTemplate("Transparent")
-        local okayPopupBtn = _G["AwesomeCVar_ConfirmResetButton"]
-        local cancelBtn = _G["AwesomeCVar_CancelResetButton"]
-        if cancelBtn then S:HandleButton(cancelBtn) end
-        if okayPopupBtn then S:HandleButton(okayPopupBtn) end
-        ACVar.DefaultConfirmationPopup.__elvSkinned = true
-    end
+    SkinDefaultConfirmationPopup()
 end

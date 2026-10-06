@@ -1,4 +1,7 @@
 #pragma once
-namespace Camera {
-void initialize();
-}
+
+#include <hookkit/transaction.h>
+
+namespace camera {
+void initialize(hookkit::HookTransaction& tx);
+}  // namespace camera

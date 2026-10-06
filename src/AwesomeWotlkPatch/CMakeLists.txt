@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.15)
 project(AwesomeWotlkPatch)
 
 add_executable(
@@ -13,8 +12,11 @@ target_compile_definitions(
     APP_NAME="${PROJECT_NAME}"
 )
 
-#removing escalation may fail in some instances where player has client in C: 
-#uac escalation doesn't allow console output, need to remove escalation to get proper output
+target_link_libraries(
+    ${PROJECT_NAME} PRIVATE
+    AwesomeWotLK_Common
+)
+
 if(MSVC)
     target_link_options(${PROJECT_NAME} PRIVATE
         "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"

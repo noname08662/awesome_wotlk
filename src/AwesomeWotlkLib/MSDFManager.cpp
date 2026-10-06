@@ -1,264 +1,267 @@
 #include "MSDFManager.h"
+
+#include <algorithm>
+#include <bit>
+#include <span>
+
+#include "MSDF.h"
 #include "MSDFCache.h"
+#include "Utils.h"
 
-#pragma comment(lib, "onecore.lib")
+MSDFManager::MappedBlock::MappedBlock() = default;
 
-MSDFManager::MSDFManager() { GetSystemInfo(&s_si); }
-
-MSDFManager::~MSDFManager() { FlushAll(); }
-
-void MSDFManager::MappedBlock::Close() {
-	view.Close();
-	mapping.Close();
-	file.Close();
-	header = nullptr;
-	entries = nullptr;
-	hashTable = nullptr;
-	payload = nullptr;
-	entryCount = 0;
+void MSDFManager::MappedBlock::close() {
+    view.close();
+    mapping.close();
+    file.close();
+    header = nullptr;
+    entries = {};
+    hash_table = {};
+    payload = {};
 }
 
 MSDFManager::ArenaState::ArenaState() {
-	if (!MSDF::IS_WIN10) {
-		base = nullptr;
-		return;
-	}
+    if (!isWin10()) { return; }
 
-	constexpr uint32_t maxGlyphDim = MSDF::SDF_RENDER_SIZE + 2 * MSDF::SDF_SPREAD;
-	constexpr uint32_t maxPixelsPerGlyph = maxGlyphDim * maxGlyphDim;
-	constexpr uint32_t maxBytesPerGlyph = maxPixelsPerGlyph * 4;
+    constexpr uint32_t kMaxGlyphDim = msdf::kSdfRenderSize + 2 * msdf::kSdfSpread;
+    constexpr uint32_t kMaxPixelsPerGlyph = kMaxGlyphDim * kMaxGlyphDim;
+    constexpr uint32_t kMaxBytesPerGlyph = kMaxPixelsPerGlyph * 4;
 
-	constexpr size_t maxPayload = MSDFCache::BLOCK_SIZE * maxBytesPerGlyph;
-	constexpr size_t maxEntries = MSDFCache::BLOCK_SIZE * sizeof(MSDFCache::GlyphEntry);
-	constexpr size_t maxHashTable = MSDFCache::BLOCK_SIZE * sizeof(uint32_t);
-	constexpr size_t maxBlockSize = sizeof(MSDFCache::BlockFileHeader) + maxEntries + maxHashTable + maxPayload;
+    constexpr size_t kMaxPayload = MSDFCache::kBlockSize * kMaxBytesPerGlyph;
+    constexpr size_t kMaxEntries = MSDFCache::kBlockSize * sizeof(MSDFCache::GlyphEntry);
+    constexpr size_t kMaxHashTable = MSDFCache::kBlockSize * sizeof(uint32_t);
+    constexpr size_t kMaxBlockSize = sizeof(MSDFCache::BlockFileHeader) + kMaxEntries + kMaxHashTable + kMaxPayload;
 
-	SYSTEM_INFO si;
-	GetSystemInfo(&si);
-	const size_t gran = si.dwAllocationGranularity;
-	effectiveSlotSize = ((maxBlockSize + gran - 1) / gran) * gran;
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    const size_t gran = si.dwAllocationGranularity;
+    effective_slot_size_ = ((kMaxBlockSize + gran - 1) / gran) * gran;
 
-	slotToBlockIndex.fill(0xFFFFFFFF);
+    slot_to_block_index_.fill(kInvalidIndex);
 
-	const size_t totalSize = effectiveSlotSize * MAX_ARENA_SLOTS;
-	base = VirtualAlloc2(GetCurrentProcess(), nullptr, totalSize, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
-	if (!base) return;
+    const size_t total_size = effective_slot_size_ * kMaxArenaSlots;
+    void* base = win10Api().virtual_alloc2(
+        GetCurrentProcess(), nullptr, total_size, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
+    if (base == nullptr) { return; }
 
-	for (size_t i = 0; i < MAX_ARENA_SLOTS; ++i) {
-		void* slotAddr = static_cast<char*>(base) + (i * effectiveSlotSize);
-		slotAddresses[i] = slotAddr;
-		VirtualFreeEx(GetCurrentProcess(), slotAddr, effectiveSlotSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
-	}
+    const std::span arena(static_cast<std::byte*>(base), total_size);
+    for (size_t i = 0; i < kMaxArenaSlots; ++i) {
+        void* slot_addr = arena.subspan(i * effective_slot_size_).data();
+        slot_addresses_[i] = slot_addr;
+        VirtualFreeEx(GetCurrentProcess(), slot_addr, effective_slot_size_, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
+    }
 }
 
-MSDFManager::ArenaState::~ArenaState() {
-	if (base) {
-		VirtualFreeEx(GetCurrentProcess(), base, 0, MEM_RELEASE);
-		base = nullptr;
-	}
+void* MSDFManager::ArenaState::getFreeSlot(uint32_t block_index, uint32_t& out_slot_index) {
+    if (free_mask_ == 0 || slot_addresses_[0] == nullptr) { return nullptr; }
+    const auto slot_idx = static_cast<uint32_t>(std::countr_zero(free_mask_));
+    free_mask_ &= ~(1ULL << slot_idx);
+    slot_to_block_index_[slot_idx] = block_index;
+    out_slot_index = slot_idx;
+    return slot_addresses_[slot_idx];
 }
 
-void* MSDFManager::ArenaState::GetFreeSlot(uint32_t blockIndex, uint32_t& outSlotIndex) {
-	if (freeMask == 0) return nullptr;
-	uint32_t slotIdx = static_cast<uint32_t>(std::countr_zero(freeMask));
-	freeMask &= ~(1ULL << slotIdx);
-	slotToBlockIndex[slotIdx] = blockIndex;
-	outSlotIndex = slotIdx;
-	return slotAddresses[slotIdx];
+void MSDFManager::ArenaState::freeSlot(uint32_t slot_index) {
+    if (slot_index >= kMaxArenaSlots || !isSlotOccupied(slot_index)) { return; }
+
+    void* slot_addr = slot_addresses_[slot_index];
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQuery(slot_addr, &mbi, sizeof(mbi)) != 0 && mbi.RegionSize < effective_slot_size_) {
+        VirtualFreeEx(GetCurrentProcess(), slot_addr, effective_slot_size_, MEM_RELEASE | MEM_COALESCE_PLACEHOLDERS);
+    }
+
+    free_mask_ |= (1ULL << slot_index);
+
+    slot_to_block_index_[slot_index] = kInvalidIndex;
 }
 
-void MSDFManager::ArenaState::FreeSlot(uint32_t slotIndex) {
-	if (slotIndex >= MAX_ARENA_SLOTS || !IsSlotOccupied(slotIndex)) return;
-
-	void* slotAddr = slotAddresses[slotIndex];
-	uintptr_t currentAddr = reinterpret_cast<uintptr_t>(slotAddr);
-	uintptr_t endAddr = currentAddr + effectiveSlotSize;
-
-	while (currentAddr < endAddr) {
-		MEMORY_BASIC_INFORMATION mbi;
-		if (VirtualQuery(reinterpret_cast<void*>(currentAddr), &mbi, sizeof(mbi)) == 0) break;
-		if (reinterpret_cast<uintptr_t>(mbi.BaseAddress) >= endAddr) break;
-
-		size_t regionSize = mbi.RegionSize;
-		if (mbi.State != MEM_FREE) {
-			if (mbi.Type == MEM_MAPPED) { UnmapViewOfFile2(GetCurrentProcess(), mbi.BaseAddress, 0); }
-			else { VirtualFree(mbi.BaseAddress, 0, MEM_RELEASE); }
-		}
-		currentAddr += regionSize;
-	}
-
-	VirtualFreeEx(GetCurrentProcess(), slotAddr, 0, MEM_RELEASE | MEM_COALESCE_PLACEHOLDERS);
-	VirtualAlloc2(GetCurrentProcess(), slotAddr, effectiveSlotSize, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
-
-	freeMask |= (1ULL << slotIndex);
-
-	slotToBlockIndex[slotIndex] = 0xFFFFFFFF;
+void MSDFManager::ArenaState::flushAll() {
+    for (uint32_t i = 0; i < kMaxArenaSlots; ++i) {
+        if (isSlotOccupied(i)) { freeSlot(i); }
+    }
 }
 
-void MSDFManager::ArenaState::FlushAll() { for (uint32_t i = 0; i < MAX_ARENA_SLOTS; ++i) { if (IsSlotOccupied(i)) FreeSlot(i); } }
+bool MSDFManager::loadGlyph(const MSDFCache::BlockWrap& wrap, uint32_t codepoint, GlyphMetrics& out_metrics) {
+    const MappedBlock* block = getOrLoadMappedBlock(wrap);
+    if (block == nullptr) { return false; }
 
-void MSDFManager::FreeBlock(uint32_t blockIndex) {
-	if (blockIndex >= MAX_ARENA_SLOTS) return;
+    const uint32_t entry_index = block->hash_table[codepoint & (MSDFCache::kBlockSize - 1)];
+    if (entry_index == kInvalidIndex || entry_index >= block->entries.size()) { return false; }
 
-	MappedBlock& block = s_mappedBlocks[blockIndex];
-	MSDFCache::BlockKey keyToErase = block.key;
+    const MSDFCache::GlyphEntry& ge = block->entries[entry_index];
+    if (ge.codepoint != codepoint) { return false; }
 
-	if (block.slotIndex != 0xFFFFFFFF) { s_arena.FreeSlot(block.slotIndex); }
-	block.Reset();
-	s_blockCache.erase(keyToErase);
+    out_metrics.width = ge.width;
+    out_metrics.height = ge.height;
+    out_metrics.bitmap_top = ge.bitmap_top;
+    out_metrics.bitmap_left = ge.bitmap_left;
+    out_metrics.pixel_data = ge.data_size > 0 ? block->payload.subspan(ge.data_offset).data() : nullptr;
 
-	if (s_lastBlockIndex == blockIndex) {
-		s_lastBlockIndex = 0xFFFFFFFF;
-		s_lastBlockKey = {};
-	}
+    return true;
 }
 
-void MSDFManager::FreeBlockByKey(MSDFCache::BlockKey key) {
-	auto it = s_blockCache.find(key);
-	if (it == s_blockCache.end()) return;
-	FreeBlock(it->second);
+void MSDFManager::prefetchGlyphs(const MSDFCache::BlockWrap& wrap, std::span<const uint32_t> codepoints) {
+    const auto prefetch = win10Api().prefetch_virtual_memory;
+    if (prefetch == nullptr) { return; }
+    const MappedBlock* block = getOrLoadMappedBlock(wrap);
+    if (block == nullptr) { return; }
+
+    std::array<WIN32_MEMORY_RANGE_ENTRY, MSDFCache::kBlockSize> ranges;
+    size_t count = 0;
+    for (const uint32_t codepoint : codepoints) {
+        const uint32_t entry_index = block->hash_table[codepoint & (MSDFCache::kBlockSize - 1)];
+        if (entry_index == kInvalidIndex || entry_index >= block->entries.size()) { continue; }
+        const MSDFCache::GlyphEntry& ge = block->entries[entry_index];
+        if (ge.codepoint != codepoint || ge.data_size == 0 || count == ranges.size()) { continue; }
+        ranges[count++] = {
+            .VirtualAddress = const_cast<uint8_t*>(block->payload.subspan(ge.data_offset).data()),
+            .NumberOfBytes = ge.data_size
+        };
+    }
+    if (count != 0) { prefetch(GetCurrentProcess(), count, ranges.data(), 0); }
 }
 
-void MSDFManager::FlushAll() {
-	for (auto& block : s_mappedBlocks) { block.Reset(); }
-	s_blockCache.clear();
-	s_arena.FlushAll();
+bool MSDFManager::loadMappedBlock(
+    const MSDFCache::BlockWrap& wrap, MappedBlock& out_block, void* slot_addr, uint32_t slot_index) {
+    const auto fail = [&out_block, slot_index] {
+        out_block.reset();
+        kArena->freeSlot(slot_index);
+        return false;
+    };
 
-	s_lastBlockIndex = 0xFFFFFFFF;
-	s_lastBlockKey = {};
+    out_block.file.handle =
+        CreateFileW(wrap.path.native().c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, nullptr);
+    if (out_block.file.handle == INVALID_HANDLE_VALUE) { return fail(); }
+
+    LARGE_INTEGER file_size_li;
+    if (GetFileSizeEx(out_block.file.handle, &file_size_li) == 0) { return fail(); }
+    out_block.file_size = static_cast<uint64_t>(file_size_li.QuadPart);
+
+    const size_t alloc_gran = kSystemInfo->dwAllocationGranularity;
+    const uint64_t split_size =
+        std::max<uint64_t>(((out_block.file_size + alloc_gran - 1) / alloc_gran) * alloc_gran, alloc_gran);
+    if (split_size > kArena->slotSize()) { return fail(); }
+    out_block.slot_index = slot_index;
+
+    if (split_size < kArena->slotSize() &&
+        VirtualFreeEx(GetCurrentProcess(), slot_addr, split_size, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER) == 0) {
+        return fail();
+    }
+
+    const auto size_high = static_cast<DWORD>(split_size >> 32);
+    const auto size_low = static_cast<DWORD>(split_size & 0xFFFFFFFF);
+    out_block.mapping.handle =
+        CreateFileMappingW(out_block.file.handle, nullptr, PAGE_READONLY, size_high, size_low, nullptr);
+    if (out_block.mapping.handle == nullptr) { return fail(); }
+
+    out_block.view.ptr = win10Api().map_view_of_file3(out_block.mapping.handle, nullptr, slot_addr, 0, split_size,
+        MEM_REPLACE_PLACEHOLDER, PAGE_READONLY, nullptr, 0);
+    if (out_block.view.ptr == nullptr) { return fail(); }
+
+    out_block.header = static_cast<const MSDFCache::BlockFileHeader*>(out_block.view.ptr);
+    if (out_block.header->magic != MSDFCache::kBlockMagic || out_block.header->version != MSDFCache::kCacheVersion ||
+        out_block.header->block_id != wrap.key.block_id || out_block.header->entry_count > MSDFCache::kBlockSize) {
+        return fail();
+    }
+
+    const uint32_t entry_count = out_block.header->entry_count;
+    constexpr size_t kEntriesOffset = sizeof(MSDFCache::BlockFileHeader);
+    const size_t hash_table_offset = kEntriesOffset + entry_count * sizeof(MSDFCache::GlyphEntry);
+    const size_t payload_offset = hash_table_offset + (MSDFCache::kBlockSize * sizeof(uint32_t));
+    if (out_block.file_size < payload_offset) { return fail(); }
+
+    const std::span view_bytes(
+        static_cast<const uint8_t*>(out_block.view.ptr), static_cast<size_t>(out_block.file_size));
+    out_block.entries = {
+        reinterpret_cast<const MSDFCache::GlyphEntry*>(view_bytes.subspan(kEntriesOffset).data()), entry_count};
+    out_block.hash_table = {
+        reinterpret_cast<const uint32_t*>(view_bytes.subspan(hash_table_offset).data()), MSDFCache::kBlockSize};
+    out_block.payload = view_bytes.subspan(payload_offset);
+
+    for (const MSDFCache::GlyphEntry& e : out_block.entries) {
+        if (e.data_size > 0 && static_cast<uint64_t>(e.data_offset) + e.data_size > out_block.payload.size()) {
+            return fail();
+        }
+    }
+    out_block.key = wrap.key;
+
+    return true;
 }
 
-uint32_t MSDFManager::RegisterFont(FontHash hash) {
-	auto it = s_fontHashToId.find(hash);
-	if (it != s_fontHashToId.end()) { return it->second; }
+MSDFManager::MappedBlock* MSDFManager::getOrLoadMappedBlock(const MSDFCache::BlockWrap& wrap) {
+    auto& blocks = *kMappedBlocks;
+    auto& last_block_key = *kLastBlockKey;
+    if (last_block_index_ != kInvalidIndex && last_block_key == wrap.key) { return &blocks[last_block_index_]; }
 
-	uint32_t fontId = s_nextFontId++;
-	s_fontHashToId.emplace(hash, fontId);
-	s_fontIdToHash.emplace(fontId, hash);
-	return fontId;
+    auto& block_cache = *kBlockCache;
+    const auto it = block_cache.find(wrap.key);
+    if (it != block_cache.end()) {
+        last_block_index_ = it->second;
+        last_block_key = wrap.key;
+        return &blocks[it->second];
+    }
+    if (kArena->isFull()) { flushAll(); }
+
+    uint32_t slot_index = 0;
+    void* slot_addr = kArena->getFreeSlot(wrap.key.block_id, slot_index);
+    if (slot_addr == nullptr) { return nullptr; }
+
+    MappedBlock& new_block = blocks[slot_index];
+    if (!loadMappedBlock(wrap, new_block, slot_addr, slot_index)) { return nullptr; }
+
+    last_block_index_ = slot_index;
+    last_block_key = wrap.key;
+
+    block_cache[wrap.key] = slot_index;
+    return &new_block;
 }
 
-FontHash MSDFManager::GetFontHash(uint32_t fontId) {
-	auto it = s_fontIdToHash.find(fontId);
-	return (it != s_fontIdToHash.end()) ? it->second : 0;
+void MSDFManager::freeBlock(uint32_t block_index) {
+    if (block_index >= kMaxArenaSlots) { return; }
+
+    MappedBlock& block = kMappedBlocks[block_index];
+    const MSDFCache::BlockKey key_to_erase = block.key;
+
+    const uint32_t slot_index = block.slot_index;
+    block.reset();
+    if (slot_index != kInvalidIndex) { kArena->freeSlot(slot_index); }
+    kBlockCache->erase(key_to_erase);
+
+    if (last_block_index_ == block_index) {
+        last_block_index_ = kInvalidIndex;
+        *kLastBlockKey = {};
+    }
 }
 
-bool MSDFManager::LoadMappedBlock(const MSDFCache::BlockWrap& wrap, MappedBlock& outBlock, void* slotAddr, uint32_t slotIndex) {
-	outBlock.file.handle = CreateFileW(wrap.path.native().c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, nullptr);
-	if (outBlock.file.handle == INVALID_HANDLE_VALUE) {
-		s_arena.FreeSlot(slotIndex);
-		return false;
-	}
-
-	LARGE_INTEGER fileSizeLI;
-	if (!GetFileSizeEx(outBlock.file.handle, &fileSizeLI)) {
-		s_arena.FreeSlot(slotIndex);
-		return false;
-	}
-	outBlock.fileSize = static_cast<uint64_t>(fileSizeLI.QuadPart);
-
-	const size_t allocGran = s_si.dwAllocationGranularity;
-	uint64_t splitSize = ((outBlock.fileSize + allocGran - 1) / allocGran) * allocGran;
-	if (splitSize < allocGran) splitSize = allocGran;
-	if (splitSize > s_arena.SlotSize()) {
-		s_arena.FreeSlot(slotIndex);
-		return false;
-	}
-	outBlock.slotIndex = slotIndex;
-
-	if (!VirtualFreeEx(GetCurrentProcess(), slotAddr, splitSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER)) {
-		s_arena.FreeSlot(slotIndex);
-		return false;
-	}
-
-	DWORD sizeHigh = static_cast<DWORD>(splitSize >> 32);
-	DWORD sizeLow = static_cast<DWORD>(splitSize & 0xFFFFFFFF);
-	outBlock.mapping.handle = CreateFileMappingW(outBlock.file.handle, nullptr, PAGE_READONLY, sizeHigh, sizeLow, nullptr);
-	if (!outBlock.mapping.handle) {
-		s_arena.FreeSlot(slotIndex);
-		return false;
-	}
-
-	outBlock.view.ptr = MapViewOfFile3(outBlock.mapping.handle, nullptr, slotAddr, 0, splitSize, MEM_REPLACE_PLACEHOLDER, PAGE_READONLY, nullptr, 0);
-	if (!outBlock.view.ptr) {
-		s_arena.FreeSlot(slotIndex);
-		return false;
-	}
-
-	outBlock.header = static_cast<const MSDFCache::BlockFileHeader*>(outBlock.view.ptr);
-	if (outBlock.header->magic != MSDFCache::BLOCK_MAGIC || outBlock.header->version != MSDFCache::CACHE_VERSION || outBlock.header->blockId != wrap.key.blockId || outBlock.header->entryCount > MSDFCache::BLOCK_SIZE) {
-		s_arena.FreeSlot(slotIndex);
-		return false;
-	}
-
-	outBlock.entryCount = outBlock.header->entryCount;
-	outBlock.entries = reinterpret_cast<const MSDFCache::GlyphEntry*>(static_cast<const uint8_t*>(outBlock.view.ptr) + sizeof(MSDFCache::BlockFileHeader));
-
-	size_t hashTableOffset = sizeof(MSDFCache::BlockFileHeader) + outBlock.entryCount * sizeof(MSDFCache::GlyphEntry);
-	outBlock.hashTable = reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(outBlock.view.ptr) + hashTableOffset);
-
-	size_t payloadOffset = hashTableOffset + (MSDFCache::BLOCK_SIZE * sizeof(uint32_t));
-	if (outBlock.fileSize < payloadOffset) {
-		s_arena.FreeSlot(slotIndex);
-		return false;
-	}
-	outBlock.payload = static_cast<const uint8_t*>(outBlock.view.ptr) + payloadOffset;
-
-	size_t maxPayload = static_cast<size_t>(outBlock.fileSize - payloadOffset);
-	for (uint32_t i = 0; i < outBlock.entryCount; ++i) {
-		const MSDFCache::GlyphEntry& e = outBlock.entries[i];
-		if (e.dataSize > 0) {
-			if (e.dataOffset + e.dataSize > maxPayload) {
-				s_arena.FreeSlot(slotIndex);
-				return false;
-			}
-		}
-	}
-	outBlock.key = wrap.key;
-
-	return true;
+void MSDFManager::freeBlockByKey(MSDFCache::BlockKey key) {
+    const auto it = kBlockCache->find(key);
+    if (it == kBlockCache->end()) { return; }
+    freeBlock(it->second);
 }
 
-MSDFManager::MappedBlock* MSDFManager::GetOrLoadMappedBlock(const MSDFCache::BlockWrap& wrap) {
-	if (s_lastBlockIndex != 0xFFFFFFFF && s_lastBlockKey == wrap.key) { return &s_mappedBlocks[s_lastBlockIndex]; }
+void MSDFManager::flushAll() {
+    for (auto& block : *kMappedBlocks) {
+        block.reset();
+    }
+    kBlockCache->clear();
+    kArena->flushAll();
 
-	auto it = s_blockCache.find(wrap.key);
-	if (it != s_blockCache.end()) {
-		s_lastBlockIndex = it->second;
-		s_lastBlockKey = wrap.key;
-		return &s_mappedBlocks[it->second];
-	}
-	if (s_arena.freeMask == 0) FlushAll();
-
-	uint32_t slotIndex = 0;
-	void* slotAddr = s_arena.GetFreeSlot(wrap.key.blockId, slotIndex);
-	if (slotAddr == nullptr) return nullptr;
-
-	MappedBlock& newBlock = s_mappedBlocks[slotIndex];
-	if (!LoadMappedBlock(wrap, newBlock, slotAddr, slotIndex)) return nullptr;
-
-	s_lastBlockIndex = slotIndex;
-	s_lastBlockKey = wrap.key;
-
-	s_blockCache[wrap.key] = slotIndex;
-	return &newBlock;
+    last_block_index_ = kInvalidIndex;
+    *kLastBlockKey = {};
 }
 
-bool MSDFManager::LoadGlyph(const MSDFCache::BlockWrap& wrap, uint32_t codepoint, GlyphMetrics& outMetrics) {
-	MappedBlock* blockPtr = GetOrLoadMappedBlock(wrap);
-	if (!blockPtr) return false;
+uint32_t MSDFManager::registerFont(FontHash hash) {
+    const auto it = kFontHashToId->find(hash);
+    if (it != kFontHashToId->end()) { return it->second; }
 
-	uint32_t entryIndex = blockPtr->hashTable[codepoint & (MSDFCache::BLOCK_SIZE - 1)];
-	if (entryIndex == 0xFFFFFFFF || entryIndex >= blockPtr->entryCount) return false;
+    const uint32_t font_id = next_font_id_++;
+    kFontHashToId->emplace(hash, font_id);
+    kFontIdToHash->emplace(font_id, hash);
+    return font_id;
+}
 
-	const MSDFCache::GlyphEntry& ge = blockPtr->entries[entryIndex];
-	if (ge.codepoint != codepoint) return false;
-
-	outMetrics.width = ge.width;
-	outMetrics.height = ge.height;
-	outMetrics.bitmapTop = ge.bitmapTop;
-	outMetrics.bitmapLeft = ge.bitmapLeft;
-	outMetrics.pixelData = ge.dataSize > 0 ? blockPtr->payload + ge.dataOffset : nullptr;
-
-	return true;
+FontHash MSDFManager::getFontHash(uint32_t font_id) {
+    const auto it = kFontIdToHash->find(font_id);
+    return it != kFontIdToHash->end() ? it->second : 0;
 }

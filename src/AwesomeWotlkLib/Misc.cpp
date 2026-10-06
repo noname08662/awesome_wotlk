@@ -1,433 +1,591 @@
 #include "Misc.h"
-#include "D3D.h"
-#include "GameClient.h"
-#include "Hooks.h"
-#include "Utils.h"
+
+#include <corecrt_math_defines.h>
+#include <windows.h>
+
+#include <algorithm>
+#include <array>
 #include <bit>
+#include <cctype>
+#include <charconv>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <format>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "Extensions.h"
+#include "MiscCaptureFrame.h"
+#include "MiscCaptureFrameLua.h"
+#include "Utils.h"
+
+#include "Spell/CSpell_C.h"
+#include "include/DB/DBRecords.h"
+#include "include/FrameScript/FrameScript.h"
+#include "include/Game/CGGameUI.h"
+#include "include/Graphics/CGxDevice.h"
+#include "include/Graphics/CGxDeviceD3d.h"
+#include "include/Lib/Lua.h"
+#include "include/M2/CM2Model.h"
+#include "include/Math/Primitives.h"
+#include "include/ObjectManager/CGGameObject_C.h"
+#include "include/ObjectManager/CGPlayer_C.h"
+#include "include/ObjectManager/DescriptorsEnums.h"
+#include "include/ObjectManager/ObjectManager.h"
+#include "include/ObjectManager/ObjectManagerEnums.h"
+#include "include/Spell/CSpell_C.h"
+#include "include/System/System.h"
+#include "include/Texture/CTexture.h"
+#include "include/UI/UIBindings.h"
+#include "include/Widget/CSimpleFrame.h"
+#include "include/World/CGWorldFrame.h"
 
 namespace {
-auto (*PortraitInitialize_site1)() = reinterpret_cast<DummyCallback_t>(0x00616E09);
-auto (*PortraitInitialize_site2)() = reinterpret_cast<DummyCallback_t>(0x006180E0);
-constexpr uintptr_t PortraitInitialize_site2_jmpback = 0x006180E5;
+constexpr DWORD kCandidateScanIntervalMs = 100;
 
-auto (*PortraitSet_site)() = reinterpret_cast<DummyCallback_t>(0x00619B6A);
-constexpr uintptr_t PortraitSet_site_jmpback = 0x00619B72;
-
-bool g_cursorKeywordActive = false;
-bool g_playerLocationKeywordActive = false;
-
-enum EObjHLMode : uint32_t {
-	HL_DISABLED = 0,
-	HL_ALWAYS = 1,
-	HL_TRACKED = 2,
+constexpr std::array<uint8_t, 12> kValidGameobjectTypes = {
+    eGameobjectTypeDoor,
+    eGameobjectTypeButton,
+    eGameobjectTypeQuestgiver,
+    eGameobjectTypeChest,
+    eGameobjectTypeBinder,
+    eGameobjectTypeChair,
+    eGameobjectTypeSpellFocus,
+    eGameobjectTypeGoober,
+    eGameobjectTypeFishingnode,
+    eGameobjectTypeMailbox,
+    eGameobjectTypeMeetingstone,
+    eGameobjectTypeGuildBank,
 };
 
-int g_iAngle = 0;
-int g_iMode = 0;
-int g_portraitRes = 64;
-EObjHLMode g_highlightMode = HL_DISABLED;
+struct InteractState {
+    guid_t request = 0;      // one-shot interaction queued from Lua
+    guid_t candidate = 0;    // nearest valid interact target
+    guid_t highlighted = 0;  // candidate currently showing the interact highlight (in range, cvar on)
+} interact;
 
-CVar* s_cvar_interactionMode;
-CVar* s_cvar_interactionAngle;
-CVar* s_cvar_objectHighlightMode;
-CVar* s_cvar_portraitResolution;
-CVar* s_cvar_chatLogSessionKey;
-CVar* s_cvar_combatLogSessionKey;
-
-int g_chatLogSessionKey = 1;
-int g_combatLogSessionKey = 1;
-
-char g_customChatLogPath[MAX_PATH];
-char g_customCombatLogPath[MAX_PATH];
-
-const char* sessionStamp() {
-	static const std::string stamp = [] {
-		char s[40] = {0};
-		SYSTEMTIME t;
-		GetLocalTime(&t);
-		std::sprintf(s, "%04d-%02d-%02d-%02d.%02d.%02d ", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
-		return std::string(s);
-	}();
-	return stamp.c_str();
+bool isInteractableGameObject(uint8_t type) {
+    return std::ranges::any_of(kValidGameobjectTypes, [type](uint8_t t) { return t == type; });
 }
 
-const std::vector<uint8_t> validTypes = {GAMEOBJECT_TYPE_DOOR, GAMEOBJECT_TYPE_BUTTON, GAMEOBJECT_TYPE_QUESTGIVER, GAMEOBJECT_TYPE_CHEST, GAMEOBJECT_TYPE_BINDER, GAMEOBJECT_TYPE_CHAIR, GAMEOBJECT_TYPE_SPELL_FOCUS, GAMEOBJECT_TYPE_GOOBER, GAMEOBJECT_TYPE_FISHINGNODE, GAMEOBJECT_TYPE_MAILBOX, GAMEOBJECT_TYPE_MEETINGSTONE, GAMEOBJECT_TYPE_GUILD_BANK};
+bool isValidObject(CGObject_C* object, CGUnit_C* player, float distance_sq) {
+    if (object->type_id_ == eTypeidUnit) {
+        uint32_t dyn_flags = object->getValue<uint32_t>(eUnitDynamicFlags);
+        uint32_t unit_flags = object->getValue<uint32_t>(eUnitFieldFlags);
+        uint32_t npc_flags = object->getValue<uint32_t>(eUnitNpcFlags);
 
-int lua_FlashWindow(lua_State* L) {
-	if (HWND hwnd = GetGameWindow()) FlashWindow(hwnd, FALSE);
-	return 0;
+        bool is_lootable = (dyn_flags & eUnitDynflagLootable) != 0;
+        bool is_skinnable = (unit_flags & eUnitFlagSkinnable) != 0;
+        bool can_assist = player->canAssist(reinterpret_cast<CGUnit_C*>(object), true);
+
+        bool flags_ok = is_lootable || is_skinnable || (can_assist && npc_flags != 0);
+        return flags_ok && distance_sq <= reinterpret_cast<CGUnit_C*>(object)->getInteractDistanceSq();
+    }
+    if (object->type_id_ == eTypeidGameobject) {
+        auto* go = object->as<CGGameObject_C>();
+        return go != nullptr && isInteractableGameObject(go->descriptors_->subtype) && go->canUse() && go->canUseNow();
+    }
+    return false;
 }
 
-int lua_IsWindowFocused(lua_State* L) {
-	HWND hwnd = GetGameWindow();
-	if (!hwnd || GetForegroundWindow() != hwnd) return 0;
-	Lua::lua_pushnumber(L, 1.0);
-	return 1;
+void processQueuedInteraction() {
+    if (interact.request == 0) { return; }
+    if (auto* object =
+            object_mgr::get<CGObject_C>(interact.request, static_cast<TypeMask>(eTypemaskGameobject | eTypemaskUnit))) {
+        object->onRightClick();
+    }
+    interact.request = 0;
 }
 
-int lua_FocusWindow(lua_State* L) {
-	if (HWND hwnd = GetGameWindow()) SetForegroundWindow(hwnd);
-	return 0;
+void updateInteractCandidate() {
+    if (!game_ui::isInWorld()) { return; }
+
+    static DWORD last_scan_tick = 0;
+    DWORD now = GetTickCount();
+    if (now - last_scan_tick < kCandidateScanIntervalMs) { return; }
+    last_scan_tick = now;
+
+    guid_t candidate = 0;
+    float best_distance_sq = 400.0f;  // 20.0f squared
+
+    auto* player = object_mgr::get<CGPlayer_C>(object_mgr::getPlayerGuid(), eTypemaskPlayer);
+    if (player == nullptr) { return; }
+
+    auto angle_degrees = static_cast<float>(extensions::console::kCvarRegistry->ref<"interactionAngle", int>()) * 0.5f;
+    bool look_in_angle = extensions::console::kCvarRegistry->ref<"interactionMode", int>() == 1;
+
+    float facing = player->getFacing();
+    Vec3f pos_player{};
+    player->getPosition(pos_player);
+
+    auto try_set_candidate = [&](guid_t guid) {
+        auto* object = object_mgr::get<CGObject_C>(guid, static_cast<TypeMask>(eTypemaskGameobject | eTypemaskUnit));
+        if (object == nullptr) { return; }
+
+        auto distance_sq = static_cast<float>(object->getDistanceToPosSq(&pos_player));
+        if (distance_sq == 0.0f || distance_sq > 400.0f || distance_sq > best_distance_sq) { return; }
+
+        if (!isValidObject(object, player, distance_sq)) { return; }
+
+        if (look_in_angle) {
+            Vec3f pos_object{};
+            object->getPosition(pos_object);
+            float dx = pos_object.x - pos_player.x;
+            float dy = pos_object.y - pos_player.y;
+
+            float length_sq = dx * dx + dy * dy;
+            if (length_sq == 0.0f) { return; }
+
+            float length = std::sqrtf(length_sq);
+            dx /= length;
+            dy /= length;
+
+            if (dx * std::cosf(facing) + dy * std::sinf(facing) <
+                std::cosf(angle_degrees * static_cast<float>(M_PI / 180.0))) {
+                return;
+            }
+        }
+
+        candidate = guid;
+        best_distance_sq = distance_sq;
+    };
+
+    object_mgr::enumObjects([&](guid_t guid) {
+        if (guid != player->getGuid()) { try_set_candidate(guid); }
+        return true;
+    });
+
+    if (interact.candidate != candidate) { interact.candidate = candidate; }
+
+    guid_t visual_candidate =
+        (extensions::console::kCvarRegistry->ref<"interactionHighlight", int>() != 0) ? candidate : 0;
+
+    if (interact.highlighted != visual_candidate) {
+        if (interact.highlighted != 0) {
+            if (auto* old_obj = object_mgr::get<CGObject_C>(
+                    interact.highlighted, static_cast<TypeMask>(eTypemaskGameobject | eTypemaskUnit))) {
+                old_obj->hideHighlightType(CGObject_C::eHighlightTypeInteract);
+            }
+        }
+        interact.highlighted = visual_candidate;
+        if (interact.highlighted != 0) {
+            if (auto* new_obj = object_mgr::get<CGObject_C>(
+                    interact.highlighted, static_cast<TypeMask>(eTypemaskGameobject | eTypemaskUnit))) {
+                new_obj->showHighlightType(CGObject_C::eHighlightTypeInteract);
+                if ((new_obj->highlight_mask_ & CGObject_C::eHighlightMaskNative) == 0) {
+                    if (CM2Model* model = new_obj->getObjectModel()) { model->emissive_color_ *= 0.8f; }
+                }
+            }
+        }
+    }
 }
 
-int lua_CopyToClipboard(lua_State* L) {
-	const char* str = Lua::luaL_checkstring(L, 1);
-	if (str && str[0]) CopyToClipboardU8(str, nullptr);
-	return 0;
+int luaQueueInteract(LuaState* l) {
+    if (!game_ui::isInWorld()) { return 0; }
+    if (!lua::isNoneOrNil(l, 1)) {
+        const char* raw = lua::toString(l, 1);
+        if (raw == nullptr) { return 0; }
+        std::string mod_str = raw;
+
+        for (char c : mod_str) {
+            if (std::isalnum(static_cast<unsigned char>(c)) == 0) { return 0; }
+        }
+        if (guid_t guid = object_mgr::guidFromUnitId{}(mod_str.c_str())) { interact.request = guid; }
+    } else if (interact.candidate != 0) {
+        interact.request = interact.candidate;
+    }
+    return 0;
 }
 
-guid_t s_requestedInteraction = 0;
+int interactFunctionC(LuaState* l) {
+    const char* param = nullptr;
+    if (!lua::isNoneOrNil(l, 1)) { param = lua::toString(l, 1); }
 
-void ProcessQueuedInteraction() {
-	if (!s_requestedInteraction) return;
-	if (CGObject_C* object = ObjectMgr::Get<CGObject_C>(s_requestedInteraction, static_cast<ETypeMask>(TYPEMASK_GAMEOBJECT | TYPEMASK_UNIT))) {
-		object->OnRightClick(); // safe internal call, no Lua taint
-	}
-	s_requestedInteraction = 0;
+    lua::pushCFunction(l, reinterpret_cast<lua::LuaCFunction>(framescript::secureCmdOptionsParse::kAddress));
+
+    if (param != nullptr) {
+        lua::pushString(l, param);
+    } else {
+        lua::pushNil(l);
+    }
+
+    if (lua::pcall(l, 1, 2, 0) != 0) {
+        lua::pop(l, 1);
+        lua::pushCFunction(l, luaQueueInteract);
+        if (lua::isFunction(l, -1)) {
+            if (lua::pcall(l, 0, 0, 0) != 0) { lua::pop(l, 1); }
+        }
+        return 0;
+    }
+
+    if (!lua::isNil(l, -1)) {
+        lua::pushCFunction(l, luaQueueInteract);
+        if (lua::isFunction(l, -1)) {
+            lua::pushValue(l, -2);
+            if (lua::pcall(l, 1, 0, 0) != 0) { lua::pop(l, 1); }
+        }
+        lua::pop(l, 3);
+    } else {
+        lua::pop(l, 1);
+        lua::pushCFunction(l, luaQueueInteract);
+        if (lua::isFunction(l, -1)) {
+            if (lua::pcall(l, 0, 0, 0) != 0) { lua::pop(l, 1); }
+        }
+        lua::pop(l, 1);
+    }
+    return 0;
 }
+}  // namespace
 
-bool IsInteractableGameObject(uint8_t type) { return std::ranges::any_of(validTypes, [type](uint8_t t) { return t == type; }); }
-
-auto isValidObject = [](CGObject_C* object, const CGUnit_C* player) -> bool {
-	if (object->m_typeID == TYPEID_UNIT) {
-		uint32_t dynFlags = object->GetValue<uint32_t>(UNIT_DYNAMIC_FLAGS);
-		uint32_t unitFlags = object->GetValue<uint32_t>(UNIT_FIELD_FLAGS);
-		uint32_t npcFlags = object->GetValue<uint32_t>(UNIT_NPC_FLAGS);
-
-		bool isLootable = (dynFlags & UNIT_DYNFLAG_LOOTABLE) != 0;
-		bool isSkinnable = (unitFlags & UNIT_FLAG_SKINNABLE) != 0;
-		bool canAssist = player->CanAssist(reinterpret_cast<CGUnit_C*>(object), true);
-
-		return isLootable || isSkinnable || (canAssist && npcFlags != 0);
-	}
-	if (object->m_typeID == TYPEID_GAMEOBJECT) {
-		uint32_t bytes = object->GetValue<uint32_t>(GAMEOBJECT_BYTES_1);
-		auto* go = object->As<CGGameObject_C>();
-		return go && IsInteractableGameObject((bytes >> 8) & 0xFF) && go->CanUseNow();
-	}
-	return false;
+namespace {
+enum ObjHlMode : int {
+    eHlDisabled,
+    eHlAlways,
+    eHlTracked,
 };
 
-int lua_QueueInteract(lua_State* L) {
-	if (!IsInWorld()) return 0;
+enum PendingClick : int { eNone, eCursor, ePlayerLocation, eBlocked };
 
-	std::string modifier;
-	bool hasModifier = !Lua::lua_isnoneornil(L, 1);
+auto pending_click = PendingClick::eNone;
 
-	if (hasModifier) {
-		const char* raw = Lua::lua_tostring(L, 1);
-		if (!raw) return 0;
-		std::string modStr = raw;
+HOOKKIT_BIND(framescript::secureCmdOptionsParse_hook, [](LuaState* l) {
+    int result = framescript::secureCmdOptionsParse{}(l);
+    if (lua::getTop(l) < 3 || !lua::isString(l, 2) || !lua::isString(l, 3)) { return result; }
 
-		for (char c : modStr) { if (!std::isalnum(static_cast<unsigned char>(c))) return 0; }
-		modifier = modStr;
-	}
+    if (!CSpell_C::isTargetingAoE{}()) { pending_click = PendingClick::eNone; }
+    if (pending_click == PendingClick::eBlocked) { return result; }
 
-	guid_t candidate = 0;
-	float bestDistance = 3000.0f;
+    std::string_view parsed_target_view = lua::toString(l, 3);
+    bool is_cursor = utils::iequals(parsed_target_view, "cursor");
+    bool is_playerlocation = utils::iequals(parsed_target_view, "playerlocation");
 
-	CGPlayer_C* player = ObjectMgr::Get<CGPlayer_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER);
-	if (!player) return 0;
+    if (!is_cursor && !is_playerlocation) { return result; }
 
-	int angleDegrees = g_iAngle / 2;
-	bool lookInAngle = g_iMode == 1;
+    pending_click = is_cursor ? PendingClick::eCursor : PendingClick::ePlayerLocation;
 
-	VecXYZ posPlayer{};
-	player->GetPosition(*reinterpret_cast<C3Vector*>(&posPlayer));
+    std::string parsed_result = lua::toString(l, 2);
+    std::string orig_string = lua::toString(l, 1);
 
-	auto trySetCandidate = [&](guid_t guid) {
-		CGObject_C* object = ObjectMgr::Get<CGObject_C>(guid, static_cast<ETypeMask>(TYPEMASK_GAMEOBJECT | TYPEMASK_UNIT));
-		if (!object) return;
+    lua::pop(l, 3);
+    lua::pushString(l, orig_string.c_str());
+    lua::pushString(l, parsed_result.c_str());
+    lua::pushNil(l);
 
-		float distance = player->GetDistance(object);
-		if (distance == 0.f || distance > 20.0f || distance > bestDistance) return;
+    return result;
+});
 
-		if (!isValidObject(object, player)) return;
+HOOKKIT_BIND(CGWorldFrame::onLayerTrackTerrain_hook, [](CGWorldFrame* self, CGWorldFrame::TerrainClickEvent* click) {
+    if (CSpell_C::isTargetingAoE{}()) {
+        if (pending_click == PendingClick::eNone) {
+            pending_click = PendingClick::eBlocked;
+            return self->onLayerTrackTerrain(click);
+        }
+        if (pending_click == PendingClick::eBlocked) { return self->onLayerTrackTerrain(click); }
+    }
 
-		if (lookInAngle) {
-			VecXYZ posObject{};
-			object->GetPosition(*reinterpret_cast<C3Vector*>(&posObject));
-			float dx = posObject.x - posPlayer.x;
-			float dy = posObject.y - posPlayer.y;
+    auto* player = object_mgr::get<CGPlayer_C>(object_mgr::getPlayerGuid(), eTypemaskPlayer);
+    if (player == nullptr) { return self->onLayerTrackTerrain(click); }
 
-			float length = sqrtf(dx * dx + dy * dy);
-			if (length == 0.f) return;
+    PendingClick pending = std::exchange(pending_click, PendingClick::eNone);
+    if (pending == PendingClick::ePlayerLocation) {
+        Vec3f player_pos{};
+        player->getPosition(player_pos);
 
-			dx /= length;
-			dy /= length;
+        CGWorldFrame::TerrainClickEvent tc{.guid = 0, .pos = Vec3f{player_pos}, .button = 1};
+        CGWorldFrame::handleTerrainClick{}(&tc);
+    } else if (pending == PendingClick::eCursor) {
+        CGWorldFrame::TerrainClickEvent tc{.guid = 0, .pos = Vec3f{click->pos}, .button = 1};
+        CGWorldFrame::handleTerrainClick{}(&tc);
+    }
+    return self->onLayerTrackTerrain(click);
+});
 
-			float facing = player->GetFacing();
-			float fx = cosf(facing);
-			float fy = sinf(facing);
+HOOKKIT_BIND(CSpell_C::cancelPendingAoeTargeting_hook, []() {
+    pending_click = PendingClick::eNone;
+    return CSpell_C::cancelPendingAoeTargeting{}();
+});
 
-			if (dx * fx + dy * fy < cosf(angleDegrees * (M_PI / 180.0f))) return;
-		}
+HOOKKIT_BIND(CGxDevice::projectTex2d_hook,
+    [](AaBox* bbox, Vec4u8* color, Mat4f* matrix, float z_bias, int flags, char vtx_mode, float depth_bias) {
+        AaBox new_bbox = *bbox;
 
-		candidate = guid;
-		bestDistance = distance;
-	};
+        // expand Z projection range to prevent clipping on steep terrain
+        float center_z = (new_bbox.max.z + new_bbox.min.z) * 0.5f;
+        new_bbox.min.z = center_z - 50.0f;
+        new_bbox.max.z = center_z + 50.0f;
 
-	if (!hasModifier) {
-		ObjectMgr::EnumObjects([&](guid_t guid) {
-			if (guid != player->GetGUID()) trySetCandidate(guid);
-			return true;
-		});
-	}
-	else if (guid_t guid = ObjectMgr::GetGuidByUnitID(modifier.c_str())) { trySetCandidate(guid); }
-	if (candidate != 0) s_requestedInteraction = candidate;
+        return CGxDevice::projectTex2d{}(&new_bbox, color, matrix, z_bias, flags, vtx_mode, depth_bias);
+    });
 
-	return 0;
+// attached only while interactionHighlight is on
+HOOKKIT_BIND(CGObject_C::hideHighlightType_hook, [](CGObject_C* self, CGObject_C::HighlightType highlight_type) {
+    int result = self->hideHighlightType(highlight_type);
+    if (highlight_type != CGObject_C::eHighlightTypeInteract && interact.highlighted != 0 &&
+        self->getGuid() == interact.highlighted) {
+        if ((self->highlight_mask_ & CGObject_C::eHighlightMaskNative) == 0) {
+            if (CM2Model* model = self->getObjectModel()) { model->emissive_color_ *= 0.8f; }
+        }
+    }
+    return result;
+});
+
+void applyInteractionHighlight(int enabled) {
+    static_cast<void>(hookkit::HookTransaction::reinstall(CGObject_C::hideHighlightType_hook{},
+        enabled != 0 ? CGObject_C::hideHighlightType_hook::resolveDetour() : nullptr));
 }
 
-int InteractFunction_C(lua_State* L) {
-	const char* param = nullptr;
-	if (!Lua::lua_isnoneornil(L, 1)) { param = Lua::lua_tostring(L, 1); }
+// one detour per objectHighlightMode other than eHlDisabled, which runs the engine's
+template <ObjHlMode Mode>
+inline constexpr auto kPassiveHighlight = [](CGGameObject_C* self) {
+    self->checkForPassiveHighlight();
 
-	Lua::lua_getglobal(L, "SecureCmdOptionParse");
-	if (!Lua::lua_isfunction(L, -1)) {
-		Lua::lua_pop(L, 1);
-		Lua::lua_pushcfunction(L, lua_QueueInteract);
-		if (Lua::lua_isfunction(L, -1)) { if (Lua::lua_pcall(L, 0, 0, 0) != 0) { Lua::lua_pop(L, 1); } }
-		return 0;
-	}
+    GameobjectTypes go_type = self->descriptors_->subtype;
+    if (!self->canUse() ||
+        (go_type != eGameobjectTypeChest && go_type != eGameobjectTypeGoober && go_type != eGameobjectTypeQuestgiver)) {
+        return;
+    }
+    if constexpr (Mode == ObjHlMode::eHlTracked) {
+        if (go_type == eGameobjectTypeQuestgiver && self->quest_model_ == nullptr) { return; }
+        if (go_type == eGameobjectTypeChest) {
+            if (const LockRec* lock_rec = self->getLockRec()) {
+                if (lock_rec->type[0] == LockRec::eLockKeySkill) { return; }  // gathering node
+            }
+        }
+    }
+    self->highlight_mask_ |= CGObject_C::eHighlightMaskPassiveLootGlow;
+    self->showLootEffect();
+};
+}  // namespace
 
-	if (param) Lua::lua_pushstring(L, param);
-	else Lua::lua_pushnil(L);
+namespace {
+constexpr int kEnginePortraitRes = 64;
+int portrait_res = kEnginePortraitRes;
 
-	if (Lua::lua_pcall(L, 1, 2, 0) != 0) {
-		Lua::lua_pop(L, 1);
-		Lua::lua_pushcfunction(L, lua_QueueInteract);
-		if (Lua::lua_isfunction(L, -1)) { if (Lua::lua_pcall(L, 0, 0, 0) != 0) { Lua::lua_pop(L, 1); } }
-		return 0;
-	}
+void applyPortraitRes(int res) {
+    portrait_res = static_cast<int>(std::bit_ceil(static_cast<unsigned int>(res)));
 
-	if (!Lua::lua_isnil(L, -1)) {
-		Lua::lua_pushcfunction(L, lua_QueueInteract);
-		if (Lua::lua_isfunction(L, -1)) {
-			Lua::lua_pushvalue(L, -2);
-			if (Lua::lua_pcall(L, 1, 0, 0) != 0) { Lua::lua_pop(L, 1); }
-		}
-		Lua::lua_pop(L, 3);
-	}
-	else {
-		Lua::lua_pop(L, 1);
-		Lua::lua_pushcfunction(L, lua_QueueInteract);
-		if (Lua::lua_isfunction(L, -1)) { if (Lua::lua_pcall(L, 0, 0, 0) != 0) { Lua::lua_pop(L, 1); } }
-		Lua::lua_pop(L, 1);
-	}
-	return 0;
+    CTexture*& depth = game_ui::portrait_depth_texture;
+    if (depth == nullptr || std::cmp_less_equal(portrait_res, depth->width_)) { return; }
+    const auto size = static_cast<uint32_t>(portrait_res);
+    // the engine's flags as AllocAndRegister stored them; it re-derives filter and anisotropy the same way again
+    const uint32_t flags = depth->creation_flags_.packed;
+    if (CTexture* grown = CTexture::allocAndRegister{}(
+            0, size, size, 0x18, 12, 12, flags, nullptr, reinterpret_cast<void*>(0x005EEB70), "PortraitDepth", 1)) {
+        CHandle::close{}(reinterpret_cast<CHandle*>(std::exchange(depth, grown)));
+    }
 }
 
-char __fastcall CGGameObject_C__CheckForPassiveHighlightHk(CGGameObject_C* pThis) {
-	const char result = CGGameObject_C::CheckForPassiveHighlightFn(pThis);
-	uint8_t goType = static_cast<uint8_t>((pThis->GetValue<uint32_t>(GAMEOBJECT_BYTES_1) >> 8) & 0xFF);
-	if (!pThis->CanUse() || (goType != GAMEOBJECT_TYPE_CHEST && goType != GAMEOBJECT_TYPE_GOOBER && goType != GAMEOBJECT_TYPE_QUESTGIVER)) { return result; }
-	if (g_highlightMode == HL_TRACKED) {
-		if (goType == GAMEOBJECT_TYPE_QUESTGIVER && pThis->m_questMark == nullptr) return result;
-		if (goType == GAMEOBJECT_TYPE_CHEST) {
-			if (const LockRec* lockRec = pThis->GetLockRec()) {
-				if (lockRec->m_type[0] == 2) return result; // gathering node
-			}
-		}
-	}
-	pThis->m_highlightMask |= 0x400000u;
-	return CGGameObject_C::ShowLootEffectFn(pThis);
+HOOKKIT_NAMED_BIND_RAW(portraitInitialize_site, 0x006180E0, {"jmpback", 0x006180E5}) {
+    constexpr uintptr_t kJmpback = portraitInitialize_site::target("jmpback");
+    const auto res = reinterpret_cast<uintptr_t>(&portrait_res);
+    return CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(
+        jmpTo(kJmpback, movRegAbs(Reg::eDx, res), pushReg(Reg::eDx), pushReg(Reg::eDx), pushReg(Reg::eSi)));
+};
+
+HOOKKIT_NAMED_BIND_RAW(portraitRender_site, 0x00619B6A, {"jmpback", 0x00619B72}) {
+    constexpr uintptr_t kJmpback = portraitRender_site::target("jmpback");
+    const uintptr_t size = HOOKKIT_LAMBDA_ADDR([] {
+        if (game_ui::portrait_use_render_target == 0) { return kEnginePortraitRes; }
+        const CTexture* depth = game_ui::portrait_depth_texture;
+        return depth != nullptr ? std::min<int>(portrait_res, depth->width_) : portrait_res;
+    });
+    return CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(
+        size, jmpTo(kJmpback, pushImm(2), pushImm(2), pushReg(Reg::eAx), pushReg(Reg::eAx)), 0);
+};
+}  // namespace
+
+namespace {
+void applyChatLogStamp(int enabled) {
+    static std::array<char, MAX_PATH> chat_log_path{};
+
+    const char* path;
+    if (enabled != 0) {
+        auto [ptr, count] = std::format_to_n(
+            chat_log_path.data(), chat_log_path.size() - 1, "Logs\\{}WoWChatLog.txt", utils::sessionStamp());
+        *ptr = '\0';
+        path = chat_log_path.data();
+    } else {
+        path = reinterpret_cast<const char*>(0x009FA4E4);
+    }
+
+    hookkit::forceWrite<const char*>(0x00AC7A40, path);
 }
 
-int lua_openmisclib(lua_State* L) {
-	Lua::luaL_Reg funcs[] = {{"FlashWindow", lua_FlashWindow}, {"IsWindowFocused", lua_IsWindowFocused}, {"FocusWindow", lua_FocusWindow}, {"CopyToClipboard", lua_CopyToClipboard}, {"QueueInteract", lua_QueueInteract}};
+void applyCombatLogStamp(int enabled) {
+    static std::array<char, MAX_PATH> combat_log_path{};
 
-	for (const auto& [name, func] : funcs) {
-		Lua::lua_pushcfunction(L, func);
-		Lua::lua_setglobal(L, name);
-	}
-	Hooks::FrameScript::registerOnUpdate(ProcessQueuedInteraction);
-	return 0;
+    const char* path;
+    if (enabled != 0) {
+        auto [ptr, count] = std::format_to_n(
+            combat_log_path.data(), combat_log_path.size() - 1, "Logs\\{}WoWCombatLog.txt", utils::sessionStamp());
+        *ptr = '\0';
+        path = combat_log_path.data();
+    } else {
+        path = reinterpret_cast<const char*>(0x009FA4CC);
+    }
+
+    hookkit::forceWrite<const char*>(0x00AC7A44, path);
 }
 
-int CVarHandler_interactionAngle(CVar* cvar, const char*, const char* value, void*) { return cvar->Sync(value, &g_iAngle, 15, 160, "%d"); }
-int CVarHandler_interactionMode(CVar* cvar, const char*, const char* value, void*) { return cvar->Sync(value, &g_iMode, 0, 1, "%d"); }
+void applyObjHlMode(int mode, bool changed) {
+    auto new_mode = static_cast<ObjHlMode>(mode);
 
-int CVarHandler_portraitResolution(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_portraitRes, 64, 2048, "%d");
-	g_portraitRes = std::bit_ceil(static_cast<unsigned int>(g_portraitRes));
-	return result;
+    using Hook = CGGameObject_C::checkForPassiveHighlight_hook;
+    void* detour = nullptr;
+    if (new_mode == eHlAlways) {
+        detour = Hook::staticDetour<kPassiveHighlight<eHlAlways>>();
+    } else if (new_mode == eHlTracked) {
+        detour = Hook::staticDetour<kPassiveHighlight<eHlTracked>>();
+    }
+    const bool switched = Hook::attached.load() ? Hook::resolveDetour() != detour : detour != nullptr;
+    if (switched && hookkit::HookTransaction::reinstall(Hook{}, detour) != NO_ERROR) { return; }
+    if (!changed && !switched) { return; }
+
+    if (guid_t player_guid = object_mgr::getPlayerGuid();
+        object_mgr::get<CGPlayer_C>(player_guid, eTypemaskPlayer) != nullptr) {
+        object_mgr::enumObjects([&](guid_t guid) {
+            if (guid < 0x1000) { return true; }
+
+            auto* go = object_mgr::get<CGGameObject_C>(guid, eTypemaskGameobject);
+            if (go == nullptr || go->type_id_ != eTypeidGameobject) { return true; }
+
+            if (new_mode != eHlDisabled) {
+                CGGameObject_C::checkForPassiveHighlight_hook::viaDetour(go);
+            } else {
+                go->checkForPassiveHighlight();
+            }
+            return true;
+        });
+    }
+}
+}  // namespace
+
+namespace {
+int luaFlashWindow(LuaState*) {
+    if (HWND hwnd = os::getGameWindow()) { FlashWindow(hwnd, FALSE); }
+    return 0;
 }
 
-int CVarHandler_objectHighlightMode(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_highlightMode), static_cast<int>(HL_DISABLED), static_cast<int>(HL_TRACKED), "%d");
-	DetourTransactionBegin();
-	DetourUpdateThread(GetCurrentThread());
-	if (g_highlightMode != HL_DISABLED) Hooks::Detour(&CGGameObject_C::CheckForPassiveHighlightFn, CGGameObject_C__CheckForPassiveHighlightHk);
-	else Hooks::Detach(&CGGameObject_C::CheckForPassiveHighlightFn, CGGameObject_C__CheckForPassiveHighlightHk);
-	DetourTransactionCommit();
-	if (guid_t pg = ObjectMgr::GetPlayerGuid(); ObjectMgr::Get<CGPlayer_C>(pg, TYPEMASK_PLAYER)) {
-		ObjectMgr::EnumObjects([&](guid_t guid) -> bool {
-			if (guid < 0x1000) return true;
-
-			CGGameObject_C* obj = ObjectMgr::Get<CGGameObject_C>(guid, TYPEMASK_GAMEOBJECT);
-			if (!obj || obj->m_typeID != TYPEID_GAMEOBJECT) return true;
-
-			if (g_highlightMode != HL_DISABLED) CGGameObject_C__CheckForPassiveHighlightHk(obj);
-			else CGGameObject_C::CheckForPassiveHighlightFn(obj);
-			return true;
-		});
-	}
-	return result;
+int luaIsWindowFocused(LuaState* l) {
+    HWND hwnd = os::getGameWindow();
+    if (hwnd == nullptr || GetForegroundWindow() != hwnd) { return 0; }
+    lua::pushNumber(l, 1.0);
+    return 1;
 }
 
-int CVarHandler_chatLogSessionKey(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_chatLogSessionKey, 0, 1, "%d");
-	DWORD oldProtect;
-	VirtualProtect(reinterpret_cast<void*>(0x00AC7A40), 4, PAGE_EXECUTE_READWRITE, &oldProtect);
-	if (g_chatLogSessionKey) {
-		std::sprintf(g_customChatLogPath, "Logs\\%sWoWChatLog.txt", sessionStamp());
-		*reinterpret_cast<const char**>(0x00AC7A40) = g_customChatLogPath;
-	}
-	else { *reinterpret_cast<const char**>(0x00AC7A40) = reinterpret_cast<const char*>(0x009FA4E4); }
-	VirtualProtect(reinterpret_cast<void*>(0x00AC7A40), 4, oldProtect, &oldProtect);
-	return result;
+int luaFocusWindow(LuaState*) {
+    if (HWND hwnd = os::getGameWindow()) { SetForegroundWindow(hwnd); }
+    return 0;
 }
 
-int CVarHandler_combatLogSessionKey(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_combatLogSessionKey, 0, 1, "%d");
-	DWORD oldProtect;
-	VirtualProtect(reinterpret_cast<void*>(0x00AC7A44), 4, PAGE_EXECUTE_READWRITE, &oldProtect);
-	if (g_combatLogSessionKey) {
-		std::sprintf(g_customCombatLogPath, "Logs\\%sWoWCombatLog.txt", sessionStamp());
-		*reinterpret_cast<const char**>(0x00AC7A44) = g_customCombatLogPath;
-	}
-	else { *reinterpret_cast<const char**>(0x00AC7A44) = reinterpret_cast<const char*>(0x009FA4CC); }
-	VirtualProtect(reinterpret_cast<void*>(0x00AC7A44), 4, oldProtect, &oldProtect);
-	return result;
+int luaCopyToClipboard(LuaState* l) {
+    const char* str = lua::checkString(l, 1);
+    if (str != nullptr) {
+        const std::string_view text{str};
+        if (!text.empty()) { utils::copyToClipboardU8(str, nullptr); }
+    }
+    return 0;
 }
 
-bool TerrainClick(float x, float y, float z) {
-	TerrainClickEvent tc = {.m_guid = 0, .m_pos = {.X = x, .Y = y, .Z = z}, .m_button = 1};
-	CGGameUI::HandleTerrainClickFn(&tc);
-	return true;
+int luaCaptureFrame(LuaState* l) {
+    CSimpleFrame* frame = lua::toFrame(l);
+    if (frame == nullptr) { return 0; }
+    if (frame == CGWorldFrame::get()) {
+        misc_capture_frame::frame_capture.captureFailed("FRAMECAPTURE_WORLD_FRAME");
+        return 0;
+    }
+    misc_capture_frame::CaptureRequest request{.frame = frame};
+    if (lua::isNumber(l, 2)) {
+        request.longest_side = static_cast<float>(lua::toNumber(l, 2));
+    } else if (lua::isString(l, 2)) {
+        const std::string_view text = lua::toString(l, 2);
+        const bool is_scale = !text.empty() && (text.back() == 'x' || text.back() == 'X');
+        const std::string_view number = is_scale ? text.substr(0, text.size() - 1) : text;
+        const char* const last = std::to_address(number.end());
+        double value = 0.0;
+        const auto [ptr, ec] = std::from_chars(number.data(), last, value);
+        if (ec != std::errc{} || ptr != last || !(value > 0.0)) {
+            misc_capture_frame::frame_capture.captureFailed(
+                "FRAMECAPTURE_INVALID_SIZE", {misc_capture_frame::fmt::fromString(text)});
+            return 0;
+        }
+        (is_scale ? request.scale : request.longest_side) = static_cast<float>(value);
+    }
+    misc_capture_frame::frame_capture.pending = request;
+    misc_capture_frame::updateCaptureHooks();
+    return 0;
 }
 
-int __cdecl SecureCmdOptionParseHk(lua_State* L) {
-	int result = CGGameUI::SecureCmdOptionParseFn(L);
-
-	if (Lua::lua_gettop(L) < 3 || !Lua::lua_isstring(L, 2) || !Lua::lua_isstring(L, 3)) return result;
-
-	std::string_view parsed_target_view = Lua::lua_tostring(L, 3);
-	bool is_cursor = iequals(parsed_target_view, "cursor");
-	bool is_playerlocation = iequals(parsed_target_view, "playerlocation");
-
-	if (!is_cursor && !is_playerlocation) return result;
-
-	if (is_cursor) g_cursorKeywordActive = true;
-	else if (is_playerlocation) g_playerLocationKeywordActive = true;
-
-	std::string parsed_result = Lua::lua_tostring(L, 2);
-	std::string orig_string = Lua::lua_tostring(L, 1);
-
-	Lua::lua_pop(L, 3);
-	Lua::lua_pushstring(L, orig_string.c_str());
-	Lua::lua_pushstring(L, parsed_result.c_str());
-	Lua::lua_pushnil(L);
-
-	return result;
+int luaOpenMisc(LuaState* l) {
+    static constexpr std::array<lua::LuaLReg, 6> kFuncs = {{
+        {.name = "FlashWindow", .func = luaFlashWindow},
+        {.name = "IsWindowFocused", .func = luaIsWindowFocused},
+        {.name = "FocusWindow", .func = luaFocusWindow},
+        {.name = "CopyToClipboard", .func = luaCopyToClipboard},
+        {.name = "QueueInteract", .func = luaQueueInteract},
+        {.name = "CaptureFrame", .func = luaCaptureFrame},
+    }};
+    for (const auto& [name, func] : kFuncs) {
+        lua::pushCFunction(l, func);
+        lua::setGlobal(l, name);
+    }
+    return 0;
 }
 
-int __fastcall OnLayerTrackTerrainHk(CGWorldFrame* pThis, void* edx, int* a1) {
-	CGPlayer_C* player = ObjectMgr::Get<CGPlayer_C>(ObjectMgr::GetPlayerGuid(), TYPEMASK_PLAYER);
-	if (!player) return pThis->OnLayerTrackTerrain(a1);
+void onEnterWorld() {
+    lua::registerSlashCommand("INTERACTCMD", "/interact", interactFunctionC);
+    CGUIBindings::get()->registerBinding("AWESOME_KEYBIND", "INTERACTIONKEYBIND", "Interaction Button",
+        "AWESOME_WOTLK_KEYBINDS", "Awesome Wotlk Keybinds", "QueueInteract()");
+    static_cast<void>(framescript::execute{}(misc_capture_frame_lua::kFrameCaptureCommands, "FrameCapture", nullptr));
 
-	if (g_playerLocationKeywordActive) {
-		C3Vector playerPos;
-		player->GetPosition(playerPos);
+    if (LuaState* l = lua::getLuaState()) {
+        const char* chat_path = *reinterpret_cast<const char* const*>(0x00AC7A40);
+        std::string chat_msg = std::string("Chat being logged to ") + ((chat_path != nullptr) ? chat_path : "");
+        lua::pushString(l, chat_msg.c_str());
+        lua::setGlobal(l, "CHATLOGENABLED");
 
-		TerrainClick(playerPos.X, playerPos.Y, playerPos.Z);
-		g_playerLocationKeywordActive = false;
-
-		return pThis->OnLayerTrackTerrain(a1);
-	}
-	if (g_cursorKeywordActive) {
-		auto* coords = reinterpret_cast<float*>(a1);
-		C3Vector cursorPos = {.X = coords[2], .Y = coords[3], .Z = coords[4]};
-		TerrainClick(cursorPos.X, cursorPos.Y, cursorPos.Z);
-		g_cursorKeywordActive = false;
-
-		return pThis->OnLayerTrackTerrain(a1);
-	}
-	return pThis->OnLayerTrackTerrain(a1);
+        const char* combat_path = *reinterpret_cast<const char* const*>(0x00AC7A44);
+        std::string combat_msg = std::string("Combat being logged to ") + ((combat_path != nullptr) ? combat_path : "");
+        lua::pushString(l, combat_msg.c_str());
+        lua::setGlobal(l, "COMBATLOGENABLED");
+    }
 }
 
-auto SpellCastResetFn = reinterpret_cast<DummyCallback_t>(0x007FEE99);
-constexpr uintptr_t SpellCastReset_jmpback = 0x007FEE9E;
-
-void __cdecl ResetKeywordFlags() {
-	g_cursorKeywordActive = false;
-	g_playerLocationKeywordActive = false;
+void onLeaveWorld() {
+    interact = {};
+    misc_capture_frame::frame_capture.pending = {};
+    misc_capture_frame::updateCaptureHooks();
 }
 
-void __declspec(naked) SpellCastResetHk() {
-	__asm {
-		call ResetKeywordFlags;
-		call CGGameUI::CursorReleaseSpellTargetingFn;
-		jmp SpellCastReset_jmpback;
-	}
+void onUpdate() {
+    updateInteractCandidate();
+    processQueuedInteraction();
 }
+}  // namespace
 
-void __declspec(naked) PortraitInitialize_site1Hk() {
-	__asm {
-		push g_portraitRes;
-		push g_portraitRes;
-		push esi;
-		jmp PortraitInitialize_site2_jmpback;
-	}
-}
+void misc::initialize(hookkit::HookTransaction& tx) {
+    auto& cvars = *extensions::console::kCvarRegistry;
 
-void __declspec(naked) PortraitSet_siteHk() {
-	__asm {
-		push 2;
-		push 2;
-		push g_portraitRes;
-		push g_portraitRes;
-		jmp PortraitSet_site_jmpback;
-	}
-}
+    cvars.add<int>({.name = "interactionAngle", .init = 60, .min{15}, .max{160}});
+    cvars.add<int>({.name = "interactionMode", .init = 1, .min{0}, .max{1}});
+    cvars.add<int>(
+        {.name = "interactionHighlight", .init = 1, .min{0}, .max{1}, .on_change = applyInteractionHighlight});
+    cvars.add<int>({.name = "portraitResolution", .init = 64, .min{64}, .max{2048}, .on_change = applyPortraitRes});
+    cvars.add<int>({.name = "objectHighlightMode", .init = 0, .min{0}, .max{2}, .on_change = applyObjHlMode});
+    cvars.add<int>({.name = "chatLogSessionKey", .init = 1, .min{0}, .max{1}, .on_change = applyChatLogStamp});
+    cvars.add<int>({.name = "combatLogSessionKey", .init = 1, .min{0}, .max{1}, .on_change = applyCombatLogStamp});
 
-void OnEnterWorld() {
-	Lua::RegisterSlashCommand("INTERACTCMD", "/interact", InteractFunction_C);
-	Lua::RegisterLuaBinding("AWESOME_KEYBIND", "INTERACTIONKEYBIND", "Interaction Button", "AWESOME_WOTLK_KEYBINDS", "Awesome Wotlk Keybinds", "QueueInteract()");
+    extensions::console::kLuaLibRegistry->add(luaOpenMisc);
 
-	if (lua_State* L = Lua::GetLuaState()) {
-		char buf[256];
-		sprintf(buf, "Chat being logged to %s", *reinterpret_cast<const char**>(0x00AC7A40));
-		Lua::lua_pushstring(L, buf);
-		Lua::lua_setglobal(L, "CHATLOGENABLED");
+    extensions::framescript::kOnEnter->add(onEnterWorld);
+    extensions::framescript::kOnLeave->add(onLeaveWorld);
+    extensions::framescript::kOnUpdate->add(onUpdate);
 
-		sprintf(buf, "Combat being logged to %s", *reinterpret_cast<const char**>(0x00AC7A44));
-		Lua::lua_pushstring(L, buf);
-		Lua::lua_setglobal(L, "COMBATLOGENABLED");
-	}
-}
-}
-
-void Misc::initialize() {
-	Hooks::FrameXML::registerLuaLib(lua_openmisclib);
-	Hooks::FrameXML::registerCVar(&s_cvar_interactionAngle, "interactionAngle", nullptr, "60", CVarHandler_interactionAngle);
-	Hooks::FrameXML::registerCVar(&s_cvar_interactionMode, "interactionMode", nullptr, "1", CVarHandler_interactionMode);
-	Hooks::FrameXML::registerCVar(&s_cvar_objectHighlightMode, "objectHighlightMode", nullptr, "0", CVarHandler_objectHighlightMode);
-	Hooks::FrameXML::registerCVar(&s_cvar_portraitResolution, "portraitResolution", nullptr, "64", CVarHandler_portraitResolution);
-	Hooks::FrameXML::registerCVar(&s_cvar_chatLogSessionKey, "chatLogSessionKey", nullptr, "1", CVarHandler_chatLogSessionKey);
-	Hooks::FrameXML::registerCVar(&s_cvar_combatLogSessionKey, "combatLogSessionKey", nullptr, "1", CVarHandler_combatLogSessionKey);
-
-	std::uint8_t mov_eax[5] = {0xA1, 0x00, 0x00, 0x00, 0x00};
-	uintptr_t varAddress = reinterpret_cast<uintptr_t>(&g_portraitRes);
-	std::memcpy(&mov_eax[1], &varAddress, sizeof(varAddress));
-	Hooks::PatchBytes(reinterpret_cast<void*>(PortraitInitialize_site1), mov_eax, sizeof(mov_eax));
-	Hooks::Detour(&PortraitInitialize_site2, PortraitInitialize_site1Hk);
-	Hooks::Detour(&PortraitSet_site, PortraitSet_siteHk);
-
-	Hooks::Detour(&CGGameUI::SecureCmdOptionParseFn, SecureCmdOptionParseHk);
-	Hooks::Detour(&CGWorldFrame::OnLayerTrackTerrainFn, OnLayerTrackTerrainHk);
-	Hooks::Detour(&SpellCastResetFn, SpellCastResetHk);
-
-	Hooks::FrameScript::registerOnEnter(OnEnterWorld);
+    tx.attach(framescript::secureCmdOptionsParse_hook{}, CGWorldFrame::onLayerTrackTerrain_hook{},
+        CSpell_C::cancelPendingAoeTargeting_hook{}, CGxDevice::projectTex2d_hook{}, portraitInitialize_site{},
+        portraitRender_site{});
 }

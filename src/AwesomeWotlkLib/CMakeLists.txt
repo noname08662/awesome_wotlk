@@ -1,52 +1,53 @@
 project( AwesomeWotlkLib )
 
+file(GLOB_RECURSE HEADERS "${CMAKE_SOURCE_DIR}/include/*.h")
+
 add_library(
 	${PROJECT_NAME} SHARED
+		${HEADERS}
 		"Entry.cpp"
 
-		"GameClient.h" "Utils.h"
-		"Enums.h" "Types.h"
-		"D3D.h" "D3D.cpp"
 		"Camera.h" "Camera.cpp"
-        "NamePlates.h" "NamePlates.cpp"
-		"Hooks.h" "Hooks.cpp"
-		"Misc.h" "Misc.cpp"
 		"BugFixes.h" "BugFixes.cpp"
-		"MSDF.h" "MSDF.cpp"
-		"MSDFValidator.h" "MSDFUtils.h" "MSDFShaders.h"
-		"MSDFCache.h" "MSDFCache.cpp"
-		"MSDFManager.h" "MSDFManager.cpp"
-		"MSDFFont.h" "MSDFFont.cpp"
-		"CommandLine.cpp" "CommandLine.h"
-		"Inventory.cpp" "Inventory.h"
-		"Item.h" "Item.cpp"
-		"UnitAPI.h" "UnitAPI.cpp"
-		"Spell.h" "Spell.cpp"
-		"VFX.h" "VFX.cpp"
-		"VoiceChat.h" "VoiceChat.cpp"
-		"ReTools.h")
+        "BugFixesShaders.h"
+        "D3D.h" "D3D.cpp"
+        "Extensions.h" "Extensions.cpp"
+        "CommandLine.h" "CommandLine.cpp"
+        "Inventory.h" "Inventory.cpp"
+        "Item.h" "Item.cpp"
+        "Spell.h" "Spell.cpp"
+        "Misc.h" "Misc.cpp"
+        "MiscCaptureFrame.h"
+        "MiscCaptureFrameLua.h"
+        "MSDF.h" "MSDF.cpp"
+        "MSDFCache.h" "MSDFCache.cpp"
+        "MSDFFaceSweep.h" "MSDFFaceSweep.cpp"
+        "MSDFFont.h" "MSDFFont.cpp"
+        "MSDFManager.h" "MSDFManager.cpp"
+        "MSDFPregen.h" "MSDFPregen.cpp"
+        "MSDFShaders.h"
+        "MSDFUtils.h"
+        "MSDFValidator.h"
+        "NamePlates.h" "NamePlates.cpp"
+        "NamePlateSettings.h"
+        "NamePlateEntry.h" "NamePlateEntry.cpp"
+        "NamePlateManager.h" "NamePlateManager.cpp"
+        "UnitAPI.h" "UnitAPI.cpp"
+        "VoiceChat.h" "VoiceChat.cpp")
 
 target_include_directories(
     ${PROJECT_NAME} PRIVATE
-		${CMAKE_SOURCE_DIR}/deps
-		${CMAKE_SOURCE_DIR}/deps/skia/include
-		${CMAKE_SOURCE_DIR}/deps/msdfgen
-		${CMAKE_BINARY_DIR}/deps/msdfgen
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(
     ${PROJECT_NAME} PRIVATE
-        Detours
-		msdfgen::msdfgen-core
-		msdfgen::msdfgen-ext
-		freetype
+        AwesomeWotLK_Common
+
         ole32
         oleaut32
         uuid
         sapi
-		"${CMAKE_SOURCE_DIR}/deps/skia/skia.lib"
-		ankerl::unordered_dense
 )
 
 target_compile_definitions(

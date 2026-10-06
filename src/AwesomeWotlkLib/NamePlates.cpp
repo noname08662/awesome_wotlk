@@ -1,1354 +1,385 @@
 #include "NamePlates.h"
-#include "Utils.h"
-#include <format>
-#include <bit>
-#include <algorithm>
-#include "unordered_dense/include/ankerl/unordered_dense.h"
 
-#undef min
-#undef max
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+
+#include "Extensions.h"
+#include "NamePlateManager.h"
+#include "NamePlateSettings.h"
+
+#include "include/Camera/CGCamera.h"
+#include "include/Game/CGGameUI.h"
+#include "include/Game/CGInputControl.h"
+#include "include/Lib/Lua.h"
+#include "include/Math/Math.h"
+#include "include/ObjectManager/CGUnit_C.h"
+#include "include/ObjectManager/ObjectManager.h"
+#include "include/UI/CGNamePlateFrame.h"
+#include "include/UI/CLayoutFrame.h"
+#include "include/UI/UIBindings.h"
+#include "include/World/CGWorldFrame.h"
+
+using namespace name_plates;
 
 namespace {
-constexpr auto NAME_PLATE_CREATED = "NAME_PLATE_CREATED";
-constexpr auto NAME_PLATE_UNIT_ADDED = "NAME_PLATE_UNIT_ADDED";
-constexpr auto NAME_PLATE_UNIT_REMOVED = "NAME_PLATE_UNIT_REMOVED";
-constexpr float EPS = 1e-4f;
+using extensions::console::kEventRegistry;
 
-constexpr uint16_t MAX_PLATES = 768;
-static_assert(MAX_PLATES % 64 == 0, "MAX_PLATES must be a multiple of 64 for pending bitset words");
-static_assert(MAX_PLATES <= 1024, "activeCollisions array sized for up to 1024 plates (32 uint32_t words)");
+// whether an off-screen plate of this unit is kept alive and clamped
+bool clampsUnit(CGUnit_C* unit) {
+    const Settings& s = *kSettings;
+    if (s.clampMode() == ClampMode::eDisabled) { return false; }
+    return s.clampFilterPasses(unit->getGuid(), object_mgr::getTargetGuid(), game_ui::inCombatLockdown()) &&
+        s.clampsRank([unit] { return unit->getCreatureRank(); });
+}
 
-CVar* s_cvar_nameplateDistance;
-CVar* s_cvar_nameplateStacking;
-CVar* s_cvar_nameplateBandX;
-CVar* s_cvar_nameplateBandY;
-CVar* s_cvar_nameplateHitboxAnchor;
-CVar* s_cvar_nameplateHitboxWidthE;
-CVar* s_cvar_nameplateHitboxHeightE;
-CVar* s_cvar_nameplateHitboxWidthF;
-CVar* s_cvar_nameplateHitboxHeightF;
-CVar* s_cvar_nameplatePlacement;
-CVar* s_cvar_nameplateMouseMode;
-CVar* s_cvar_nameplateRaiseSpeed;
-CVar* s_cvar_nameplateLowerSpeed;
-CVar* s_cvar_nameplatePullSpeed;
-CVar* s_cvar_nameplateRaiseDistance;
-CVar* s_cvar_nameplatePullDistance;
-CVar* s_cvar_nameplateOcclusionAlpha;
-CVar* s_cvar_nameplateOcclusionMode;
-CVar* s_cvar_nameplateNonTargetAlpha;
-CVar* s_cvar_nameplateAlphaSpeed;
-CVar* s_cvar_nameplateInertia;
-CVar* s_cvar_nameplateHysteresisDecay;
-CVar* s_cvar_nameplateClampMode;
-CVar* s_cvar_nameplateClampModeVOffset;
-CVar* s_cvar_nameplateClampModeHOffset;
+// full replacement; the caller discards the return value
+HOOKKIT_BIND(CGWorldFrame::updateNamePlatePositions_hook, [](CGWorldFrame* self) { kPlates->update(self); });
 
-enum EStackingMode : int32_t {
-	S_DISABLED = 0, S_ALL = 1, S_ENEMY = 2,
-	S_FRIENDLY = 3, };
+HOOKKIT_BIND(CGUnit_C::updateReaction_hook, [](CGUnit_C* self, char update_all) {
+    const int result = self->updateReaction(update_all);
+    kPlates->onReactionChanged(self);
+    return result;
+});
 
-enum EClampMode : uint32_t {
-	C_DISABLED = 0, C_ALL = 1, C_BOSS = 2,
-	C_ALL_EDGES = 3, C_BOSS_EDGES = 4
+// full replacement; the engine's own caller cleans the stack, see the nop in initialize
+HOOKKIT_BIND(CGUnit_C::isVisible_hook, [](CGUnit_C* self, CGWorldFrame* wf, Vec3f* out) {
+    Vec3f world_pos;
+    self->getNamePosition(world_pos);
+    world_pos.z += kSettings->placement;
+    int mask = 0;
+    if (wf->getScreenCoords(&world_pos, out, &mask)) { return true; }
+    if (mask > 0) {
+        constexpr Vec2f kHalfPlate{CGNamePlateFrame::kDefaultWidth * 0.5f, CGNamePlateFrame::kDefaultHeight * 0.5f};
+        const Vec2f margin = math::ndcToDdc(kHalfPlate);
+        // >=50% out of the viewport but still visible: keep it, prevents static names popping in
+        if ((out->x >= -margin.x) && (out->x <= (wf->rect_.right - wf->rect_.left) + margin.x) &&
+            (out->y >= -margin.y) && (out->y <= (wf->rect_.top - wf->rect_.bottom) + margin.y)) {
+            return true;
+        }
+    }
+    if (!clampsUnit(self)) { return false; }
+    switch (kSettings->clampMode()) {
+        case ClampMode::eAll:
+        case ClampMode::eBoss:
+            return mask == 7;
+        case ClampMode::eAllEdges:
+        case ClampMode::eBossEdges:
+            return mask > 0;
+        case ClampMode::eDisabled:
+        default:
+            return false;
+    }
+});
+
+// full replacement
+HOOKKIT_BIND(CGUnit_C::setNamePlateFocus_hook, [](Vec3f* pos) {
+    CGInputControl* input = CGInputControl::get{}();
+    if (input == nullptr || (input->control_flags_ & CGInputControl::kMouseBusyFlags) != 0) { return; }
+
+    const MouseMode mode = derived_settings.mouse_mode;
+    CGNamePlateFrame* prio;
+    if (hasFlag(mode, MouseMode::eClickThruEnemy)) {
+        prio = kPlates->pickPlate<ClickLogic::eThruEnemy>(pos);
+    } else if (hasFlag(mode, MouseMode::eClickThruFriend)) {
+        prio = kPlates->pickPlate<ClickLogic::eThruFriend>(pos);
+    } else {
+        prio = kPlates->pickPlate<ClickLogic::eNone>(pos);
+    }
+
+    if (CGNamePlateFrame*& focus = CGNamePlateFrame::focus; prio != focus) {
+        if (focus != nullptr) { focus->onFocusLost(); }
+        focus = prio;
+        if (prio != nullptr) { prio->onFocusGained(); }
+        markDirty();
+    }
+    if (kSettings->freezeActive()) { kPlates->setHover(kPlates->hoverPlate(prio, pos)); }
+});
+
+// fires on combat mode changes; forces a pass even when everything is perfectly stationary
+HOOKKIT_BIND(CGUIBindings::setBindingModeState_hook, [](CGUIBindings* self, int mode_index, int enabled) {
+    markDirty();
+    self->setBindingModeState(mode_index, enabled);
+});
+
+HOOKKIT_BIND(game_ui::target_hook, [](guid_t guid) {
+    game_ui::target{}(guid);
+    markDirty();
+});
+
+HOOKKIT_BIND(game_ui::clearTarget_hook, [](guid_t guid, int flag) {
+    game_ui::clearTarget{}(guid, flag);
+    markDirty();
+});
+
+// the constructor leaves the bytes the ext state lives in untouched, reused blocks would keep stale ids
+HOOKKIT_BIND(CGNamePlateFrame::ctor_hook, [](CGNamePlateFrame* self, CSimpleFrame* parent) {
+    CGNamePlateFrame* result = self->ctor(parent);
+    CGNamePlateFrameExt::of(result)->reset();
+    return result;
+});
+
+HOOKKIT_BIND(CGNamePlateFrame::wipeActive_hook, [] {
+    kPlates->clearAll();
+    return CGNamePlateFrame::wipeActive{}();
+});
+
+HOOKKIT_BIND(CGNamePlateFrame::wipeCDA_hook, [] {
+    kPlates->clearAll();
+    return CGNamePlateFrame::wipeCDA{}();
+});
+
+// skips the engine's own frame level assignment, levels are set in updateNamePlatePositions
+HOOKKIT_NAMED_BIND_RAW(plateLevel_site, 0x0098E9F9, {"jmpback", 0x0098EA27}) {
+    constexpr uintptr_t kJmpback = plateLevel_site::target("jmpback");
+    return CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(jmpTo(kJmpback, pushReg(Reg::eDi)));
 };
 
-enum EOcclusionMode : uint32_t {
-	OC_ALWAYS = 0, OC_NOT_IN_COMBAT = 1,
+// skips clearing render_dirty_flags_ after updateNamePlatePositions
+HOOKKIT_NAMED_BIND_RAW(worldRenderDirty_site, 0x004F90E2, {"jmpback", 0x004F90EC}) {
+    constexpr uintptr_t kJmpback = worldRenderDirty_site::target("jmpback");
+    return CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(jmpTo(kJmpback, addReg(Reg::eSp, 8)));
 };
 
-enum EMouseMode : uint32_t {
-	M_DISABLED = 0, M_CLICK_THRU_ENEMY = 1 << 0, M_CLICK_THRU_FRIEND = 1 << 1,
-	M_OVER_ALWAYS = 1 << 2, M_OVER_COMBAT = 1 << 3, };
+HOOKKIT_NAMED_BIND_RAW(plateAlpha_site, 0x0098EAA7, {"jmpback", 0x0098EAD2}) {
+    const uintptr_t alpha = HOOKKIT_LAMBDA_ADDR([](CGUnit_C* unit) -> uint8_t {
+        if (unit == nullptr || unit->nameplate_ == nullptr) { return 255; }
+        const Settings& s = *kSettings;
+        const Derived& d = derived_settings;
+        CGNamePlateFrameExt* plate = CGNamePlateFrameExt::of(unit->nameplate_);
 
-constexpr uint32_t g_mouseModeMap[] = {M_DISABLED, M_CLICK_THRU_ENEMY, M_CLICK_THRU_ENEMY | M_OVER_ALWAYS, M_CLICK_THRU_ENEMY | M_OVER_COMBAT, M_CLICK_THRU_FRIEND, M_CLICK_THRU_FRIEND | M_OVER_ALWAYS, M_CLICK_THRU_FRIEND | M_OVER_COMBAT, M_OVER_ALWAYS, M_OVER_COMBAT};
+        const guid_t target_guid = object_mgr::getTargetGuid();
+        const bool is_target_or_mouse_over =
+            target_guid != 0 ? unit->getGuid() == target_guid : plate == CGNamePlateFrame::focus;
+        uint8_t target_alpha = 255;
+        if (target_guid != 0 && !is_target_or_mouse_over) { target_alpha = d.non_target_alpha; }
 
-enum ESortType : uint32_t {
-	ST_IN = 1 << 0, ST_OUT = 1 << 1
+        if (!is_target_or_mouse_over && d.occlusion_on &&
+            (static_cast<OcclusionMode>(s.occlusion_mode) == OcclusionMode::eAlways || !game_ui::inCombatLockdown()) &&
+            !plate->isOpaque()) {
+            if (CGCamera* camera = CGCamera::get{}()) {
+                Vec3f hit_point;
+                float dist = 1.0f;
+                Vec3f start = camera->pos_;
+                Vec3f end;
+                unit->getPosition(end);
+                end.z += unit->movement_.bounding_height_ * 0.666f;
+
+                if (math::trace(start, end, CGWorldFrame::kWorldTraceHitFlags, hit_point, dist)) {
+                    if (d.occlude_up) {
+                        target_alpha = std::min(target_alpha, d.occlusion_cap);
+                    } else {
+                        target_alpha = static_cast<uint8_t>(static_cast<float>(target_alpha) * d.occlusion_scale);
+                    }
+                }
+            }
+        }
+
+        if (plate->isFresh()) {
+            plate->setFresh(false);
+            return target_alpha;
+        }
+
+        const auto current = static_cast<float>(plate->alpha_self_);
+        const float delta = static_cast<float>(target_alpha) - current;
+        if (std::abs(delta) < 0.5f) { return target_alpha; }
+
+        const CGWorldFrame* wf = CGWorldFrame::get();
+        const float step = delta * perFrame(s.alpha_speed, wf != nullptr ? sceneDelta(wf) : 1.0f / kTunedFps);
+        const float next_alpha = current + (std::abs(step) < 1.0f ? std::copysign(1.0f, delta) : step);
+
+        if (std::abs(static_cast<float>(target_alpha) - next_alpha) < 1.0f) { return target_alpha; }
+        const bool overshoot =
+            (delta > 0.0f && next_alpha > target_alpha) || (delta < 0.0f && next_alpha < target_alpha);
+        return overshoot ? target_alpha : static_cast<uint8_t>(next_alpha);
+    });
+    constexpr uintptr_t kJmpback = plateAlpha_site::target("jmpback");
+    return CallsiteTrampolineBuilder{}
+        .assertOnBuildFailure()
+        .step(pushReg(Reg::eDi))
+        .build(alpha, jmpTo(kJmpback, pushReg(Reg::eAx)));
 };
-
-EStackingMode g_stackingMode = S_DISABLED;
-EMouseMode g_mouseOverMode = M_DISABLED;
-EClampMode g_clampMode = C_DISABLED;
-EOcclusionMode g_occlusionMode = OC_ALWAYS;
-CGNamePlate::EHitboxAnchor g_hitAnchor = CGNamePlate::EHitboxAnchor::HB_CENTER;
-float g_bandX = 0.7f;
-float g_bandY = 1.0f;
-float g_hitWidthE = 1.0f;
-float g_hitHeightE = 1.0f;
-float g_hitWidthF = 1.0f;
-float g_hitHeightF = 1.0f;
-float g_speedRaise = 100.0f;
-float g_speedLower = 100.0f;
-float g_speedPull = 50.0f;
-float g_maxPull = 0.25f;
-float g_maxRaise = 8.0f;
-float g_clampModeVOffset = 0.1f;
-float g_clampModeHOffset = 0.01f;
-float g_nonTargetAlpha = 0.5f;
-float g_occlusionAlpha = 1.0f;
-float g_alphaSpd = 1.0f;
-float g_inertia = 1.0f;
-float g_hystDecay = 1.0f;
-float g_nameplatePlacement = 0.66666669f;
-bool s_occludeUp = false;
-
-auto* const g_alloc = reinterpret_cast<CDataAllocator*>(0x00DCEC44);
-auto* const g_lockedTarget = reinterpret_cast<guid_t*>(0x00BD07B0);
-auto* const g_nameplateFocus = reinterpret_cast<CGNamePlate**>(0x00CA1204);
-
-struct alignas(64) Entry {
-	enum class IEState : uint32_t {
-		NONE = 0, SHOULD_STACK = 0x1, SHOULD_CLAMP = 0x2,
-		IS_FRIENDLY = 0x4, IS_TRANSIENT = 0x8, IS_FRESH = 0x10,
-		IS_ACTIVE = 0x20
-	};
-
-	bool hasState(IEState flag) const { return (static_cast<uint32_t>(state) & static_cast<uint32_t>(flag)) != 0; }
-
-	void setState(IEState flag, bool on) {
-		if (on) state = static_cast<IEState>(static_cast<uint32_t>(state) | static_cast<uint32_t>(flag));
-		else state = static_cast<IEState>(static_cast<uint32_t>(state) & ~static_cast<uint32_t>(flag));
-	}
-
-	CGNamePlate* ptr = nullptr;
-	CDataChunk* chunk = nullptr;
-	guid_t guid = 0;
-	uint16_t block = 0;
-	ECreatureRank classification = RANK_NORMAL;
-
-	float momentumY = 0.0f;
-	float momentumX = 0.0f;
-
-	int pushCount = 0;
-
-	float commitTargetX = 0.0f;
-	float commitTargetY = 0.0f;
-	float targetOffsetX = 0.0f;
-	float targetOffsetY = 0.0f;
-	float smoothTargetX = 0.0f;
-	float smoothTargetY = 0.0f;
-	float stackOffsetX = 0.0f;
-	float stackOffsetY = 0.0f;
-	float accumX = 0.0f;
-
-	IEState state = IEState::NONE;
-
-	uint32_t activeCollisions[MAX_PLATES / 32];
-
-	void freshState(float spd) {
-		float alpha = std::clamp(spd, 0.0f, 0.5f);
-		float maxPull = ptr->m_width * g_maxPull;
-		accumX += (0.0f - accumX) * alpha;
-		targetOffsetY += (0.0f - targetOffsetY) * alpha;
-		targetOffsetX = std::clamp((pushCount > 1) ? accumX / static_cast<float>(pushCount) : accumX, -maxPull, maxPull);
-		pushCount = 0;
-	}
-
-	void clearState() {
-		commitTargetY = 0.0f;
-		commitTargetX = 0.0f;
-		targetOffsetY = 0.0f;
-		targetOffsetX = 0.0f;
-		stackOffsetY = 0.0f;
-		stackOffsetX = 0.0f;
-		smoothTargetX = 0.0f;
-		smoothTargetY = 0.0f;
-		momentumX = 0.0f;
-		momentumY = 0.0f;
-		pushCount = 0;
-		accumX = 0.0f;
-		state = IEState::IS_FRESH;
-	}
-
-	void setActiveCollision(int id) { activeCollisions[id >> 5] |= (1u << (id & 31)); }
-	void setInactiveCollision(int id) { activeCollisions[id >> 5] &= ~(1u << (id & 31)); }
-
-	float getTopNDC(float perc = 1.0f) const { return ptr->m_NDCproj.y + ptr->m_height * 0.5f * perc; }
-	float getBotNDC(float perc = 1.0f) const { return ptr->m_NDCproj.y - ptr->m_height * 0.5f * perc; }
-	float getAvgWFor(const Entry* e, float perc = 1.0f) const { return (ptr->m_width + e->ptr->m_width) * 0.5f * perc; }
-	float getAvgHFor(const Entry* e, float perc = 1.0f) const { return (ptr->m_height + e->ptr->m_height) * 0.5f * perc; }
-	float getReqYFor(const Entry* e, float perc = 1.0f) const { return ptr->m_NDCproj.y + targetOffsetY + getAvgHFor(e, perc) - e->ptr->m_NDCproj.y; }
-	float getReqXFor(const Entry* e) const { return (ptr->m_NDCproj.x + targetOffsetX) - (e->ptr->m_NDCproj.x + e->targetOffsetX); }
-	float getReqDXFor(const Entry* e) const { return std::abs((ptr->m_NDCproj.x + targetOffsetX) - (e->ptr->m_NDCproj.x + e->targetOffsetX)); }
-	float getReqDYFor(const Entry* e) const { return std::abs((ptr->m_NDCproj.y + targetOffsetY) - (e->ptr->m_NDCproj.y + e->targetOffsetY)); }
-	float getProximity(const Entry* e, float bx = 1.0f, float by = 1.0f) const { return std::clamp(std::min(getReqDXFor(e) / getAvgWFor(e, bx), getReqDYFor(e) / getAvgHFor(e, by)), 0.0f, 1.0f); }
-
-	int getRankWeight() const {
-		switch (classification) {
-		case RANK_TRIVIAL:
-			return 0;
-		case RANK_NORMAL:
-			return 1;
-		case RANK_RARE:
-			return 2;
-		case RANK_ELITE:
-			return 3;
-		case RANK_RAREELITE:
-			return 4;
-		case RANK_WORLDBOSS:
-			return 5;
-		}
-		return 0;
-	}
-
-	bool resolvePush(const Entry* e, float sep, float hyst) const { return ((e->getTarY() > getBotNDC(sep * (hyst + 1.0f)) + targetOffsetY) && (e->getTarY() < getTopNDC(sep * (hyst + 1.0f)) + targetOffsetY) || (e->getBotNDC() + e->stackOffsetY > getTopNDC() + targetOffsetY && e->getBotNDC() + e->targetOffsetY < getTopNDC() + targetOffsetY)); }
-
-	float getVisY() const { return ptr->m_NDCproj.y + stackOffsetY; }
-	float getVisX() const { return ptr->m_NDCproj.x + stackOffsetX; }
-
-	float getTarY() const { return ptr->m_NDCproj.y + targetOffsetY; }
-	float getTarX() const { return ptr->m_NDCproj.x + targetOffsetX; }
-
-	bool isAtX(float x) const { return std::abs(stackOffsetX - x) < EPS; }
-	bool isAtY(float y) const { return std::abs(stackOffsetY - y) < EPS; }
-	bool isAt(float x, float y) const { return isAtX(x) && isAtY(y); }
-	bool isResting() const { return std::abs(stackOffsetX) < EPS && std::abs(stackOffsetY) < EPS; }
-	
-	void updVis(const float spdY, const float spdX, const float inertia, const float delta, const float maxY, const float ceilY, const float ceilX, bool allEdges) {
-		float maxPull = ptr->m_width * g_maxPull;
-		float maxRaise = ptr->m_height * maxY;
-
-		float limMinY = -10000.0f;
-		float limMaxY = maxRaise;
-		float limMinX = -maxPull;
-		float limMaxX = maxPull;
-
-		if (hasState(IEState::SHOULD_CLAMP)) {
-			limMaxY = std::min(maxRaise, NDC_Y - ceilY - getTopNDC());
-			if (allEdges) {
-				limMinY = std::min(maxRaise, (0.0f + ceilY) - getBotNDC());
-				limMinX = (0.0f + ceilX) - (ptr->m_NDCproj.x - ptr->m_width * 0.5f);
-				limMaxX = (NDC_X - ceilX) - ptr->m_NDCproj.x; // engine anchors right originally
-			}
-		}
-
-		targetOffsetX = std::clamp(targetOffsetX, limMinX, limMaxX);
-		targetOffsetY = std::clamp(targetOffsetY, limMinY, limMaxY);
-
-		float gapY = targetOffsetY - commitTargetY;
-		float gapX = targetOffsetX - commitTargetX;
-		float wantMomY = std::abs(gapY) > EPS ? (gapY > 0.0f ? 1.0f : -1.0f) : 0.0f;
-		float wantMomX = std::abs(gapX) > EPS ? (gapX > 0.0f ? 1.0f : -1.0f) : 0.0f;
-
-		if (isResting()) {
-			momentumY = wantMomY;
-			momentumX = wantMomX;
-		}
-		else {
-			float rateY = (wantMomY * momentumY < 0.0f) ? 1.0f : spdY * 0.025f;
-			float rateX = (wantMomX * momentumX < 0.0f) ? 1.0f : spdX * 0.025f;
-			momentumY += (wantMomY - momentumY) * std::clamp(rateY * inertia * delta, 0.0f, 1.0f);
-			momentumX += (wantMomX - momentumX) * std::clamp(rateX * inertia * delta, 0.0f, 1.0f);
-		}
-
-		if (!isAt(targetOffsetX, targetOffsetY)) {
-			float commitAlpha = std::clamp(10.0f * std::abs(momentumY) * delta, 0.0f, 1.0f);
-			commitTargetY += (targetOffsetY - commitTargetY) * commitAlpha;
-			commitAlpha = std::clamp(10.0f * std::abs(momentumX) * delta, 0.0f, 1.0f);
-			commitTargetX += (targetOffsetX - commitTargetX) * commitAlpha;
-		}
-		else {
-			commitTargetY = targetOffsetY;
-			commitTargetX = targetOffsetX;
-			momentumY *= 0.1f;
-			momentumX *= 0.1f;
-		}
-
-		float sAlphaY = 1.0f - std::exp(-spdY * std::abs(momentumY) * delta);
-		float sAlphaX = 1.0f - std::exp(-spdX * std::abs(momentumX) * delta);
-		smoothTargetY += (commitTargetY - smoothTargetY) * sAlphaY;
-		smoothTargetX += (commitTargetX - smoothTargetX) * sAlphaX;
-
-		float a2y = std::pow(std::clamp(spdY * delta, 0.0f, 1.0f), 1.5f) * std::abs(momentumY * momentumY * momentumY);
-		float a2x = std::pow(std::clamp(spdX * delta, 0.0f, 1.0f), 1.5f) * std::abs(momentumX * momentumX * momentumX);
-		float dy = smoothTargetY - stackOffsetY;
-		float dx = smoothTargetX - stackOffsetX;
-
-		if (std::abs(dy) > EPS) stackOffsetY += dy * std::clamp(a2y, 0.0f, 1.0f);
-		else stackOffsetY = smoothTargetY;
-
-		if (std::abs(dx) > EPS) stackOffsetX += dx * std::clamp(a2x, 0.0f, 1.0f);
-		else stackOffsetX = smoothTargetX;
-
-		if (hasState(IEState::SHOULD_CLAMP)) {
-			if (stackOffsetY > limMaxY || stackOffsetY < limMinY || stackOffsetX > limMaxX || stackOffsetX < limMinX) {
-				stackOffsetY = std::clamp(stackOffsetY, limMinY, limMaxY);
-				stackOffsetX = std::clamp(stackOffsetX, limMinX, limMaxX);
-				smoothTargetY = stackOffsetY;
-				commitTargetY = stackOffsetY;
-				smoothTargetX = stackOffsetX;
-				commitTargetX = stackOffsetX;
-			}
-		}
-	}
-};
-
-class EntryManager {
-	class ChunkManager {
-		friend class EntryManager;
-
-		struct ChunkMeta {
-			uintptr_t start;
-			uintptr_t end;
-			CDataChunk* chunk;
-		};
-
-		uintptr_t chunksHeadCached = 0;
-
-		std::vector<ChunkMeta> chunks;
-
-		void updateHead(uintptr_t h) {
-			if (h != chunksHeadCached || chunks.empty()) {
-				chunks.clear();
-				for (auto* cur = g_alloc->m_chunkList; cur; cur = cur->m_nextChunk) {
-					const auto start = reinterpret_cast<uintptr_t>(&cur->m_data);
-					const auto end = start + g_alloc->m_blocksPerChunk * g_alloc->m_blockSize;
-					chunks.push_back({.start = start, .end = end, .chunk = cur});
-				}
-				std::ranges::sort(chunks, {}, &ChunkMeta::start);
-				chunksHeadCached = h;
-			}
-		}
-
-		const ChunkMeta* findChunk(uintptr_t addr) {
-			if (g_alloc->m_chunkList) {
-				updateHead(reinterpret_cast<uintptr_t>(g_alloc->m_chunkList));
-				if (chunks.empty()) return nullptr;
-				if (auto it = std::ranges::upper_bound(chunks, addr, {}, &ChunkMeta::start); it != chunks.begin()) {
-					--it;
-					if (addr >= it->start && addr < it->end) return &(*it);
-				}
-			}
-			return nullptr;
-		}
-
-		void reserve(size_t r) { chunks.reserve(r); }
-
-		void clear() {
-			chunks.clear();
-			chunksHeadCached = 0;
-		}
-	} chunkMgr;
-
-	class PairsManager {
-		friend class EntryManager;
-
-		struct alignas(32) PairState {
-			uint64_t timestamp = 0;
-
-			int hystSteps = 0;
-			float hystDecay = 0.0f;
-			float hysteresis = 1.0f;
-
-			uint64_t proximate = 0;
-
-			const Entry* e1 = nullptr;
-			const Entry* e2 = nullptr;
-
-			bool isStale(uint64_t ms) const { return timestamp < ms; }
-			bool isApart(uint64_t ms) const { return proximate < ms; }
-
-			void commit(uint64_t ms, float hyst) {
-				if (hystDecay > 0.0f && timestamp == 0) {
-					hystSteps++;
-					hystDecay = 1.0f;
-				}
-				else if (timestamp == 0) { hystDecay = 1.0f; }
-				timestamp = ms;
-				hysteresis = hyst;
-			}
-
-			void cooldown(uint64_t ms, float delta) {
-				if (!e1 || !e2) {
-					hystDecay = 0.0f;
-					hystSteps = 0;
-					return;
-				}
-				if (hystDecay > 0.0f) {
-					hystDecay -= e1->getProximity(e2) * delta;
-					if (hystDecay <= 0.0f) {
-						hystDecay = 0.0f;
-						hystSteps = 0;
-					}
-				}
-			}
-
-			void seed(uint64_t ms, const Entry* e1_, const Entry* e2_) {
-				proximate = ms;
-				if (!e1 || !e2) {
-					e1 = e1_;
-					e2 = e2_;
-				}
-			}
-
-			void reset(bool full = false) {
-				hysteresis = 1.0f;
-				timestamp = 0;
-				if (full) {
-					proximate = 0;
-					hystDecay = 0.0f;
-					hystSteps = 0;
-					e1 = nullptr;
-					e2 = nullptr;
-				}
-			}
-		};
-
-		// inline pool for the speed
-		size_t size = 0;
-		std::unique_ptr<PairState[]> pairs;
-
-		void init(size_t r) {
-			pairs = std::make_unique<PairState[]>(r * r);
-			size = r;
-		}
-
-		void wipe() const { if (pairs) std::fill_n(pairs.get(), size * size, PairState{}); }
-		PairState* get(int id1, int id2) { return &pairs[std::min(id1, id2) * size + std::max(id1, id2)]; }
-	} pairsMgr;
-
-	std::vector<Entry> byId;
-	std::vector<Entry*> entries;
-	std::vector<const char*> tokenCache;
-
-	uint64_t pending[MAX_PLATES / 64] = {};
-
-	enum class IESortMode : uint32_t {
-		DEFAULT, TARGET, FOCUS,
-		TARGET_FOCUS
-	};
-
-	template <IESortMode mode, bool out>
-	void sort(guid_t targetGuid = 0, CGNamePlate* focus = nullptr) {
-		std::sort(entries.begin(), entries.end(), [this, targetGuid, focus](const Entry* a, const Entry* b) {
-			if constexpr (mode == IESortMode::TARGET || mode == IESortMode::TARGET_FOCUS) {
-				bool isT_a = (a->guid == targetGuid);
-				bool isT_b = (b->guid == targetGuid);
-				if (isT_a != isT_b) return isT_a;
-			}
-			if constexpr (mode == IESortMode::FOCUS || mode == IESortMode::TARGET_FOCUS) {
-				bool isF_a = (a->ptr == focus);
-				bool isF_b = (b->ptr == focus);
-				if (isF_a != isF_b) return isF_a;
-			}
-			if constexpr (out) return a->ptr->m_depthZ < b->ptr->m_depthZ;
-			float posA = a->ptr->m_NDCproj.y + a->targetOffsetY;
-			float posB = b->ptr->m_NDCproj.y + b->targetOffsetY;
-			if (std::abs(posA - posB) > EPS) return posA < posB;
-			int rankA = a->getRankWeight();
-			int rankB = b->getRankWeight();
-			if (rankA != rankB) return rankA > rankB;
-			return a->ptr < b->ptr;
-		});
-	}
-
-	static CGNamePlate* getValidPlate(lua_State* L, EntryManager* self) {
-		if (!self || !Lua::lua_istable(L, 1)) return nullptr;
-
-		Lua::lua_rawgeti(L, 1, 0);
-		void* frame = Lua::lua_touserdata(L, -1);
-		Lua::lua_settop(L, -2);
-
-		if (!frame) return nullptr;
-
-		auto* plate = static_cast<CGNamePlate*>(frame);
-		const int index = plate->GetPlateId();
-		if (index >= 0 && index < std::ssize(self->byId) && self->byId[index].ptr == plate) { return plate; }
-		return nullptr;
-	}
-
-	void onPlateCreated(CGNamePlate* plate) {
-		lua_State* L = Lua::GetLuaState();
-		Lua::lua_pushstring(L, NAME_PLATE_CREATED);
-		Lua::lua_pushframe(L, plate);
-
-		Lua::lua_pushlightuserdata(L, this);
-		Lua::lua_pushcclosure(L, [](lua_State* L) -> int {
-			auto* self = static_cast<EntryManager*>(Lua::lua_touserdata(L, Lua::upvalueindex(1)));
-			if (auto* plate = getValidPlate(L, self)) {
-				auto& e = self->byId[plate->GetPlateId()];
-				e.setState(Entry::IEState::IS_TRANSIENT, !Lua::lua_toboolean(L, 2));
-				self->applyStackingState(&e);
-			}
-			return 0;
-		}, 1);
-		Lua::lua_setfield(L, -2, "SetStackingEnabled");
-
-		Lua::lua_pushlightuserdata(L, this);
-		Lua::lua_pushcclosure(L, [](lua_State* L) -> int {
-			auto* self = static_cast<EntryManager*>(Lua::lua_touserdata(L, Lua::upvalueindex(1)));
-			if (auto* plate = getValidPlate(L, self)) {
-				auto& e = self->byId[plate->GetPlateId()];
-				Lua::lua_pushboolean(L, e.hasState(Entry::IEState::SHOULD_STACK));
-				return 1;
-			}
-			return 0;
-		}, 1);
-		Lua::lua_setfield(L, -2, "GetStackingEnabled");
-
-		Lua::lua_pushlightuserdata(L, this);
-		Lua::lua_pushcclosure(L, [](lua_State* L) -> int {
-			auto* self = static_cast<EntryManager*>(Lua::lua_touserdata(L, Lua::upvalueindex(1)));
-			if (auto* plate = getValidPlate(L, self)) { plate->SetPlateState(NP_IS_OPAQUE, !Lua::lua_toboolean(L, 2)); }
-			return 0;
-		}, 1);
-		Lua::lua_setfield(L, -2, "SetOcclusionEnabled");
-
-		Lua::lua_pushlightuserdata(L, this);
-		Lua::lua_pushcclosure(L, [](lua_State* L) -> int {
-			auto* self = static_cast<EntryManager*>(Lua::lua_touserdata(L, Lua::upvalueindex(1)));
-			if (auto* plate = getValidPlate(L, self)) {
-				Lua::lua_pushboolean(L, !plate->HasPlateState(NP_IS_OPAQUE));
-				return 1;
-			}
-			return 0;
-		}, 1);
-		Lua::lua_setfield(L, -2, "GetOcclusionEnabled");
-
-		FrameScript::FireEvent_inner(FrameScript::GetEventIdByName(NAME_PLATE_CREATED), L, 2);
-		Lua::lua_pop(L, 2);
-	}
-
-public:
-	std::vector<Entry*>& get() { return entries; }
-	int getTotalSize() const { return std::ssize(byId); }
-
-	PairsManager::PairState* getPair(const Entry* e1, const Entry* e2) { return pairsMgr.get(e1->ptr->GetPlateId(), e2->ptr->GetPlateId()); }
-
-	void commitPair(const Entry* e1, const Entry* e2, uint64_t ms, float delta, float by, float bx) {
-		// set bits, update hysteresis
-		auto* ps = pairsMgr.get(e1->ptr->GetPlateId(), e2->ptr->GetPlateId());
-		if (((e1->getTopNDC() + e1->targetOffsetY + e1->getAvgHFor(e2, by)) > (e2->getBotNDC() + e2->targetOffsetY) && e1->getReqDXFor(e2) < e1->getAvgWFor(e2, bx))) {
-			ps->commit(ms, 1.25f + std::min(ps->hystSteps * 0.15f, 0.75f)); // still overlapping naturally
-		}
-		else {
-			// bboxes no longer overlap — compute separation-scaled decay rate
-			ps->commit(ms, std::max(1.0f, ps->hysteresis - (e1->getProximity(e2) * 0.05f) * delta * g_hystDecay));
-		}
-	}
-
-	void seedPair(Entry* e1, Entry* e2, uint64_t ms) {
-		const int id1 = e1->ptr->GetPlateId();
-		const int id2 = e2->ptr->GetPlateId();
-		pairsMgr.get(id1, id2)->seed(ms, e1, e2);
-		e1->setActiveCollision(id2);
-		e2->setActiveCollision(id1);
-	}
-
-	void resolvePairs(Entry* e, uint64_t ms, float delta) {
-		// cleanup
-		const int id1 = e->ptr->GetPlateId();
-		const int n = (getTotalSize() + 31) >> 5;
-		for (int w = 0; w < n; ++w) {
-			uint32_t mask = e->activeCollisions[w];
-			while (mask) {
-				int id2 = (w << 5) | (std::countr_zero(mask));
-				auto* ps = pairsMgr.get(id1, id2);
-				bool apart = ps->isApart(ms);
-				if (ps->isStale(ms)) {
-					ps->reset(apart);
-					ps->cooldown(ms, delta);
-				}
-				if (apart) e->setInactiveCollision(id2);
-				mask &= mask - 1;
-			}
-		}
-	}
-
-	void sort(ESortType type) {
-		if (type & ST_OUT) {
-			if (guid_t targetGuid = ObjectMgr::GetTargetGuid()) {
-				CGNamePlate* focus = *g_nameplateFocus;
-				if (focus && (g_mouseOverMode & M_OVER_ALWAYS || (g_mouseOverMode & M_OVER_COMBAT && CGGameUI::InCombatLockdown()))) { sort<IESortMode::TARGET_FOCUS, true>(targetGuid, focus); }
-				else { sort<IESortMode::TARGET, true>(targetGuid); }
-				return;
-			}
-			else if (CGNamePlate* focus = *g_nameplateFocus) {
-				if (g_mouseOverMode & M_OVER_ALWAYS || (g_mouseOverMode & M_OVER_COMBAT && CGGameUI::InCombatLockdown())) {
-					sort<IESortMode::FOCUS, true>(targetGuid, focus);
-					return;
-				}
-			}
-			sort<IESortMode::DEFAULT, true>();
-			return;
-		}
-		sort<IESortMode::DEFAULT, false>();
-	}
-
-	static void applyReaction(Entry* e) {
-		if (CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(e->ptr->m_ownerGuid, TYPEMASK_UNIT)) {
-			e->setState(Entry::IEState::IS_FRIENDLY, unit->IsFriendly());
-			applyStackingState(e);
-		}
-	}
-
-	static void applyStackingState(Entry* e) {
-		if (e->hasState(Entry::IEState::IS_TRANSIENT)) {
-			e->setState(Entry::IEState::SHOULD_STACK, false);
-			return;
-		}
-		auto mode = static_cast<EStackingMode>(std::abs(g_stackingMode));
-		bool shouldStack = (mode != S_DISABLED);
-		if (mode == S_FRIENDLY) { shouldStack = e->hasState(Entry::IEState::IS_FRIENDLY); }
-		else if (mode == S_ENEMY) { shouldStack = !e->hasState(Entry::IEState::IS_FRIENDLY); }
-		e->setState(Entry::IEState::SHOULD_STACK, shouldStack);
-	}
-
-	static void applyClampingState(Entry* e) { if (CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(e->ptr->m_ownerGuid, TYPEMASK_UNIT)) { e->setState(Entry::IEState::SHOULD_CLAMP, (g_clampMode == C_ALL || g_clampMode == C_ALL_EDGES) || ((g_clampMode == C_BOSS || g_clampMode == C_BOSS_EDGES) && unit->GetCreatureRank() == RANK_WORLDBOSS)); } }
-
-	void flushAdded() {
-		lua_State* L = Lua::GetLuaState();
-		const int n = (std::ssize(byId) + 63) / 64;
-		for (int w = 0; w < n; ++w) {
-			uint64_t word = pending[w];
-			while (word) {
-				const int bit = std::countr_zero(word);
-				const int index = w * 64 + bit;
-				Entry* e = &byId[index];
-				const CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(e->ptr->m_ownerGuid, TYPEMASK_UNIT);
-				if (unit && unit->m_nameplate) {
-					e->guid = unit->m_nameplate->m_ownerGuid;
-					Lua::lua_pushframe(L, e->ptr);
-					Lua::lua_pushstring(L, tokenCache[index]);
-					Lua::lua_setfield(L, -2, "unit");
-					Lua::lua_pop(L, 1);
-					FrameScript::FireEvent(NAME_PLATE_UNIT_ADDED, "%s", tokenCache[index]);
-				}
-				word &= word - 1;
-			}
-		}
-	}
-
-	void flushRemoved() {
-		std::erase_if(entries, [](Entry* e) {
-			if (!e->hasState(Entry::IEState::IS_ACTIVE)) {
-				e->guid = 0;
-				return true;
-			}
-			return false;
-		});
-	}
-
-	void appendAdded(Entry* e) {
-		const int index = e->ptr->GetPlateId();
-		if (index < 0 || index >= std::ssize(byId)) return;
-		pending[index / 64] |= (1ULL << (index % 64));
-		if (!e->hasState(Entry::IEState::IS_ACTIVE)) {
-			e->setState(Entry::IEState::IS_ACTIVE, true);
-			entries.push_back(e);
-		}
-	}
-
-	void appendAdded(int index) {
-		if (index < 0 || index >= std::ssize(byId)) return;
-		pending[index / 64] |= (1ULL << (index % 64));
-		if (auto* e = &byId[index]; !e->hasState(Entry::IEState::IS_ACTIVE)) {
-			e->setState(Entry::IEState::IS_ACTIVE, true);
-			entries.push_back(e);
-		}
-	}
-
-	void clearPending() { std::memset(pending, 0, ((std::ssize(byId) + 63) / 64) * sizeof(uint64_t)); }
-
-	guid_t getTokenGuid(int index) const {
-		if (index < 0 || index >= std::ssize(byId)) return 0;
-		return byId[index].guid;
-	}
-
-	int getTokenId(guid_t guid) const {
-		if (!guid) return -1;
-		for (int i = 0; i < std::ssize(byId); ++i) { if (byId[i].guid == guid) return i; }
-		return -1;
-	}
-
-	Entry* getEntry(guid_t guid) {
-		const int index = getTokenId(guid);
-		if (index < 0 || index >= std::ssize(byId)) return nullptr;
-		auto& e = byId[index];
-		return (e.guid != 0) ? &e : nullptr;
-	}
-
-	Entry* getEntry(int index) {
-		if (index < 0 || index >= std::ssize(byId)) return nullptr;
-		auto& e = byId[index];
-		return (e.guid != 0) ? &e : nullptr;
-	}
-
-	Entry* initEntry(CGNamePlate* plate) {
-		const int index = plate->GetPlateId();
-		if (index == -1) {
-			const auto addr = reinterpret_cast<uintptr_t>(plate);
-			const auto* meta = chunkMgr.findChunk(addr);
-			if (!meta) return nullptr;
-
-			// pointers stay valid, cleared on reload
-			Entry e{};
-			e.ptr = reinterpret_cast<CGNamePlate*>(addr);
-			e.chunk = meta->chunk;
-			e.block = static_cast<uint16_t>((addr - meta->start) / g_alloc->m_blockSize);
-			e.guid = 0;
-
-			byId.push_back(e);
-			plate->SetPlateId(std::ssize(byId) - 1);
-
-			onPlateCreated(plate);
-			return &byId.back();
-		}
-		return index < 0 || index >= std::ssize(byId) ? nullptr : &byId[index];
-	}
-
-	const char* getToken(guid_t guid) const {
-		for (const Entry& e : byId) { if (e.guid == guid) return tokenCache[e.ptr->GetPlateId()]; }
-		return "none"; // this one is a valid unitId
-	}
-
-	const char* getToken(int index) const {
-		if (index >= 0 && index < std::ssize(byId)) { return tokenCache[index]; }
-		return "none"; // this one is a valid unitId
-	}
-
-	void initializeTokens(int r) {
-		for (int i = 1; i <= r; ++i) {
-			std::string s = std::format("nameplate{}", i);
-			tokenCache.push_back(_strdup(s.c_str()));
-		}
-	}
-
-	void reserveAll(size_t r) {
-		byId.reserve(r);
-		chunkMgr.reserve(r);
-		pairsMgr.init(r);
-		entries.reserve(r);
-	}
-
-	void clearAll() {
-		chunkMgr.clear();
-		pairsMgr.wipe();
-		byId.clear();
-		entries.clear();
-		std::memset(pending, 0, sizeof(pending));
-	}
-} g_entries;
-
-auto (*CGNamePlate__OnUpdate_site)() = reinterpret_cast<DummyCallback_t>(0x0098E9F9);
-constexpr uintptr_t CGNamePlate__OnUpdate_site_jmpback = 0x0098EA27;
-
-auto (*CGWorldFrame__UpdateNamePlatePositions_site)() = reinterpret_cast<DummyCallback_t>(0x004F90E2);
-constexpr uintptr_t CGWorldFrame__UpdateNamePlatePositions_site_jmpback = 0x004F90EC;
-
-auto (*CSimpleFrame__SetFrameAlpha_site)() = reinterpret_cast<DummyCallback_t>(0x0098EAA7);
-constexpr uintptr_t CSimpleFrame__SetFrameAlpha_site_jmpback = 0x0098EAD2;
-
-auto (*CGUnit_C__ShouldShowNamePlate_site)() = reinterpret_cast<DummyCallback_t>(0x0072B2BD);
-constexpr uintptr_t CGUnit_C__ShouldShowNamePlate_site_jmpback = 0x0072B2C7;
-constexpr uintptr_t CGUnit_C__ShouldShowNamePlate_site_pass = 0x0072B247;
-
-const auto isValidObjFn = reinterpret_cast<int(*)(void*)>(0x0077F0B0);
-
-enum class IEClickLogic : uint32_t {
-	NONE, THRU_ENEMY, THRU_FRIEND
-};
-
-template <IEClickLogic mode>
-void findBestPlate(C3Vector* pos, CGNamePlate*& prio) {
-	for (const auto& buf = g_entries.get(); const auto& e : buf) {
-		if ((e->ptr->m_flags & 0x100) == 0 || *g_lockedTarget == e->ptr->m_ownerGuid) continue;
-
-		// original logic, clamped search boundaries
-		const bool isFriendly = e->hasState(Entry::IEState::IS_FRIENDLY);
-		const Vec2D hitBox = isFriendly ? Vec2D{.x = g_hitWidthF, .y = g_hitHeightF} : Vec2D{.x = g_hitWidthE, .y = g_hitHeightE};
-
-		if (e->ptr->IsAtTargetPos(pos, hitBox, g_hitAnchor)) {
-			if (!prio) prio = e->ptr;
-
-			if constexpr (mode == IEClickLogic::THRU_ENEMY) {
-				if (isFriendly) {
-					prio = e->ptr;
-					break;
-				}
-			}
-			else if constexpr (mode == IEClickLogic::THRU_FRIEND) {
-				if (!isFriendly) {
-					prio = e->ptr;
-					break;
-				}
-			}
-			else { break; }
-		}
-	}
+}  // namespace
+
+namespace {
+void applyClampMode(int, bool changed) {
+    if (!changed) { return; }
+    kPlates->refreshClamping();
+    markDirty();
 }
 
-int __cdecl CGWorldFrame__UpdateNamePlatePositionsHk(CGWorldFrame* pThis) {
-	pThis->EnumerateChildren([&](CSimpleFrame* child) {
-		auto* plate = reinterpret_cast<CGNamePlate*>(child);
-		const int id = plate->GetPlateId();
-		auto* e = g_entries.getEntry(id);
-		if (child->m_isShown == 0) {
-			if (e && e->hasState(Entry::IEState::IS_ACTIVE)) {
-				FrameScript::FireEvent(NAME_PLATE_UNIT_REMOVED, "%s", g_entries.getToken(id));
-				e->setState(Entry::IEState::IS_ACTIVE, false);
-			}
-		}
-		else {
-			CGUnit_C* unit = ObjectMgr::Get<CGUnit_C>(plate->m_ownerGuid, TYPEMASK_UNIT);
-			if (e && e->hasState(Entry::IEState::IS_ACTIVE)) {
-				if (!unit || !unit->m_nameplate) {
-					FrameScript::FireEvent(NAME_PLATE_UNIT_REMOVED, "%s", g_entries.getToken(id));
-					e->setState(Entry::IEState::IS_ACTIVE, false);
-				}
-				else if (unit->m_nameplate->m_ownerGuid != e->guid) {
-					FrameScript::FireEvent(NAME_PLATE_UNIT_REMOVED, "%s", g_entries.getToken(id));
-					g_entries.appendAdded(id);
-				}
-			}
-			else if (unit) {
-				if (const char* name = unit->GetName(nullptr, 1)) {
-					const char* unknownText = FrameScript::GetText("UNKNOWNOBJECT", -1, 0);
-					if ((!unknownText || !*unknownText || std::strcmp(name, unknownText) != 0) && std::strcmp(name, "Unknown Being") != 0) {
-						if (e = g_entries.initEntry(plate); e) {
-							e->clearState();
-							e->setState(Entry::IEState::IS_FRIENDLY, unit->IsFriendly());
-							e->classification = unit->GetCreatureRank();
-
-							EntryManager::applyStackingState(e);
-							EntryManager::applyClampingState(e);
-							g_entries.resolvePairs(e, -1, 0);
-							g_entries.appendAdded(e);
-
-							// for occlusion
-							plate->SetPlateState(NP_IS_FRESH, true);
-							plate->SetPlateState(NP_IS_OPAQUE, false);
-						}
-					}
-				}
-			}
-		}
-	});
-
-	g_entries.flushRemoved(); // bulk flush now to ensure callbacks recieve a complete gapless snapshot of the previous frame
-	const auto& buf = g_entries.get();
-	if (buf.empty()) {
-		g_entries.clearPending();
-		return CLayoutFrame::ResizePending();
-	}
-
-	const int n = std::ssize(buf);
-	uint32_t level = static_cast<uint32_t>(n) * 10;
-
-	const float sceneTime = std::min(0.02f, pThis->m_sceneTime);
-	const uint64_t ms = CGGameUI::OsGetAsyncTimeMsFn();
-
-	g_entries.sort(ST_IN); // no target/focus
-	for (auto& e : buf) e->freshState(g_speedLower * sceneTime);
-
-	for (int i = 0; i < n; ++i) {
-		Entry* e1 = buf[i];
-		if (!e1->hasState(Entry::IEState::SHOULD_STACK) || e1->hasState(Entry::IEState::IS_FRESH) || e1->ptr->m_alpha <= EPS) { continue; }
-		bool freed = g_stackingMode > S_DISABLED;
-
-		for (int j = i + 1; j < n; ++j) {
-			Entry* e2 = buf[j];
-			// skip fresh plates, UNIT_ADDED callbacks later might disable collisions
-			if (e2->hasState(Entry::IEState::SHOULD_STACK) && !e2->hasState(Entry::IEState::IS_FRESH) && e2->ptr->m_alpha > EPS) {
-				g_entries.seedPair(e1, e2, ms);
-				auto* ps = g_entries.getPair(e1, e2);
-				float dx = e1->getReqDXFor(e2);
-				float minSepX = e1->getAvgWFor(e2, g_bandX * ps->hysteresis);
-				if (dx <= minSepX - EPS) {
-					if (float reqY = e1->getReqYFor(e2, g_bandY); reqY > e2->targetOffsetY) {
-						// genuine overlap
-						if (e2->getRankWeight() > e1->getRankWeight()) {
-							// rank prio hot correction
-							reqY = e2->getReqYFor(e1, g_bandY);
-							if (reqY > e1->targetOffsetY) {
-								e1->targetOffsetY = reqY;
-								g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
-							}
-						}
-						else {
-							if (!freed && !e1->resolvePush(e2, g_bandY, ps->hysteresis)) {
-								freed = true;
-								continue;
-							}
-							e2->targetOffsetY = reqY;
-							float reqX = e1->getReqXFor(e2);
-							if (e1->pushCount == 0 || std::signbit(e1->targetOffsetX) == std::signbit(reqX)) {
-								e2->accumX += reqX * std::pow(std::clamp(1.0f - (dx / e1->getAvgWFor(e2, g_bandX)), 0.0f, 1.0f), 1.5f);
-								e2->pushCount++;
-							}
-							g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
-						}
-					}
-					else if (!ps->isStale(1) && (e1->getTopNDC(ps->hysteresis) + e1->targetOffsetY + e1->getAvgHFor(e2, g_bandY) > (e2->getBotNDC(ps->hysteresis) + e2->targetOffsetY))) {
-						// overlap at extended range, keep the commitment and pulls up
-						float reqX = e1->getReqXFor(e2);
-						if (e1->pushCount == 0 || std::signbit(e1->targetOffsetX) == std::signbit(reqX)) {
-							e2->accumX += reqX * std::pow(std::clamp(1.0f - (dx / e1->getAvgWFor(e2, g_bandX)), 0.0f, 1.0f), 1.5f);
-							e2->pushCount++;
-						}
-						g_entries.commitPair(e1, e2, ms, sceneTime, g_bandY, g_bandX);
-					}
-				}
-			}
-		}
-	}
-
-	g_entries.sort(ST_OUT);
-	for (auto* e : buf) {
-		g_entries.resolvePairs(e, ms, sceneTime);
-		e->updVis(((e->commitTargetY - e->stackOffsetY) > 0.0f) ? g_speedRaise : g_speedLower, g_speedPull, g_inertia, sceneTime, g_maxRaise, g_clampModeVOffset, g_clampModeHOffset, g_clampMode == C_ALL_EDGES || g_clampMode == C_BOSS_EDGES);
-		e->setState(Entry::IEState::IS_FRESH, false);
-		e->ptr->SetPoint(1, pThis, 6, e->getVisX(), e->getVisY(), 1);
-		e->ptr->SetFrameDepth(e->ptr->m_depthZ - pThis->m_depth, 1);
-		e->ptr->SetFrameLevel(level, 1);
-		level -= 10; // addons buffer
-	}
-	pThis->m_renderDirtyFlags |= 1; // clearing this prevents further CGWorldFrame__UpdateNamePlatePositions calls until any plate's raw ndc changes
-
-	const int result = CLayoutFrame::ResizePending();
-	g_entries.flushAdded(); // all set, fire callbacks
-	g_entries.clearPending();
-	return result;
+void applyStackingMode(int, bool changed) {
+    if (!changed) { return; }
+    kPlates->refreshStacking();
+    markDirty();
 }
 
-int __fastcall CGUnit_C__UpdateReactionHk(CGUnit_C* unit, void* edx, int updateAll) {
-	// original logic
-	const int result = unit->UpdateReaction(updateAll);
-	if (unit->GetGUID() == ObjectMgr::GetPlayerGuid()) { for (const auto& buf = g_entries.get(); const auto& e : buf) EntryManager::applyReaction(e); }
-	else if (CGNamePlate* plate = unit->m_nameplate) { if (Entry* e = g_entries.getEntry(plate->GetPlateId())) EntryManager::applyReaction(e); }
-	return result;
+void applyDerived() {
+    derived_settings = Derived::make(*kSettings);
+    markDirty();
 }
 
-bool __fastcall CGUnit_C__ISVisibleHk(CGUnit_C* unit, void* edx, CGWorldFrame* wf, C3Vector* out) {
-	C3Vector worldPos;
-	unit->GetNamePosition(worldPos);
-	worldPos.Z += g_nameplatePlacement;
-	int mask = 0;
-	if (wf->GetScreenCoordinates(&worldPos, out, &mask)) return true;
-	if (mask > 0) {
-		float marginX;
-		float marginY;
-		CGGameUI::NDCToDDCFn(CGNamePlate::DefaultWidth * 0.5f, CGNamePlate::DefaultHeight * 0.5f, &marginX, &marginY);
-		// nameplate is >=50% out of the viewport but is still visible, return true to keep it visible and prevent static names popping in
-		if ((out->X >= -marginX) && (out->X <= (wf->m_right - wf->m_left) + marginX) && (out->Y >= -marginY) && (out->Y <= (wf->m_top - wf->m_bottom) + marginY)) return true;
-	}
-	switch (g_clampMode) {
-	case C_ALL:
-	case C_BOSS:
-		return (mask == 7);
-	case C_ALL_EDGES:
-	case C_BOSS_EDGES:
-		return (mask > 0);
-	case C_DISABLED: default:
-		return false;
-	}
+void applyDistance(float distance, bool changed) {
+    if (!changed) { return; }
+    const float distance_sq = distance * distance;
+    CGNamePlateFrame::max_distance_sq = distance_sq;
+    hookkit::forceWrite<float>(game_ui::kTabTargetRangeCapSqAddr, distance_sq);
+    markDirty();
 }
 
-void __cdecl CGUnit_C__SetNamePlateFocusHk(C3Vector* pos) {
-	// original logic
-	uint32_t* activeInput = CGInputControl::GetActive();
-	if (activeInput && (activeInput[1] & 0x6000003) == 0) {
-		CGNamePlate* prio = nullptr;
-		if (g_mouseOverMode & M_CLICK_THRU_ENEMY) findBestPlate<IEClickLogic::THRU_ENEMY>(pos, prio);
-		else if (g_mouseOverMode & M_CLICK_THRU_FRIEND) findBestPlate<IEClickLogic::THRU_FRIEND>(pos, prio);
-		else findBestPlate<IEClickLogic::NONE>(pos, prio);
-
-		if (CGNamePlate* focus = *g_nameplateFocus; prio != focus) {
-			if (focus) focus->OnLoseFocus();
-			*g_nameplateFocus = prio;
-			if (prio) prio->OnGainFocus();
-			CGWorldFrame::GetWorldFrame()->m_renderDirtyFlags |= 1;
-		}
-	}
+// numeric guid string at arg 1, 0 if missing
+guid_t guidArg(LuaState* l) {
+    const char* guid_str = lua::checkString(l, 1);
+    return guid_str != nullptr ? std::strtoull(guid_str, nullptr, 0) : 0;
 }
 
-void __fastcall CGPlayer_C__NotifyCombatChangeHk(CGPlayer_C* pThis, void* edx, int offs, int val) {
-	// just in case everything is perfectly stationary (render flags won't get set)
-	CGWorldFrame::GetWorldFrame()->m_renderDirtyFlags |= 1;
-	return pThis->NotifyCombatChange(offs, val);
+int pushPlate(LuaState* l, guid_t guid) {
+    CGNamePlateFrame* plate = kPlates->getPlate(guid);
+    if (plate == nullptr) { return 0; }
+    lua::pushframe(l, plate);
+    return 1;
 }
 
-void __cdecl CGGameUI__TargetHk(guid_t guid) {
-	CGGameUI::TargetFn(guid);
-	CGWorldFrame::GetWorldFrame()->m_renderDirtyFlags |= 1;
+int luaGetNamePlates(LuaState* l) {
+    lua::createTable(l, 0, 0);
+    int id = 1;
+    for (const Entry* e : kPlates->get()) {
+        lua::pushframe(l, e->ptr);
+        lua::rawSetI(l, -2, id++);
+    }
+    return 1;
 }
 
-void __cdecl CGGameUI__ClearTargetHk(guid_t guid, int flag) {
-	CGGameUI::ClearTargetFn(guid, flag);
-	CGWorldFrame::GetWorldFrame()->m_renderDirtyFlags |= 1;
+int luaGetNamePlateForUnit(LuaState* l) {
+    const char* token = lua::checkString(l, 1);
+    return token != nullptr ? pushPlate(l, object_mgr::string2Guid(token)) : 0;
 }
 
-bool __fastcall CGUnit_C__ShouldShowNamePlate_siteWrapper(const CGUnit_C* unit) { return g_clampMode != C_BOSS || unit->GetCreatureRank() == RANK_WORLDBOSS || isValidObjFn(unit->m_worldObject); }
+int luaGetNamePlateByGuid(LuaState* l) { return pushPlate(l, guidArg(l)); }
 
-uint8_t __fastcall CSimpleFrame__SetFrameAlpha_siteWrapper(CGUnit_C* unit) {
-	if (!unit || !unit->m_nameplate) return 255;
-
-	bool isTargetOrMouseOver = *g_lockedTarget ? unit->GetEntry<UnitEntry>()->m_guid == *g_lockedTarget : unit->m_nameplate == *g_nameplateFocus;
-	uint8_t targetAlpha = (*g_lockedTarget) ? (isTargetOrMouseOver ? 255 : static_cast<uint8_t>(255 * g_nonTargetAlpha)) : 255;
-
-	if (!isTargetOrMouseOver && g_occlusionAlpha < 1.0f && (g_occlusionMode == OC_ALWAYS || !CGGameUI::InCombatLockdown()) && !unit->m_nameplate->HasPlateState(NP_IS_OPAQUE)) {
-		if (CGCamera* cam = CGCamera::GetActiveCamera()) {
-			C3Vector hitPoint;
-			float dist = 1.0f;
-			C3Vector start = cam->m_pos;
-			C3Vector end;
-			unit->GetPosition(end);
-			end.Z += unit->m_unitHeight * 0.666f;
-
-			if (CGGameUI::TraceLine(start, end, 0x100111, hitPoint, dist)) {
-				if (s_occludeUp) { targetAlpha = std::min(targetAlpha, static_cast<uint8_t>(255 * g_occlusionAlpha)); }
-				else { targetAlpha = static_cast<uint8_t>(targetAlpha * g_occlusionAlpha); }
-			}
-		}
-	}
-
-	if (unit->m_nameplate->HasPlateState(NP_IS_FRESH)) {
-		unit->m_nameplate->SetPlateState(NP_IS_FRESH, false);
-		return targetAlpha;
-	}
-
-	float current = unit->m_nameplate->m_alpha;
-	float delta = static_cast<float>(targetAlpha) - current;
-	if (std::abs(delta) < 0.5f) return targetAlpha;
-
-	float step = delta * g_alphaSpd;
-	float nextAlpha = current + (std::abs(step) < 1.0f ? std::copysign(1.0f, delta) : step);
-
-	if (std::abs(static_cast<float>(targetAlpha) - nextAlpha) < 1.0f) return targetAlpha;
-	return (delta > 0.0f && nextAlpha > targetAlpha) || (delta < 0.0f && nextAlpha < targetAlpha) ? targetAlpha : static_cast<uint8_t>(nextAlpha);
+int luaGetNamePlateTokenByGuid(LuaState* l) {
+    const guid_t guid = guidArg(l);
+    if (guid == 0) { return 0; }
+    lua::pushString(l, kPlates->getToken(guid));
+    return 1;
 }
 
-guid_t* __cdecl CGGameUI__WipeActivePlatesHk() {
-	g_entries.clearAll();
-	return CGGameUI::WipeActivePlatesFn();
+int luaOpenNamePlates(LuaState* l) {
+    static constexpr std::array<lua::LuaLReg, 4> kFuncs = {{
+        {.name = "GetNamePlates", .func = luaGetNamePlates},
+        {.name = "GetNamePlateForUnit", .func = luaGetNamePlateForUnit},
+        {.name = "GetNamePlateByGUID", .func = luaGetNamePlateByGuid},
+        {.name = "GetNamePlateTokenByGUID", .func = luaGetNamePlateTokenByGuid},
+    }};
+    lua::createTable(l, 0, kFuncs.size());
+    for (const auto& [name, func] : kFuncs) {
+        lua::pushCFunction(l, func);
+        lua::setField(l, -2, name);
+    }
+    lua::setGlobal(l, "C_NamePlate");
+    return 0;
 }
+}  // namespace
 
-int __cdecl CGGameUI__DestroyPlatePoolHk() {
-	g_entries.clearAll();
-	return CGGameUI::DestroyPlatePoolFn();
-}
+guid_t name_plates::getTokenGuid(int id) { return kPlates->getTokenGuid(id); }
 
-CGNamePlate* GetNameplateByGuid(guid_t guid) {
-	const Entry* e = g_entries.getEntry(guid);
-	return (e && e->guid != 0) ? e->ptr : nullptr;
-}
+int name_plates::getTokenId(guid_t guid) { return kPlates->getTokenId(guid); }
 
-void __declspec(naked) CGNamePlate__OnUpdate_siteHk() {
-	__asm {
-		push edi;
-		jmp CGNamePlate__OnUpdate_site_jmpback;
-		}
-}
+void name_plates::initialize(hookkit::HookTransaction& tx) {
+    auto& cvars = *extensions::console::kCvarRegistry;
 
-void __declspec(naked) CGUnit_C__ShouldShowNamePlate_siteHk() {
-	__asm {
-		mov ecx, esi;
-		call CGUnit_C__ShouldShowNamePlate_siteWrapper;
-		test eax, eax;
-		jz pass;
-		mov ecx, [ebp + 0Ch];
-		mov edx, [ebp + 08h];
-		jmp CGUnit_C__ShouldShowNamePlate_site_jmpback;
-		pass:
-		jmp CGUnit_C__ShouldShowNamePlate_site_pass;
-		}
-}
+    kPlates->init(kMaxPlates);
 
-void __declspec(naked) CGWorldFrame__UpdateNamePlatePositions_siteHk() {
-	__asm {
-		jmp CGWorldFrame__UpdateNamePlatePositions_site_jmpback; // skip flag cleanup
-		}
-}
+    extensions::console::kLuaLibRegistry->add(luaOpenNamePlates);
+    kEventRegistry->add(kEventCreated);
+    kEventRegistry->add(kEventUnitAdded);
+    kEventRegistry->add(kEventUnitRemoved);
 
-void __declspec(naked) CSimpleFrame__SetFrameAlpha_siteHk() {
-	__asm {
-		mov ecx, edi;
-		call CSimpleFrame__SetFrameAlpha_siteWrapper;
-		push eax;
-		jmp CSimpleFrame__SetFrameAlpha_site_jmpback;
-		}
-}
+    constexpr auto kHitboxTop = static_cast<int>(CLayoutFrame::eHbTop);
+    constexpr auto kHitboxBottom = static_cast<int>(CLayoutFrame::eHbBottom);
+    constexpr auto kStackingMax = static_cast<int>(StackingMode::eFriendly);
+    constexpr auto kClampMax = static_cast<int>(ClampMode::eBossEdges);
+    constexpr auto kClampFilterMax = static_cast<int>(ClampFilter::eTargetCombat);
+    constexpr auto kFreezeMax = static_cast<int>(FreezeMode::eCombat);
+    constexpr auto kMouseModeMax = static_cast<int>(kMouseModeMap.size()) - 1;
 
-int C_NamePlate_GetNamePlates(lua_State* L) {
-	Lua::lua_createtable(L, 0, 0);
-	int id = 1;
-	const auto& buf = g_entries.get();
-	for (const auto& e : buf) {
-		Lua::lua_pushframe(L, e->ptr);
-		Lua::lua_rawseti(L, -2, id++);
-	}
-	return 1;
-}
+    cvars.add<float>(
+        {.name = "nameplateDistance", .init = 41.0f, .min{41.0f}, .max{200.0f}, .on_change = applyDistance});
+    cvars.add<float>(
+        {.name = "nameplatePlacement", .init = 0.0f, .min{-1.0f}, .max{2.0f}, .fmt = "%.4f", .on_change = markDirty});
+    cvars.add<int>({.name = "nameplateMouseMode", .init = 0, .min{0}, .max{kMouseModeMax}, .on_change = applyDerived});
+    cvars.add<float>({.name = "nameplateBandX", .init = 0.7f, .min{0.1f}, .max{1.0f}, .on_change = markDirty});
+    cvars.add<float>({.name = "nameplateBandY", .init = 1.0f, .min{0.1f}, .max{1.5f}, .on_change = markDirty});
+    cvars.add<int>(
+        {.name = "nameplateHitboxAnchor", .init = 1, .min{kHitboxTop}, .max{kHitboxBottom}, .on_change = markDirty});
+    cvars.add<float>({.name = "nameplateHitboxWidthE", .init = 1.0f, .min{0.0f}, .max{1.0f}, .on_change = markDirty});
+    cvars.add<float>({.name = "nameplateHitboxHeightE", .init = 1.0f, .min{0.0f}, .max{1.0f}, .on_change = markDirty});
+    cvars.add<float>({.name = "nameplateHitboxWidthF", .init = 1.0f, .min{0.0f}, .max{1.0f}, .on_change = markDirty});
+    cvars.add<float>({.name = "nameplateHitboxHeightF", .init = 1.0f, .min{0.0f}, .max{1.0f}, .on_change = markDirty});
+    cvars.add<float>(
+        {.name = "nameplateRaiseSpeed", .init = 100.0f, .min{1.0f}, .max{250.0f}, .on_change = applyDerived});
+    cvars.add<float>(
+        {.name = "nameplateLowerSpeed", .init = 100.0f, .min{1.0f}, .max{250.0f}, .on_change = applyDerived});
+    cvars.add<float>(
+        {.name = "nameplatePullSpeed", .init = 50.0f, .min{1.0f}, .max{250.0f}, .on_change = applyDerived});
+    cvars.add<float>({.name = "nameplateRaiseDistance", .init = 8.0f, .min{1.0f}, .max{20.0f}, .on_change = markDirty});
+    cvars.add<float>({.name = "nameplatePullDistance", .init = 0.25f, .min{0.0f}, .max{0.75f}, .on_change = markDirty});
+    cvars.add<float>(
+        {.name = "nameplateOcclusionAlpha", .init = 1.0f, .min{-1.0f}, .max{1.0f}, .on_change = applyDerived});
+    cvars.add<int>({.name = "nameplateOcclusionMode", .init = 0, .min{0}, .max{1}, .on_change = markDirty});
+    cvars.add<float>(
+        {.name = "nameplateNonTargetAlpha", .init = 0.5f, .min{0.0f}, .max{1.0f}, .on_change = applyDerived});
+    cvars.add<float>(
+        {.name = "nameplateAlphaSpeed", .init = 0.25f, .min{0.01f}, .max{1.0f}, .fmt = "%.3f", .on_change = markDirty});
+    cvars.add<float>({.name = "nameplateInertia", .init = 1.0f, .min{0.0f}, .max{20.0f}, .on_change = markDirty});
+    cvars.add<float>(
+        {.name = "nameplateHysteresisDecay", .init = 1.0f, .min{0.25f}, .max{30.0f}, .on_change = markDirty});
+    cvars.add<int>({.name = "nameplateClampMode", .init = 0, .min{0}, .max{kClampMax}, .on_change = applyClampMode});
+    cvars.add<float>(
+        {.name = "nameplateClampModeVOffset", .init = 0.01f, .min{0.0f}, .max{0.05f}, .on_change = markDirty});
+    cvars.add<float>(
+        {.name = "nameplateClampModeHOffset", .init = 0.01f, .min{0.0f}, .max{0.1f}, .on_change = markDirty});
+    cvars.add<int>(
+        {.name = "nameplateClampModeFilter", .init = 0, .min{0}, .max{kClampFilterMax}, .on_change = markDirty});
+    cvars.add<int>({.name = "nameplateMouseFreeze", .init = 0, .min{0}, .max{kFreezeMax}, .on_change = markDirty});
+    cvars.add<float>({
+        .name = "nameplateMouseFreezeGrace",
+        .init = 0.15f,
+        .min{0.0f},
+        .max{1.0f},
+        .fmt = "%.3f",
+        .on_change = markDirty
+    });
+    cvars.add<float>({
+        .name = "nameplateMouseFreezeTime",
+        .init = 0.3f,
+        .min{0.0f},
+        .max{2.0f},
+        .fmt = "%.3f",
+        .on_change = markDirty
+    });
+    cvars.add<int>({
+        .name = "nameplateStacking",
+        .init = 0,
+        .min{-kStackingMax},
+        .max{kStackingMax},
+        .on_change = applyStackingMode
+    });
 
-int C_NamePlate_GetNamePlateForUnit(lua_State* L) {
-	const char* token = Lua::luaL_checkstring(L, 1);
-	if (!token) return 0;
-	guid_t guid = ObjectMgr::String2Guid(token);
-	if (!guid) return 0;
-	CGNamePlate* nameplate = GetNameplateByGuid(guid);
-	if (!nameplate) return 0;
-	Lua::lua_pushframe(L, nameplate);
-	return 1;
-}
+    applyDerived();
 
-int C_NamePlate_GetNamePlateByGUID(lua_State* L) {
-	const char* guidStr = Lua::luaL_checkstring(L, 1);
-	if (!guidStr) return 0;
-	guid_t guid = strtoull(guidStr, nullptr, 0);
-	if (!guid) return 0;
-	CGNamePlate* nameplate = GetNameplateByGuid(guid);
-	if (!nameplate) return 0;
-	Lua::lua_pushframe(L, nameplate);
-	return 1;
-}
+    extensions::framescript::kTokenRegistry->add("nameplate", getTokenGuid, getTokenId);
 
-int C_NamePlate_GetNamePlateTokenByGUID(lua_State* L) {
-	const char* guidStr = Lua::luaL_checkstring(L, 1);
-	if (!guidStr) return 0;
-	guid_t guid = strtoull(guidStr, nullptr, 0);
-	if (!guid) return 0;
-	if (const char* token = g_entries.getToken(guid)) {
-		Lua::lua_pushstring(L, token);
-		return 1;
-	}
-	return 0;
-}
+    // the replaced isVisible cleans its own args, the caller's add esp, 8 would double it
+    constexpr std::array<uint8_t, 3> kNop3 = {0x90, 0x90, 0x90};
+    tx.patchBytes(reinterpret_cast<void*>(0x0072B2D0), kNop3.data(), kNop3.size());
+    const float* placement = &cvars.ref<float>("nameplatePlacement");
+    tx.forceWrite<const float*>(0x00715737 + 2, placement);
 
-int lua_openlibnameplates(lua_State* L) {
-	constexpr Lua::luaL_Reg methods[] = {{"GetNamePlates", C_NamePlate_GetNamePlates}, {"GetNamePlateForUnit", C_NamePlate_GetNamePlateForUnit}, {"GetNamePlateByGUID", C_NamePlate_GetNamePlateByGUID}, {"GetNamePlateTokenByGUID", C_NamePlate_GetNamePlateTokenByGUID},};
-
-	Lua::lua_createtable(L, 0, std::size(methods));
-	for (const auto& method : methods) {
-		Lua::lua_pushcfunction(L, method.func);
-		Lua::lua_setfield(L, -2, method.name);
-	}
-	Lua::lua_setglobal(L, "C_NamePlate");
-	return 0;
-}
-
-int CVarHandler_NameplateDistance(CVar* cvar, const char*, const char* value, void*) {
-	float f;
-	const int result = cvar->Sync(value, &f, 41.0f, 100.0f, "%.2f");
-	*reinterpret_cast<float*>(0x00ADAA7C) = f * f;
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplatePlacement(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_nameplatePlacement, -1.0f, 2.0f, "%.4f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateBandX(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_bandX, 0.1f, 1.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateBandY(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_bandY, 0.1f, 1.5f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateHitboxAnchor(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_hitAnchor), static_cast<int>(CGNamePlate::EHitboxAnchor::HB_TOP), static_cast<int>(CGNamePlate::EHitboxAnchor::HB_BOTTOM), "%d");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateHitboxWidthE(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_hitWidthE, 0.0f, 1.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateHitboxHeightE(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_hitHeightE, 0.0f, 1.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateHitboxWidthF(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_hitWidthF, 0.0f, 1.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateHitboxHeightF(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_hitHeightF, 0.0f, 1.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateRaiseSpeed(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_speedRaise, 1.0f, 250.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateLowerSpeed(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_speedLower, 1.0f, 250.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplatePullSpeed(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_speedPull, 1.0f, 250.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateRaiseDistance(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_maxRaise, 1.0f, 20.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplatePullDistance(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_maxPull, 0.0f, 0.75f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateClampModeVOffset(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_clampModeVOffset, 0.0f, NDC_Y * 0.25f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateClampModeHOffset(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_clampModeHOffset, 0.0f, NDC_X * 0.25f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateOcclusionAlpha(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_occlusionAlpha, -1.0f, 1.0f, "%.2f");
-	s_occludeUp = g_occlusionAlpha < 0;
-	g_occlusionAlpha = std::abs(g_occlusionAlpha);
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateOcclusionMode(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_occlusionMode), static_cast<int>(OC_ALWAYS), static_cast<int>(OC_NOT_IN_COMBAT), "%d");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateNonTargetAlpha(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_nonTargetAlpha, 0.0f, 1.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateAlphaSpeed(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_alphaSpd, 0.01f, 1.00f, "%.3f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateInertia(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_inertia, 0.0f, 20.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateHysteresisDecay(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, &g_hystDecay, 0.25f, 30.0f, "%.2f");
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateMouseMode(CVar* cvar, const char*, const char* value, void*) {
-	int f;
-	const int result = cvar->Sync(value, &f, static_cast<int>(M_DISABLED), static_cast<int>(std::size(g_mouseModeMap)) - 1, "%d");
-	g_mouseOverMode = static_cast<EMouseMode>(g_mouseModeMap[f]);
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateClampMode(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_clampMode), static_cast<int>(C_DISABLED), static_cast<int>(C_BOSS_EDGES), "%d");
-	DetourTransactionBegin();
-	DetourUpdateThread(GetCurrentThread());
-	if (g_clampMode == C_DISABLED) { Hooks::Detach(&CGUnit_C__ShouldShowNamePlate_site, CGUnit_C__ShouldShowNamePlate_siteHk); }
-	else { Hooks::Detour(&CGUnit_C__ShouldShowNamePlate_site, CGUnit_C__ShouldShowNamePlate_siteHk); }
-	DetourTransactionCommit();
-	for (auto& buf = g_entries.get(); const auto& e : buf) EntryManager::applyClampingState(e);
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-
-int CVarHandler_NameplateStacking(CVar* cvar, const char*, const char* value, void*) {
-	const int result = cvar->Sync(value, reinterpret_cast<int*>(&g_stackingMode), -static_cast<int>(S_FRIENDLY), static_cast<int>(S_FRIENDLY), "%d");
-	auto& buf = g_entries.get();
-	for (auto& e : buf) EntryManager::applyStackingState(e);
-	if (CGWorldFrame* wf = CGWorldFrame::GetWorldFrame()) wf->m_renderDirtyFlags |= 1;
-	return result;
-}
-}
-
-guid_t NamePlates::GetTokenGuid(int id) { return g_entries.getTokenGuid(id); }
-int NamePlates::GetTokenId(guid_t guid) { return g_entries.getTokenId(guid); }
-
-void NamePlates::initialize() {
-	g_entries.reserveAll(MAX_PLATES);
-	g_entries.initializeTokens(MAX_PLATES);
-
-	Hooks::FrameXML::registerLuaLib(lua_openlibnameplates);
-	Hooks::FrameXML::registerEvent(NAME_PLATE_CREATED);
-	Hooks::FrameXML::registerEvent(NAME_PLATE_UNIT_ADDED);
-	Hooks::FrameXML::registerEvent(NAME_PLATE_UNIT_REMOVED);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateDistance, "nameplateDistance", nullptr, "41.0", CVarHandler_NameplateDistance);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplatePlacement, "nameplatePlacement", nullptr, "0.0", CVarHandler_NameplatePlacement);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateMouseMode, "nameplateMouseMode", nullptr, "0", CVarHandler_NameplateMouseMode);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateBandX, "nameplateBandX", nullptr, "0.7", CVarHandler_NameplateBandX);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateBandY, "nameplateBandY", nullptr, "1.0", CVarHandler_NameplateBandY);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxAnchor, "nameplateHitboxAnchor", nullptr, "1", CVarHandler_NameplateHitboxAnchor);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxWidthE, "nameplateHitboxWidthE", nullptr, "1.0", CVarHandler_NameplateHitboxWidthE);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxHeightE, "nameplateHitboxHeightE", nullptr, "1.0", CVarHandler_NameplateHitboxHeightE);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxWidthF, "nameplateHitboxWidthF", nullptr, "1.0", CVarHandler_NameplateHitboxWidthF);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateHitboxHeightF, "nameplateHitboxHeightF", nullptr, "1.0", CVarHandler_NameplateHitboxHeightF);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateRaiseSpeed, "nameplateRaiseSpeed", nullptr, "100.0", CVarHandler_NameplateRaiseSpeed);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateLowerSpeed, "nameplateLowerSpeed", nullptr, "100.0", CVarHandler_NameplateLowerSpeed);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplatePullSpeed, "nameplatePullSpeed", nullptr, "50.0", CVarHandler_NameplatePullSpeed);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateRaiseDistance, "nameplateRaiseDistance", nullptr, "8.0", CVarHandler_NameplateRaiseDistance);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplatePullDistance, "nameplatePullDistance", nullptr, "0.25", CVarHandler_NameplatePullDistance);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateOcclusionAlpha, "nameplateOcclusionAlpha", nullptr, "1.0", CVarHandler_NameplateOcclusionAlpha);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateOcclusionMode, "nameplateOcclusionMode", nullptr, "0", CVarHandler_NameplateOcclusionMode);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateNonTargetAlpha, "nameplateNonTargetAlpha", nullptr, "0.5", CVarHandler_NameplateNonTargetAlpha);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateAlphaSpeed, "nameplateAlphaSpeed", nullptr, "0.25", CVarHandler_NameplateAlphaSpeed);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateInertia, "nameplateInertia", nullptr, "1", CVarHandler_NameplateInertia);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateHysteresisDecay, "nameplateHysteresisDecay", nullptr, "1", CVarHandler_NameplateHysteresisDecay);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateClampMode, "nameplateClampMode", nullptr, "0", CVarHandler_NameplateClampMode);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateClampModeVOffset, "nameplateClampModeVOffset", nullptr, "0.1", CVarHandler_NameplateClampModeVOffset);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateClampModeHOffset, "nameplateClampModeHOffset", nullptr, "0.01", CVarHandler_NameplateClampModeHOffset);
-	Hooks::FrameXML::registerCVar(&s_cvar_nameplateStacking, "nameplateStacking", nullptr, "0", CVarHandler_NameplateStacking);
-
-	Hooks::Detour(&CSimpleFrame__SetFrameAlpha_site, CSimpleFrame__SetFrameAlpha_siteHk);
-
-	Hooks::Detour(&CGNamePlate__OnUpdate_site, CGNamePlate__OnUpdate_siteHk);
-
-	std::uint8_t nop3[3] = {0x90, 0x90, 0x90};
-	Hooks::PatchBytes(reinterpret_cast<void*>(0x0072B2D0), nop3, sizeof(nop3)); // non-standard thiscall: caller cleans stack (ecx + cdecl hybrid)
-	Hooks::PatchBytes(reinterpret_cast<void*>(0x00715737 + 2), &g_nameplatePlacement, sizeof(void*));
-	Hooks::Detour(&CGUnit_C::IsVisibleFn, CGUnit_C__ISVisibleHk);
-	Hooks::Detour(&CGUnit_C::UpdateReactionFn, CGUnit_C__UpdateReactionHk);
-	Hooks::Detour(&CGUnit_C::SetNamePlateFocusFn, CGUnit_C__SetNamePlateFocusHk);
-
-	Hooks::Detour(&CGPlayer_C::NotifyCombatChangeFn, CGPlayer_C__NotifyCombatChangeHk);
-
-	Hooks::Detour(&CGWorldFrame::UpdateNamePlatePositionsFn, CGWorldFrame__UpdateNamePlatePositionsHk);
-	Hooks::Detour(&CGWorldFrame__UpdateNamePlatePositions_site, CGWorldFrame__UpdateNamePlatePositions_siteHk);
-
-	Hooks::Detour(&CGGameUI::DestroyPlatePoolFn, CGGameUI__DestroyPlatePoolHk);
-	Hooks::Detour(&CGGameUI::WipeActivePlatesFn, CGGameUI__WipeActivePlatesHk);
-	Hooks::Detour(&CGGameUI::ClearTargetFn, CGGameUI__ClearTargetHk);
-	Hooks::Detour(&CGGameUI::TargetFn, CGGameUI__TargetHk);
-
-	Hooks::FrameScript::registerToken("nameplate", GetTokenGuid, GetTokenId);
+    tx.attach(CGWorldFrame::updateNamePlatePositions_hook{}, worldRenderDirty_site{}, CGUnit_C::isVisible_hook{},
+        CGUnit_C::updateReaction_hook{}, CGUnit_C::setNamePlateFocus_hook{}, CGUIBindings::setBindingModeState_hook{},
+        game_ui::target_hook{}, game_ui::clearTarget_hook{}, CGNamePlateFrame::ctor_hook{},
+        CGNamePlateFrame::wipeActive_hook{}, CGNamePlateFrame::wipeCDA_hook{}, plateLevel_site{}, plateAlpha_site{});
 }

@@ -1,102 +1,146 @@
 #pragma once
-#include "MSDF.h"
-#include "MSDFCache.h"
-#include "unordered_dense/include/ankerl/unordered_dense.h"
-#include <filesystem>
 
-class MSDFCache;
+#include <ankerl/unordered_dense.h>
+#include <hookkit/accessor.h>
+#include <windows.h>
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+
+#include "MSDFCache.h"
+#include "MSDFUtils.h"
 
 class MSDFManager {
-	friend class MSDFCache;
+    friend class MSDFCache;
+    friend class MSDFPregen;
 
 public:
-	MSDFManager();
-	~MSDFManager();
-	MSDFManager(const MSDFManager&) = delete;
-	MSDFManager& operator=(const MSDFManager&) = delete;
-	MSDFManager(MSDFManager&&) = delete;
-	MSDFManager& operator=(MSDFManager&&) = delete;
+    MSDFManager() = delete;
+    ~MSDFManager() = delete;
+    MSDFManager(const MSDFManager&) = delete;
+    MSDFManager& operator=(const MSDFManager&) = delete;
+    MSDFManager(MSDFManager&&) = delete;
+    MSDFManager& operator=(MSDFManager&&) = delete;
 
 private:
-	static constexpr size_t MAX_ARENA_SLOTS = 16;
-	static_assert(MAX_ARENA_SLOTS <= 64);
-	static_assert(MSDFCache::BLOCK_SIZE > 0 && (MSDFCache::BLOCK_SIZE & (MSDFCache::BLOCK_SIZE - 1)) == 0, "BLOCK_SIZE must be a power of 2");
+    static constexpr size_t kMaxArenaSlots = 16;
+    static constexpr uint32_t kInvalidIndex = 0xFFFFFFFF;
+    static_assert(kMaxArenaSlots <= 64);
+    static_assert(MSDFCache::kBlockSize > 0 && (MSDFCache::kBlockSize & (MSDFCache::kBlockSize - 1)) == 0,
+        "kBlockSize must be a power of 2");
 
-	struct alignas(128) MappedBlock {
-		FileGuard file;
-		MappingGuard mapping;
-		ViewGuard view;
-		uint64_t fileSize = 0;
-		const MSDFCache::BlockFileHeader* header = nullptr;
-		const MSDFCache::GlyphEntry* entries = nullptr;
-		const uint32_t* hashTable = nullptr;
-		const uint8_t* payload = nullptr;
-		uint32_t entryCount = 0;
-		uint32_t slotIndex = 0xFFFFFFFF;
-		MSDFCache::BlockKey key;
+    struct alignas(128) MappedBlock {
+        FileGuard file;
+        MappingGuard mapping;
+        ViewGuard view;
+        uint64_t file_size = 0;
+        const MSDFCache::BlockFileHeader* header = nullptr;
+        std::span<const MSDFCache::GlyphEntry> entries;
+        std::span<const uint32_t> hash_table;
+        std::span<const uint8_t> payload;
+        uint32_t slot_index = kInvalidIndex;
+        MSDFCache::BlockKey key;
 
-		void Close();
+        MappedBlock();
+        ~MappedBlock() = default;
+        MappedBlock(const MappedBlock&) = delete;
+        MappedBlock& operator=(const MappedBlock&) = delete;
+        MappedBlock(MappedBlock&&) = delete;
+        MappedBlock& operator=(MappedBlock&&) = delete;
 
-		void Reset() {
-			Close();
-			slotIndex = 0xFFFFFFFF;
-			key = {};
-		}
+        void close();
 
-		MappedBlock() {
-		}
+        void reset() {
+            close();
+            slot_index = kInvalidIndex;
+            key = {};
+        }
+    };
 
-		MappedBlock(const MappedBlock&) = delete;
-		MappedBlock& operator=(const MappedBlock&) = delete;
-	};
+    static_assert(sizeof(MappedBlock) == 128);
 
-	static_assert(sizeof(MappedBlock) == 128);
+    class ArenaState {
+    public:
+        ArenaState();
+        ~ArenaState() = default;
+        ArenaState(const ArenaState&) = delete;
+        ArenaState& operator=(const ArenaState&) = delete;
+        ArenaState(ArenaState&&) = delete;
+        ArenaState& operator=(ArenaState&&) = delete;
 
-	struct ArenaState {
-		void* base = nullptr;
+        [[nodiscard]]
+        bool isSlotOccupied(uint32_t i) const {
+            return (free_mask_ & (1ULL << i)) == 0;
+        }
 
-		size_t effectiveSlotSize = 0;
-		uint64_t freeMask = (1ULL << MAX_ARENA_SLOTS) - 1;
+        [[nodiscard]]
+        bool isFull() const {
+            return free_mask_ == 0;
+        }
 
-		std::array<void*, MAX_ARENA_SLOTS> slotAddresses;
-		std::array<uint32_t, MAX_ARENA_SLOTS> slotToBlockIndex;
+        [[nodiscard]]
+        size_t slotSize() const {
+            return effective_slot_size_;
+        }
 
-		bool IsSlotOccupied(uint32_t i) const { return !(freeMask & (1ULL << i)); }
-		void* GetFreeSlot(uint32_t blockIndex, uint32_t& outSlotIndex);
-		void FreeSlot(uint32_t slotIndex);
-		void FlushAll();
+        [[nodiscard]]
+        uint32_t slotBlockIndex(uint32_t slot_index) const {
+            return slot_index < kMaxArenaSlots ? slot_to_block_index_[slot_index] : kInvalidIndex;
+        }
 
-		ArenaState();
-		~ArenaState();
+        void* getFreeSlot(uint32_t block_index, uint32_t& out_slot_index);
+        void freeSlot(uint32_t slot_index);
+        void flushAll();
 
-		size_t SlotSize() const { return effectiveSlotSize; }
-	};
+    private:
+        size_t effective_slot_size_ = 0;
+        uint64_t free_mask_ = (1ULL << kMaxArenaSlots) - 1;
+        std::array<void*, kMaxArenaSlots> slot_addresses_{};
+        std::array<uint32_t, kMaxArenaSlots> slot_to_block_index_{};
+    };
 
-	static bool LoadGlyph(const MSDFCache::BlockWrap& wrap, uint32_t codepoint, GlyphMetrics& outMetrics);
+    static bool loadGlyph(const MSDFCache::BlockWrap& wrap, uint32_t codepoint, GlyphMetrics& out_metrics);
+    static void prefetchGlyphs(const MSDFCache::BlockWrap& wrap, std::span<const uint32_t> codepoints);
 
-	static bool LoadMappedBlock(const MSDFCache::BlockWrap& wrap, MappedBlock& outBlock, void* slotAddr, uint32_t slotIndex);
-	static MappedBlock* GetOrLoadMappedBlock(const MSDFCache::BlockWrap& wrap);
+    static bool loadMappedBlock(
+        const MSDFCache::BlockWrap& wrap, MappedBlock& out_block, void* slot_addr, uint32_t slot_index);
+    static MappedBlock* getOrLoadMappedBlock(const MSDFCache::BlockWrap& wrap);
 
-	static uint32_t GetSlotBlockIndex(uint32_t slotIndex) { return (slotIndex < MAX_ARENA_SLOTS) ? s_arena.slotToBlockIndex[slotIndex] : 0xFFFFFFFF; }
+    static uint32_t getSlotBlockIndex(uint32_t slot_index) { return kArena->slotBlockIndex(slot_index); }
 
-	static void FreeBlock(uint32_t blockIndex);
-	static void FreeBlockByKey(MSDFCache::BlockKey key);
-	static void FlushAll();
+    static void freeBlock(uint32_t block_index);
+    static void freeBlockByKey(MSDFCache::BlockKey key);
+    static void flushAll();
 
-	static uint32_t RegisterFont(FontHash hash);
-	static FontHash GetFontHash(uint32_t fontId);
+    static uint32_t registerFont(FontHash hash);
+    static FontHash getFontHash(uint32_t font_id);
 
-	inline static std::array<MappedBlock, MAX_ARENA_SLOTS> s_mappedBlocks;
-	inline static ankerl::unordered_dense::map<MSDFCache::BlockKey, uint32_t> s_blockCache;
+    static SYSTEM_INFO querySystemInfo() {
+        SYSTEM_INFO si{};
+        GetSystemInfo(&si);
+        return si;
+    }
 
-	inline static uint32_t s_lastBlockIndex = 0xFFFFFFFF;
-	inline static MSDFCache::BlockKey s_lastBlockKey;
+    struct SystemInfoTag;
+    static constexpr utils::Accessor<const SYSTEM_INFO, SystemInfoTag, &MSDFManager::querySystemInfo> kSystemInfo{};
 
-	inline static ArenaState s_arena;
-	inline static SYSTEM_INFO s_si;
+    struct ArenaTag;
+    static constexpr utils::Accessor<ArenaState, ArenaTag> kArena{};
+    struct MappedBlocksTag;
+    static constexpr utils::Accessor<std::array<MappedBlock, kMaxArenaSlots>, MappedBlocksTag> kMappedBlocks{};
+    struct BlockCacheTag;
+    static constexpr utils::Accessor<ankerl::unordered_dense::map<MSDFCache::BlockKey, uint32_t>, BlockCacheTag>
+        kBlockCache{};
+    struct LastBlockKeyTag;
+    static constexpr utils::Accessor<MSDFCache::BlockKey, LastBlockKeyTag> kLastBlockKey{};
 
-	inline static ankerl::unordered_dense::map<FontHash, uint32_t> s_fontHashToId;
-	inline static ankerl::unordered_dense::map<uint32_t, FontHash> s_fontIdToHash;
+    struct FontHashToIdTag;
+    static constexpr utils::Accessor<ankerl::unordered_dense::map<FontHash, uint32_t>, FontHashToIdTag> kFontHashToId{};
+    struct FontIdToHashTag;
+    static constexpr utils::Accessor<ankerl::unordered_dense::map<uint32_t, FontHash>, FontIdToHashTag> kFontIdToHash{};
 
-	inline static uint32_t s_nextFontId = 0;
+    inline static uint32_t last_block_index_ = kInvalidIndex;
+    inline static uint32_t next_font_id_ = 0;
 };

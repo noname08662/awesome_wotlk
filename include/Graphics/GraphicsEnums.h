@@ -1,0 +1,372 @@
+#pragma once
+
+#include <blpcodec.h>
+
+#include <cstdint>
+
+enum GxTexFormat : uint32_t {
+    eGxTexUnknown = 0x0,
+    eGxTexAbgr8888 = 0x1,
+    eGxTexArgb8888 = 0x2,
+    eGxTexArgb4444 = 0x3,
+    eGxTexArgb1555 = 0x4,
+    eGxTexRgb565 = 0x5,
+    eGxTexDxt1 = 0x6,
+    eGxTexDxt3 = 0x7,
+    eGxTexDxt5 = 0x8,
+    eGxTexUv88 = 0x9,
+    eGxTexGr1616F = 0xA,
+    eGxTexR32F = 0xB,
+    eGxTexD24X8 = 0xC,
+    eGxTexFormatCount = 0xD,
+};
+
+enum GxTexTarget : uint32_t {
+    eGxTexTarget2d = 0x0,
+    eGxTexTargetCubeMap = 0x1,
+    eGxTexTargetRectangle = 0x2,
+    eGxTexTargetNonPow2 = 0x3,
+    eGxTexTargetVolume = 0x4,
+    eGxTexTargetInternal = 0x5,
+    eGxTexTargetTargetCount = 0x6,
+};
+
+enum GxTexWrapMode : uint32_t { eGxTexWrapClamp = 0, eGxTexWrapRepeat = 1, eGxTexWrapMirror = 2, eGxTexWrapCount = 3 };
+
+enum GxTexFilter : uint32_t {
+    eGxTexFilterNearest = 0,
+    eGxTexFilterLinear = 1,
+    eGxTexFilterNearestMipNearest = 2,
+    eGxTexFilterLinearMipNearest = 3,
+    eGxTexFilterLinearMipLinear = 4,
+    eGxTexFilterAnisotropic = 5,
+    eGxTexFilterCount = 6
+};
+
+enum GxBlend : uint32_t {
+    eGxBlendOpaque = 0x0,
+    eGxBlendAlphaKey = 0x1,
+    eGxBlendAlpha = 0x2,
+    eGxBlendAdd = 0x3,
+    eGxBlendMod = 0x4,
+    eGxBlendMod2X = 0x5,
+    eGxBlendModAdd = 0x6,
+    eGxBlendInvSrcAlphaAdd = 0x7,
+    eGxBlendInvSrcAlphaOpaque = 0x8,
+    eGxBlendSrcAlphaOpaque = 0x9,
+    eGxBlendNoAlphaAdd = 0xA,
+    eGxBlendConstantAlpha = 0xB,
+    eGxBlendScreen = 0xC,
+    eGxBlendBlendAdd = 0xD,
+    eGxBlendCount = 0xE,
+};
+
+enum GxTexBlend : uint32_t {
+    eGxTexBlendOpaque = 0x0,
+    eGxTexBlendMod = 0x1,
+    eGxTexBlendDecal = 0x2,
+    eGxTexBlendAdd = 0x3,
+    eGxTexBlendMod2X = 0x4,
+    eGxTexBlendFade = 0x5,
+    eGxTexBlendMod2XNa = 0x6,
+    eGxTexBlendAddNa = 0x7,
+    eGxTexBlendCount = 0x8,
+};
+
+enum GxTexOp : uint32_t {
+    eGxTexOpMod = 0x0,
+    eGxTexOpMod2X = 0x1,
+    eGxTexOpAdd = 0x2,
+    eGxTexOpPassThru = 0x3,
+    eGxTexOpDecal = 0x4,
+    eGxTexOpFade = 0x5,
+    eGxTexOpCount = 0x6,
+};
+
+enum GxVertexBufferFormat : uint32_t {
+    eGxVbfP = 0x0,
+    eGxVbfPn = 0x1,
+    eGxVbfPnc = 0x2,
+    eGxVbfPnt = 0x3,
+    eGxVbfPnct = 0x4,
+    eGxVbfPnt2 = 0x5,
+    eGxVbfPnct2 = 0x6,
+    eGxVbfPc = 0x7,
+    eGxVbfPct = 0x8,
+    eGxVbfPct2 = 0x9,
+    eGxVbfPt = 0xA,
+    eGxVbfPt2 = 0xB,
+    eGxVbfPbnT2 = 0xC,
+    eGxVbfPnC2T2 = 0xD,
+    eGxVbfCount = 0xE,
+};
+
+enum GxPoolTarget : uint32_t {
+    eGxPoolTargetVertex = 0,
+    eGxPoolTargetIndex = 1,
+};
+
+enum GxPoolUsage : uint32_t {
+    eGxPoolUsageStatic = 0,
+    eGxPoolUsageDynamic = 1,
+    eGxPoolUsageStream = 2,
+};
+
+enum GxVertexAttrib : uint32_t {
+    eGxVaPosition = 0x0,
+    eGxVaBlendWeight = 0x1,
+    eGxVaBlendIndices = 0x2,
+    eGxVaNormal = 0x3,
+    eGxVaColor0 = 0x4,
+    eGxVaColor1 = 0x5,
+    eGxVaTexCoord0 = 0x6,
+    eGxVaTexCoord1 = 0x7,
+    eGxVaCount = 0x8,
+};
+
+enum GxShaderType : uint32_t {
+    eGxShaderVertex = 0,
+    eGxShaderHull = 1,
+    eGxShaderDomain = 2,
+    eGxShaderGeometry = 3,
+    eGxShaderPixel = 4,
+    eGxShaderCompute = 5,
+    eGxShaderCount = 6,
+};
+
+enum GxRenderState : uint32_t { eGxRsTexture0 = 0x15, eGxRsVertexShader = 0x4D, eGxRsPixelShader = 0x4E };
+
+enum GxPrimMask : uint32_t {
+    eGxPrimVertex = 0x1,
+    eGxPrimTexCoord0 = 0x2,
+    eGxPrimTexCoord1 = 0x4,
+    eGxPrimTexCoord2 = 0x8,
+    eGxPrimTexCoord3 = 0x10,
+    eGxPrimTexCoord4 = 0x20,
+    eGxPrimTexCoord5 = 0x40,
+    eGxPrimTexCoord6 = 0x80,
+    eGxPrimTexCoord7 = 0x100,
+    eGxPrimNormal = 0x200,
+    eGxPrimColor = 0x400,
+};
+
+enum GxD3dDsState : uint32_t {
+    eGxDsRsSrcblend = 0x0,
+    eGxDsRsDestblend = 0x1,
+    eGxDsSampMagfilter0 = 0x2,
+    eGxDsSampMagfilter1 = 0x3,
+    eGxDsSampMagfilter2 = 0x4,
+    eGxDsSampMagfilter3 = 0x5,
+    eGxDsSampMagfilter4 = 0x6,
+    eGxDsSampMagfilter5 = 0x7,
+    eGxDsSampMagfilter6 = 0x8,
+    eGxDsSampMagfilter7 = 0x9,
+    eGxDsSampMagfilter8 = 0xA,
+    eGxDsSampMagfilter9 = 0xB,
+    eGxDsSampMagfilter10 = 0xC,
+    eGxDsSampMagfilter11 = 0xD,
+    eGxDsSampMagfilter12 = 0xE,
+    eGxDsSampMagfilter13 = 0xF,
+    eGxDsSampMagfilter14 = 0x10,
+    eGxDsSampMagfilter15 = 0x11,
+    eGxDsSampMinfilter0 = 0x12,
+    eGxDsSampMinfilter1 = 0x13,
+    eGxDsSampMinfilter2 = 0x14,
+    eGxDsSampMinfilter3 = 0x15,
+    eGxDsSampMinfilter4 = 0x16,
+    eGxDsSampMinfilter5 = 0x17,
+    eGxDsSampMinfilter6 = 0x18,
+    eGxDsSampMinfilter7 = 0x19,
+    eGxDsSampMinfilter8 = 0x1A,
+    eGxDsSampMinfilter9 = 0x1B,
+    eGxDsSampMinfilter10 = 0x1C,
+    eGxDsSampMinfilter11 = 0x1D,
+    eGxDsSampMinfilter12 = 0x1E,
+    eGxDsSampMinfilter13 = 0x1F,
+    eGxDsSampMinfilter14 = 0x20,
+    eGxDsSampMinfilter15 = 0x21,
+    eGxDsSampMipfilter0 = 0x22,
+    eGxDsSampMipfilter1 = 0x23,
+    eGxDsSampMipfilter2 = 0x24,
+    eGxDsSampMipfilter3 = 0x25,
+    eGxDsSampMipfilter4 = 0x26,
+    eGxDsSampMipfilter5 = 0x27,
+    eGxDsSampMipfilter6 = 0x28,
+    eGxDsSampMipfilter7 = 0x29,
+    eGxDsSampMipfilter8 = 0x2A,
+    eGxDsSampMipfilter9 = 0x2B,
+    eGxDsSampMipfilter10 = 0x2C,
+    eGxDsSampMipfilter11 = 0x2D,
+    eGxDsSampMipfilter12 = 0x2E,
+    eGxDsSampMipfilter13 = 0x2F,
+    eGxDsSampMipfilter14 = 0x30,
+    eGxDsSampMipfilter15 = 0x31,
+    eGxDsSampAddressu0 = 0x32,
+    eGxDsSampAddressu1 = 0x33,
+    eGxDsSampAddressu2 = 0x34,
+    eGxDsSampAddressu3 = 0x35,
+    eGxDsSampAddressu4 = 0x36,
+    eGxDsSampAddressu5 = 0x37,
+    eGxDsSampAddressu6 = 0x38,
+    eGxDsSampAddressu7 = 0x39,
+    eGxDsSampAddressu8 = 0x3A,
+    eGxDsSampAddressu9 = 0x3B,
+    eGxDsSampAddressu10 = 0x3C,
+    eGxDsSampAddressu11 = 0x3D,
+    eGxDsSampAddressu12 = 0x3E,
+    eGxDsSampAddressu13 = 0x3F,
+    eGxDsSampAddressu14 = 0x40,
+    eGxDsSampAddressu15 = 0x41,
+    eGxDsSampAddressv0 = 0x42,
+    eGxDsSampAddressv1 = 0x43,
+    eGxDsSampAddressv2 = 0x44,
+    eGxDsSampAddressv3 = 0x45,
+    eGxDsSampAddressv4 = 0x46,
+    eGxDsSampAddressv5 = 0x47,
+    eGxDsSampAddressv6 = 0x48,
+    eGxDsSampAddressv7 = 0x49,
+    eGxDsSampAddressv8 = 0x4A,
+    eGxDsSampAddressv9 = 0x4B,
+    eGxDsSampAddressv10 = 0x4C,
+    eGxDsSampAddressv11 = 0x4D,
+    eGxDsSampAddressv12 = 0x4E,
+    eGxDsSampAddressv13 = 0x4F,
+    eGxDsSampAddressv14 = 0x50,
+    eGxDsSampAddressv15 = 0x51,
+    eGxDsTssTexturetransformflags0 = 0x52,
+    eGxDsTssTexturetransformflags1 = 0x53,
+    eGxDsTssTexturetransformflags2 = 0x54,
+    eGxDsTssTexturetransformflags3 = 0x55,
+    eGxDsTssTexturetransformflags4 = 0x56,
+    eGxDsTssTexturetransformflags5 = 0x57,
+    eGxDsTssTexturetransformflags6 = 0x58,
+    eGxDsTssTexturetransformflags7 = 0x59,
+    eGxDsSampMaxanisotropy0 = 0x5A,
+    eGxDsSampMaxanisotropy1 = 0x5B,
+    eGxDsSampMaxanisotropy2 = 0x5C,
+    eGxDsSampMaxanisotropy3 = 0x5D,
+    eGxDsSampMaxanisotropy4 = 0x5E,
+    eGxDsSampMaxanisotropy5 = 0x5F,
+    eGxDsSampMaxanisotropy6 = 0x60,
+    eGxDsSampMaxanisotropy7 = 0x61,
+    eGxDsSampMaxanisotropy8 = 0x62,
+    eGxDsSampMaxanisotropy9 = 0x63,
+    eGxDsSampMaxanisotropy10 = 0x64,
+    eGxDsSampMaxanisotropy11 = 0x65,
+    eGxDsSampMaxanisotropy12 = 0x66,
+    eGxDsSampMaxanisotropy13 = 0x67,
+    eGxDsSampMaxanisotropy14 = 0x68,
+    eGxDsSampMaxanisotropy15 = 0x69,
+    eGxDsTssTexcoordindex0 = 0x6A,
+    eGxDsTssTexcoordindex1 = 0x6B,
+    eGxDsTssTexcoordindex2 = 0x6C,
+    eGxDsTssTexcoordindex3 = 0x6D,
+    eGxDsTssTexcoordindex4 = 0x6E,
+    eGxDsTssTexcoordindex5 = 0x6F,
+    eGxDsTssTexcoordindex6 = 0x70,
+    eGxDsTssTexcoordindex7 = 0x71,
+    eGxDsTssColorop0 = 0x72,
+    eGxDsTssColorop1 = 0x73,
+    eGxDsTssColorop2 = 0x74,
+    eGxDsTssColorop3 = 0x75,
+    eGxDsTssColorop4 = 0x76,
+    eGxDsTssColorop5 = 0x77,
+    eGxDsTssColorop6 = 0x78,
+    eGxDsTssColorop7 = 0x79,
+    eGxDsTssAlphaop0 = 0x7A,
+    eGxDsTssAlphaop1 = 0x7B,
+    eGxDsTssAlphaop2 = 0x7C,
+    eGxDsTssAlphaop3 = 0x7D,
+    eGxDsTssAlphaop4 = 0x7E,
+    eGxDsTssAlphaop5 = 0x7F,
+    eGxDsTssAlphaop6 = 0x80,
+    eGxDsTssAlphaop7 = 0x81,
+    eGxDsTssColorarg10 = 0x82,
+    eGxDsTssColorarg11 = 0x83,
+    eGxDsTssColorarg12 = 0x84,
+    eGxDsTssColorarg13 = 0x85,
+    eGxDsTssColorarg14 = 0x86,
+    eGxDsTssColorarg15 = 0x87,
+    eGxDsTssColorarg16 = 0x88,
+    eGxDsTssColorarg17 = 0x89,
+    eGxDsTssColorarg20 = 0x8A,
+    eGxDsTssColorarg21 = 0x8B,
+    eGxDsTssColorarg22 = 0x8C,
+    eGxDsTssColorarg23 = 0x8D,
+    eGxDsTssColorarg24 = 0x8E,
+    eGxDsTssColorarg25 = 0x8F,
+    eGxDsTssColorarg26 = 0x90,
+    eGxDsTssColorarg27 = 0x91,
+    eGxDsTssAlphaarg10 = 0x92,
+    eGxDsTssAlphaarg11 = 0x93,
+    eGxDsTssAlphaarg12 = 0x94,
+    eGxDsTssAlphaarg13 = 0x95,
+    eGxDsTssAlphaarg14 = 0x96,
+    eGxDsTssAlphaarg15 = 0x97,
+    eGxDsTssAlphaarg16 = 0x98,
+    eGxDsTssAlphaarg17 = 0x99,
+    eGxDsTssAlphaarg20 = 0x9A,
+    eGxDsTssAlphaarg21 = 0x9B,
+    eGxDsTssAlphaarg22 = 0x9C,
+    eGxDsTssAlphaarg23 = 0x9D,
+    eGxDsTssAlphaarg24 = 0x9E,
+    eGxDsTssAlphaarg25 = 0x9F,
+    eGxDsTssAlphaarg26 = 0xA0,
+    eGxDsTssAlphaarg27 = 0xA1,
+    eGxDsRsAmbientmaterialsource = 0xA2,
+    eGxDsRsDiffusematerialsource = 0xA3,
+    eGxDsRsSpecularmaterialsource = 0xA4,
+    eGxDsRsEmissivematerialsource = 0xA5,
+    eGxDsRsAmbient = 0xA6,
+    eGxDsRsAlphablendenable = 0xA7,
+    eGxDsRsAlphatestenable = 0xA8,
+    eGxDsRsAlpharef = 0xA9,
+    eGxDsRsFogenable = 0xAA,
+    eGxDsRsZwriteenable = 0xAB,
+    eGxDsRsColorwriteenable = 0xAC,
+    eGxDsRsLighting = 0xAD,
+    eGxDsRsSpecularenable = 0xAE,
+    eGxDsRsCullmode = 0xAF,
+    eGxDsRsClipplaneenable = 0xB0,
+    eGxDsRsZfunc = 0xB1,
+    eGxDsRsPointscaleA = 0xB2,
+    eGxDsRsPointscaleB = 0xB3,
+    eGxDsRsPointscaleC = 0xB4,
+    eGxDsRsPointscaleenable = 0xB5,
+    eGxDsCount = 0xB6,
+};
+
+enum CPixelFormat : uint32_t {
+    eCPixelFormatDxT1 = 0x0,
+    eCPixelFormatDxT3 = 0x1,
+    eCPixelFormatArgB8888 = 0x2,
+    eCPixelFormatArgB1555 = 0x3,
+    eCPixelFormatArgB4444 = 0x4,
+    eCPixelFormatRgB565 = 0x5,
+    eCPixelFormatAlphA8 = 0x6,
+    eCPixelFormatDxT5 = 0x7,
+    eCPixelFormatYuv = 0x9,
+    eCPixelFormatCount = 0x2C,
+};
+
+union GxTexFlags {
+    struct {
+        GxTexFilter filter_mode : 3;
+        uint32_t use_mip_maps : 1;
+        uint32_t wrap_u : 1;
+        uint32_t wrap_v : 1;
+        uint32_t gen_mipmaps : 1;
+        uint32_t is_render_target : 1;
+        uint32_t unk_glow_ffx : 1;
+        uint32_t max_anisotropy : 5;
+        uint32_t unk14 : 1;
+        uint32_t is_atlas_page : 1;
+        uint32_t reserved : 16;
+    } unpacked;
+
+    uint32_t packed = 0;
+
+    // filter mode, use mip maps, wrap u, wrap v, is dynamic, is render target, max aniso, unk glow ffx, unk, is atlas page
+    HOOKKIT_HOOK(ctor, 0x00681BE0, hookkit::Conv::eThiscall, GxTexFlags*, GxTexFilter, bool, bool, bool, bool, bool,
+        uint8_t, bool, bool, bool);
+};

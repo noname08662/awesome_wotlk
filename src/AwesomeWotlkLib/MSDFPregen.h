@@ -1,93 +1,141 @@
-﻿#pragma once
-#include "MSDF.h"
-#include "MSDFCache.h"
+#pragma once
+
+#include <ft2build.h>
+#include <share.h>
+#include <windows.h>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include FT_FREETYPE_H
+
+#include "MSDFUtils.h"
 
 class Throttle {
-	double targetUsage;
-	std::chrono::steady_clock::time_point lastSleep;
-	std::chrono::milliseconds accumulatedWork{0};
-
 public:
-	Throttle(double targetPercent) : targetUsage(std::clamp(targetPercent, 1.0, 100.0)), lastSleep(std::chrono::steady_clock::now()) {
-	}
+    explicit Throttle(double target_percent)
+        : target_usage_(std::clamp(target_percent, 1.0, 100.0)), last_sleep_(std::chrono::steady_clock::now()) {}
 
-	void StartWork() { lastSleep = std::chrono::steady_clock::now(); }
+    void startWork() { last_sleep_ = std::chrono::steady_clock::now(); }
 
-	void EndWork() {
-		auto now = std::chrono::steady_clock::now();
-		auto workDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastSleep);
-		accumulatedWork += workDuration;
+    void endWork(const std::atomic<bool>* cancel = nullptr) {
+        const auto now = std::chrono::steady_clock::now();
+        accumulated_work_ += std::chrono::duration_cast<std::chrono::milliseconds>(now - last_sleep_);
 
-		if (accumulatedWork.count() >= 100) {
-			int sleepMs = static_cast<int>(accumulatedWork.count() / (targetUsage / 100.0) - accumulatedWork.count());
-			if (sleepMs > 0) { std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs)); }
-			accumulatedWork = std::chrono::milliseconds{0};
-		}
-		lastSleep = std::chrono::steady_clock::now();
-	}
+        if (accumulated_work_.count() >= kSleepThresholdMs) {
+            const auto work_ms = static_cast<double>(accumulated_work_.count());
+            int sleep_ms = static_cast<int>(work_ms / (target_usage_ / 100.0) - work_ms);
+            while (sleep_ms > 0) {
+                if (cancel != nullptr && cancel->load(std::memory_order_acquire)) { break; }
+                const int chunk = std::min(sleep_ms, kSleepChunkMs);
+                std::this_thread::sleep_for(std::chrono::milliseconds(chunk));
+                sleep_ms -= chunk;
+            }
+            accumulated_work_ = std::chrono::milliseconds{0};
+        }
+        last_sleep_ = std::chrono::steady_clock::now();
+    }
+
+private:
+    static constexpr int64_t kSleepThresholdMs = 100;
+    static constexpr int kSleepChunkMs = 50;
+
+    double target_usage_;
+    std::chrono::steady_clock::time_point last_sleep_;
+    std::chrono::milliseconds accumulated_work_{0};
 };
 
 struct ConsoleGuard {
-	FILE* fpOut = nullptr;
-	FILE* fpIn = nullptr;
-	bool allocated = false;
-	HWND wnd = nullptr;
+    FILE* fp_out = nullptr;
+    FILE* fp_in = nullptr;
+    HWND wnd = nullptr;
+    bool own_console = false;
+    bool allocated = false;
 
-	ConsoleGuard() {
-		wnd = GetActiveWindow();
-		allocated = AllocConsole() || GetLastError() == ERROR_ACCESS_DENIED;
-		if (allocated) {
-			freopen_s(&fpOut, "CONOUT$", "w", stdout);
-			freopen_s(&fpIn, "CONIN$", "r", stdin);
-			if (wnd) { ShowWindow(wnd, SW_MINIMIZE); }
-			SetForegroundWindow(GetConsoleWindow());
-		}
-	}
+    ConsoleGuard()
+        : wnd(GetActiveWindow()),
+          own_console(AllocConsole() != 0),
+          allocated(own_console || GetLastError() == ERROR_ACCESS_DENIED) {
+        if (allocated) {
+            fp_out = _wfsopen(L"CONOUT$", L"w", _SH_DENYNO);
+            fp_in = _wfsopen(L"CONIN$", L"r", _SH_DENYNO);
+            if (fp_out != nullptr) { static_cast<void>(std::setvbuf(fp_out, nullptr, _IONBF, 0)); }
+            if (fp_in != nullptr) { static_cast<void>(std::setvbuf(fp_in, nullptr, _IONBF, 0)); }
+            if (own_console) {
+                if (HMENU menu = GetSystemMenu(GetConsoleWindow(), FALSE); menu != nullptr) {
+                    DeleteMenu(menu, SC_CLOSE, MF_BYCOMMAND);
+                }
+            }
+            if (wnd != nullptr) { ShowWindow(wnd, SW_MINIMIZE); }
+            SetForegroundWindow(GetConsoleWindow());
+        }
+    }
 
-	~ConsoleGuard() {
-		if (fpOut) fclose(fpOut);
-		if (fpIn) fclose(fpIn);
-		if (allocated) FreeConsole();
-		if (wnd) {
-			ShowWindow(wnd, SW_RESTORE);
-			SetForegroundWindow(wnd);
-		}
-	}
+    ~ConsoleGuard() {
+        if (fp_out != nullptr) { static_cast<void>(fclose(fp_out)); }
+        if (fp_in != nullptr) { static_cast<void>(fclose(fp_in)); }
+        if (own_console) { FreeConsole(); }
+        if (wnd != nullptr) {
+            ShowWindow(wnd, SW_RESTORE);
+            SetForegroundWindow(wnd);
+        }
+    }
+
+    ConsoleGuard(const ConsoleGuard&) = delete;
+    ConsoleGuard& operator=(const ConsoleGuard&) = delete;
+    ConsoleGuard(ConsoleGuard&&) = delete;
+    ConsoleGuard& operator=(ConsoleGuard&&) = delete;
 };
 
 class MSDFPregen {
 public:
-	static void RegisterForPreGen(FT_Face aface, const FT_Byte* data, FT_Long size, FT_Long faceIndex);
-	static bool TryStartPreGen();
-	static void Shutdown() noexcept;
+    static bool tryStartPreGen() noexcept;
+    static void shutdown() noexcept;
+
+    static bool isPreGenRunning() { return pregen_lock_file_ != INVALID_HANDLE_VALUE; }
 
 private:
-	struct ThreadLocalBatch {
-		std::vector<std::pair<uint32_t, GlyphMetrics>> glyphs;
-		std::vector<std::vector<uint8_t>> ownedBuffers;
-		std::mutex mutex;
-		size_t memoryUsed = 0;
-	};
+    struct PreGenRequest {
+        FT_Face face = nullptr;
+        const FT_Byte* data = nullptr;
+        FT_Long size = 0;
+        FT_Long face_index = 0;
+        std::string family_name;
+        std::string style_name;
+        FontHash hash = 0;
+        std::filesystem::path path;
+        std::string addon_name;
+        std::vector<std::string> names;
+        std::string variant;
+    };
 
-	struct PreGenRequest {
-		FT_Face face = nullptr;
-		const FT_Byte* data = nullptr;
-		FT_Long size = 0;
-		FT_Long faceIndex = 0;
-		std::string familyName;
-		std::string styleName;
-	};
+    struct GenerateSettings {
+        uint32_t start = 0;
+        uint32_t end = 0;
+        double cpu_limit = 100.0;
+    };
 
-	static void ExecutePreGeneration();
-	static bool AcquirePreGenLock();
-	static void ReleasePreGenLock();
-	static bool GenerateFont(const PreGenRequest& req);
+    enum class GenerateOutcome { eComplete, eSkipped, eFailed, eCancelled };
 
-	static void FlushStdin() {
-		int c;
-		while ((c = getchar()) != '\n' && c != EOF);
-	}
+    static std::vector<PreGenRequest> collectRequests();
+    static void executePreGeneration();
+    static bool acquirePreGenLock();
+    static void releasePreGenLock();
+    static std::optional<GenerateSettings> promptSettings(const std::string& title);
+    static GenerateOutcome generateFont(const PreGenRequest& req, const GenerateSettings& settings);
+    static void refreshLoadedFonts(const PreGenRequest& req);
+    static int WINAPI consoleCtrlHandler(DWORD ctrl_type);
+    static void flushStdin();
 
-	inline static std::vector<PreGenRequest> s_pendingRequests;
-	inline static auto s_pregenLockFile = INVALID_HANDLE_VALUE;
+    inline static auto pregen_lock_file_ = INVALID_HANDLE_VALUE;
+    inline static std::atomic<bool> cancel_pregen_{false};
+    inline static HANDLE pregen_finished_event_ = nullptr;
 };

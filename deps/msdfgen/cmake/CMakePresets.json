@@ -100,7 +100,7 @@
             "displayName": "Configuration with vcpkg as dependency management system",
             "hidden": true,
             "cacheVariables": {
-                "MSDFGEN_USE_VCPKG": "OFF"
+                "MSDFGEN_USE_VCPKG": "ON"
             }
         }, {
             "name": "no-vcpkg",

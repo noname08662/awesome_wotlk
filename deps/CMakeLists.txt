@@ -1,11 +1,10 @@
-add_subdirectory(Detours)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
 set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
 set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
 set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
 set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
-add_subdirectory(freetype-2.14.1)
+add_subdirectory(freetype-2.14.3)
 if(NOT TARGET Freetype::Freetype)
     add_library(Freetype::Freetype ALIAS freetype)
 endif()
@@ -18,12 +17,4 @@ set(MSDFGEN_USE_VCPKG OFF CACHE BOOL "" FORCE)
 set(MSDFGEN_USE_SKIA ON CACHE BOOL "" FORCE)
 
 add_subdirectory(msdfgen)
-
-set(UD_DEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/unordered_dense")
-if (NOT TARGET ankerl::unordered_dense)
-  add_library(ankerl_unordered_dense INTERFACE)
-  target_include_directories(ankerl_unordered_dense INTERFACE
-    "${UD_DEST_DIR}/include"
-  )
-  add_library(ankerl::unordered_dense ALIAS ankerl_unordered_dense)
-endif()
+add_subdirectory(unordered_dense)

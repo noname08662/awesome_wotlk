@@ -26,6 +26,7 @@
 
 #ifdef MSDFGEN_USE_SKIA
 #include <skia/core/SkPath.h>
+#include <skia/core/SkPathBuilder.h>
 #include <skia/utils/SkParsePath.h>
 #include <skia/pathops/SkPathOps.h>
 #endif
@@ -352,7 +353,7 @@ bool loadSvgShape(Shape &output, const char *filename, int pathIndex, Vector2 *d
     if (dimensions)
         *dimensions = dims;
     output.contours.clear();
-    output.inverseYAxis = true;
+    output.setYAxisOrientation(Y_DOWNWARD);
     return buildShapeFromSvgPath(output, pd, ENDPOINT_SNAP_RANGE_PROPORTION*dims.length());
 }
 
@@ -531,7 +532,7 @@ bool loadSvgShape(Shape &output, const char *filename, int pathIndex, Vector2 *d
     if (dimensions)
         *dimensions = dims;
     output.contours.clear();
-    output.inverseYAxis = true;
+    output.setYAxisOrientation(Y_DOWNWARD);
     return buildShapeFromSvgPath(output, xmlDecode(pathAggregator.pathDefs[pathIndex].start, pathAggregator.pathDefs[pathIndex].end).c_str(), ENDPOINT_SNAP_RANGE_PROPORTION*dims.length());
 }
 
@@ -565,7 +566,7 @@ int loadSvgShape(Shape &output, Shape::Bounds &viewBox, const char *filename) {
     viewBox.r = viewBox.l+dims.x;
     viewBox.t = viewBox.b+dims.y;
     output.contours.clear();
-    output.inverseYAxis = true;
+    output.setYAxisOrientation(Y_DOWNWARD);
     if (!buildShapeFromSvgPath(output, pd, ENDPOINT_SNAP_RANGE_PROPORTION*dims.length()))
         return SVG_IMPORT_FAILURE;
     return flags;
@@ -592,7 +593,7 @@ int loadSvgShape(Shape &output, Shape::Bounds &viewBox, const char *filename) {
     viewBox.r = viewBox.l+dims.x;
     viewBox.t = viewBox.b+dims.y;
     output.contours.clear();
-    output.inverseYAxis = true;
+    output.setYAxisOrientation(Y_DOWNWARD);
     if (!buildShapeFromSvgPath(output, xmlDecode(pathAggregator.pathDefs.back().start, pathAggregator.pathDefs.back().end).c_str(), ENDPOINT_SNAP_RANGE_PROPORTION*dims.length()))
         return SVG_IMPORT_FAILURE;
     return SVG_IMPORT_SUCCESS_FLAG|pathAggregator.flags;
@@ -688,6 +689,7 @@ static void gatherPaths(SkPath &fullPath, int &flags, tinyxml2::XMLElement *pare
             flags |= SVG_IMPORT_UNSUPPORTED_FEATURE_FLAG;
         else {
             SkPath curPath;
+            SkPathBuilder curPathBuilder;
             if (!strcmp(cur->Name(), "path")) {
                 const char *pd = cur->Attribute("d");
                 if (!(pd && SkParsePath::FromSVGString(pd, &curPath))) {
@@ -701,23 +703,25 @@ static void gatherPaths(SkPath &fullPath, int &flags, tinyxml2::XMLElement *pare
                 if (!(width && height))
                     continue;
                 SkRect rect = SkRect::MakeLTRB(x, y, x+width, y+height);
-                if (rx || ry) {
-                    SkScalar radii[] = { rx, ry, rx, ry, rx, ry, rx, ry };
-                    curPath.addRoundRect(rect, radii);
-                } else
-                    curPath.addRect(rect);
+                if (rx || ry)
+                    curPathBuilder.addRRect(SkRRect::MakeRectXY(rect, rx, ry));
+                else
+                    curPathBuilder.addRect(rect);
+                curPath = curPathBuilder.detach();
             } else if (!strcmp(cur->Name(), "circle")) {
                 SkScalar cx = SkScalar(cur->DoubleAttribute("cx")), cy = SkScalar(cur->DoubleAttribute("cy"));
                 SkScalar r = SkScalar(cur->DoubleAttribute("r"));
                 if (!r)
                     continue;
-                curPath.addCircle(cx, cy, r);
+                curPathBuilder.addCircle(cx, cy, r);
+                curPath = curPathBuilder.detach();
             } else if (!strcmp(cur->Name(), "ellipse")) {
                 SkScalar cx = SkScalar(cur->DoubleAttribute("cx")), cy = SkScalar(cur->DoubleAttribute("cy"));
                 SkScalar rx = SkScalar(cur->DoubleAttribute("rx")), ry = SkScalar(cur->DoubleAttribute("ry"));
                 if (!(rx && ry))
                     continue;
-                curPath.addOval(SkRect::MakeLTRB(cx-rx, cy-ry, cx+rx, cy+ry));
+                curPathBuilder.addOval(SkRect::MakeLTRB(cx-rx, cy-ry, cx+rx, cy+ry));
+                curPath = curPathBuilder.detach();
             } else if (!strcmp(cur->Name(), "polygon")) {
                 const char *pd = cur->Attribute("points");
                 if (!pd) {
@@ -727,19 +731,20 @@ static void gatherPaths(SkPath &fullPath, int &flags, tinyxml2::XMLElement *pare
                 Point2 point;
                 if (!readCoord(point, pd))
                     continue;
-                curPath.moveTo(SkScalar(point.x), SkScalar(point.y));
+                curPathBuilder.moveTo(SkScalar(point.x), SkScalar(point.y));
                 if (!readCoord(point, pd))
                     continue;
                 do {
-                    curPath.lineTo(SkScalar(point.x), SkScalar(point.y));
+                    curPathBuilder.lineTo(SkScalar(point.x), SkScalar(point.y));
                 } while (readCoord(point, pd));
-                curPath.close();
+                curPathBuilder.close();
+                curPath = curPathBuilder.detach();
             } else
                 continue;
             const char *fillRule = cur->Attribute("fill-rule");
             if (fillRule && !strcmp(fillRule, "evenodd"))
                 curPath.setFillType(SkPathFillType::kEvenOdd);
-            curPath.transform(combineTransformation(flags, transformation, cur->Attribute("transform"), cur->Attribute("transform-origin")));
+            curPath = curPath.makeTransform(combineTransformation(flags, transformation, cur->Attribute("transform"), cur->Attribute("transform-origin")));
             if (Op(fullPath, curPath, kUnion_SkPathOp, &fullPath))
                 flags |= SVG_IMPORT_SUCCESS_FLAG;
             else
@@ -762,7 +767,7 @@ int loadSvgShape(Shape &output, Shape::Bounds &viewBox, const char *filename) {
     if (!((flags&SVG_IMPORT_SUCCESS_FLAG) && Simplify(fullPath, &fullPath)))
         return SVG_IMPORT_FAILURE;
     shapeFromSkiaPath(output, fullPath);
-    output.inverseYAxis = true;
+    output.setYAxisOrientation(Y_DOWNWARD);
     output.orientContours();
 
     viewBox.l = 0, viewBox.b = 0;
@@ -957,6 +962,7 @@ int parseSvgShape(Shape &output, Shape::Bounds &viewBox, const char *svgData, si
                 case POLYGON:
                     {
                         SkPath curPath;
+                        SkPathBuilder curPathBuilder;
                         switch (curElement) {
                             case PATH:
                                 if (!SkParsePath::FromSVGString(elem.pathDef.str().c_str(), &curPath)) {
@@ -969,23 +975,24 @@ int parseSvgShape(Shape &output, Shape::Bounds &viewBox, const char *svgData, si
                                     if (!(elem.dims.x && elem.dims.y))
                                         return true;
                                     SkRect rect = SkRect::MakeLTRB(elem.pos.x, elem.pos.y, elem.pos.x+elem.dims.x, elem.pos.y+elem.dims.y);
-                                    if (elem.radius.x || elem.radius.y) {
-                                        SkScalar rx = SkScalar(elem.radius.x), ry = SkScalar(elem.radius.y);
-                                        SkScalar radii[] = { rx, ry, rx, ry, rx, ry, rx, ry };
-                                        curPath.addRoundRect(rect, radii);
-                                    } else
-                                        curPath.addRect(rect);
+                                    if (elem.radius.x || elem.radius.y)
+                                        curPathBuilder.addRRect(SkRRect::MakeRectXY(rect, SkScalar(elem.radius.x), SkScalar(elem.radius.y)));
+                                    else
+                                        curPathBuilder.addRect(rect);
+                                    curPath = curPathBuilder.detach();
                                 }
                                 break;
                             case CIRCLE:
                                 if (!elem.radius.x)
                                     return true;
-                                curPath.addCircle(elem.pos.x, elem.pos.y, elem.radius.x);
+                                curPathBuilder.addCircle(elem.pos.x, elem.pos.y, elem.radius.x);
+                                curPath = curPathBuilder.detach();
                                 break;
                             case ELLIPSE:
                                 if (!(elem.radius.x && elem.radius.y))
                                     return true;
-                                curPath.addOval(SkRect::MakeLTRB(elem.pos.x-elem.radius.x, elem.pos.y-elem.radius.y, elem.pos.x+elem.radius.x, elem.pos.y+elem.radius.y));
+                                curPathBuilder.addOval(SkRect::MakeLTRB(elem.pos.x-elem.radius.x, elem.pos.y-elem.radius.y, elem.pos.x+elem.radius.x, elem.pos.y+elem.radius.y));
+                                curPath = curPathBuilder.detach();
                                 break;
                             case POLYGON:
                                 {
@@ -998,13 +1005,14 @@ int parseSvgShape(Shape &output, Shape::Bounds &viewBox, const char *svgData, si
                                     Point2 point;
                                     if (!readCoord(point, pd))
                                         return true;
-                                    curPath.moveTo(SkScalar(point.x), SkScalar(point.y));
+                                    curPathBuilder.moveTo(SkScalar(point.x), SkScalar(point.y));
                                     if (!readCoord(point, pd))
                                         return true;
                                     do {
-                                        curPath.lineTo(SkScalar(point.x), SkScalar(point.y));
+                                        curPathBuilder.lineTo(SkScalar(point.x), SkScalar(point.y));
                                     } while (readCoord(point, pd));
-                                    curPath.close();
+                                    curPathBuilder.close();
+                                    curPath = curPathBuilder.detach();
                                 }
                                 break;
                             default:
@@ -1012,7 +1020,7 @@ int parseSvgShape(Shape &output, Shape::Bounds &viewBox, const char *svgData, si
                         }
                         if (elem.fillRuleEvenOdd)
                             curPath.setFillType(SkPathFillType::kEvenOdd);
-                        curPath.transform(combineTransformation(flags, transformation, elem.transform.str().c_str(), elem.transformOrigin.str().c_str()));
+                        curPath = curPath.makeTransform(combineTransformation(flags, transformation, elem.transform.str().c_str(), elem.transformOrigin.str().c_str()));
                         if (Op(fullPath, curPath, kUnion_SkPathOp, &fullPath))
                             flags |= SVG_IMPORT_SUCCESS_FLAG;
                         else
@@ -1038,7 +1046,7 @@ int parseSvgShape(Shape &output, Shape::Bounds &viewBox, const char *svgData, si
         return SVG_IMPORT_FAILURE;
 
     shapeFromSkiaPath(output, svg.fullPath);
-    output.inverseYAxis = true;
+    output.setYAxisOrientation(Y_DOWNWARD);
     output.orientContours();
 
     viewBox = svg.viewBox;

@@ -1,4 +1,7 @@
 #pragma once
-namespace Inventory {
-void initialize();
-}
+
+#include <hookkit/transaction.h>
+
+namespace inventory {
+void initialize(hookkit::HookTransaction& tx);
+}  // namespace inventory

@@ -1,227 +1,302 @@
 #pragma once
-#include <windows.h>
-#include <array>
-#include <filesystem>
 
 #include <ft2build.h>
+#include <windows.h>
+
+#include <algorithm>
+#include <array>
+#include <bit>
+#include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <span>
+#include <system_error>
+#include <utility>
+#include <vector>
+
+#include "Utils.h"
+
 #include FT_FREETYPE_H
-#include FT_BBOX_H
-#include FT_OUTLINE_H
 
 class ScopedFileLock {
-	HANDLE hFile = INVALID_HANDLE_VALUE;
-	OVERLAPPED ol{};
-	bool locked = false;
-
 public:
-	ScopedFileLock() = default;
-	~ScopedFileLock() { Release(); }
-	bool AcquireExclusive(const std::filesystem::path& lockFilePath, DWORD timeoutMs = 2000) { return AcquireInternal(lockFilePath, LOCKFILE_EXCLUSIVE_LOCK, timeoutMs); }
-	bool AcquireShared(const std::filesystem::path& lockFilePath, DWORD timeoutMs = 2000) { return AcquireInternal(lockFilePath, 0, timeoutMs); }
+    ScopedFileLock() = default;
 
-	void Release() noexcept {
-		if (locked && hFile != INVALID_HANDLE_VALUE) {
-			UnlockFileEx(hFile, 0, 1, 0, &ol);
-			CloseHandle(hFile);
-			hFile = INVALID_HANDLE_VALUE;
-			locked = false;
-		}
-	}
+    ~ScopedFileLock() { release(); }
+
+    ScopedFileLock(const ScopedFileLock&) = delete;
+    ScopedFileLock& operator=(const ScopedFileLock&) = delete;
+    ScopedFileLock(ScopedFileLock&&) = delete;
+    ScopedFileLock& operator=(ScopedFileLock&&) = delete;
+
+    bool acquireExclusive(const std::filesystem::path& lock_file_path, DWORD timeout_ms = 2000) {
+        return acquireInternal(lock_file_path, LOCKFILE_EXCLUSIVE_LOCK, timeout_ms);
+    }
+
+    bool acquireShared(const std::filesystem::path& lock_file_path, DWORD timeout_ms = 2000) {
+        return acquireInternal(lock_file_path, 0, timeout_ms);
+    }
+
+    void release() noexcept {
+        if (locked_ && file_ != INVALID_HANDLE_VALUE) {
+            UnlockFileEx(file_, 0, 1, 0, &overlapped_);
+            CloseHandle(file_);
+            file_ = INVALID_HANDLE_VALUE;
+            locked_ = false;
+        }
+    }
 
 private:
-	bool AcquireInternal(const std::filesystem::path& lockFilePath, DWORD flags, DWORD timeoutMs) {
-		std::error_code ec;
-		std::filesystem::create_directories(lockFilePath.parent_path(), ec);
+    bool acquireInternal(const std::filesystem::path& lock_file_path, DWORD flags, DWORD timeout_ms) {
+        std::error_code ec;
+        std::filesystem::create_directories(lock_file_path.parent_path(), ec);
 
-		hFile = CreateFileW(lockFilePath.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-		if (hFile == INVALID_HANDLE_VALUE) return false;
+        file_ = CreateFileW(lock_file_path.c_str(), GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        if (file_ == INVALID_HANDLE_VALUE) { return false; }
 
-		ULONGLONG start = GetTickCount64();
-		do {
-			memset(&ol, 0, sizeof(ol));
-			if (LockFileEx(hFile, flags | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ol)) {
-				locked = true;
-				return true;
-			}
-			if (timeoutMs == 0) break;
-			Sleep(10);
-		}
-		while ((GetTickCount64() - start) < timeoutMs);
-		CloseHandle(hFile);
-		hFile = INVALID_HANDLE_VALUE;
-		return false;
-	}
+        const ULONGLONG start = GetTickCount64();
+        for (;;) {
+            overlapped_ = {};
+            if (LockFileEx(file_, flags | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &overlapped_) != FALSE) {
+                locked_ = true;
+                return true;
+            }
+            if (timeout_ms == 0) { break; }
+            Sleep(10);
+            if ((GetTickCount64() - start) >= timeout_ms) { break; }
+        }
+        CloseHandle(file_);
+        file_ = INVALID_HANDLE_VALUE;
+        return false;
+    }
+
+    HANDLE file_ = INVALID_HANDLE_VALUE;
+    OVERLAPPED overlapped_{};
+    bool locked_ = false;
 };
 
 template <typename T>
 class VectorPool {
-	static constexpr size_t MIN_BUCKET_SIZE = 64;
-	static constexpr int BUCKETS = 12;
-	static constexpr size_t MAX_VECTORS_PER_BUCKET = 100;
-	std::array<std::vector<std::vector<T>>, BUCKETS> buckets;
-
-	static int bucketIndexFor(size_t cap) {
-		if (cap <= MIN_BUCKET_SIZE) return 0;
-		int idx = std::bit_width(cap - 1) - 6;
-		return std::clamp(idx, 0, BUCKETS - 1);
-	}
-
-	static size_t capacityForIndex(int idx) { return MIN_BUCKET_SIZE << idx; }
-
 public:
-	VectorPool() = default;
+    VectorPool() = default;
 
-	std::vector<T> Acquire(size_t minimumCapacity) {
-		int idx = bucketIndexFor(minimumCapacity);
-		auto& slot = buckets[idx];
+    std::vector<T> acquire(size_t minimum_capacity) {
+        const int idx = bucketIndexFor(minimum_capacity);
+        auto& slot = buckets_[idx];
 
-		if (!slot.empty()) {
-			auto v = std::move(slot.back());
-			slot.pop_back();
-			if (v.capacity() < minimumCapacity) { v.reserve(std::max(minimumCapacity, capacityForIndex(idx))); }
-			return v;
-		}
-		std::vector<T> v;
-		v.reserve(std::max(minimumCapacity, capacityForIndex(idx)));
-		return v;
-	}
+        if (!slot.empty()) {
+            auto v = std::move(slot.back());
+            slot.pop_back();
+            if (v.capacity() < minimum_capacity) { v.reserve(std::max(minimum_capacity, capacityForIndex(idx))); }
+            return v;
+        }
+        std::vector<T> v;
+        v.reserve(std::max(minimum_capacity, capacityForIndex(idx)));
+        return v;
+    }
 
-	std::vector<T> AcquireSized(size_t size, T init = 0) {
-		auto v = Acquire(size);
-		v.resize(size, init);
-		return v;
-	}
+    std::vector<T> acquireSized(size_t size, T init = 0) {
+        auto v = acquire(size);
+        v.resize(size, init);
+        return v;
+    }
 
-	void Release(std::vector<T>&& v) {
-		size_t cap = v.capacity();
-		if (cap < MIN_BUCKET_SIZE) return;
-		int idx = bucketIndexFor(cap);
-		if (idx >= BUCKETS || buckets[idx].size() >= MAX_VECTORS_PER_BUCKET) {
-			std::vector<T>().swap(v);
-			return;
-		}
-		v.clear();
-		buckets[idx].push_back(std::move(v));
-	}
+    void release(std::vector<T>&& v) {
+        const size_t cap = v.capacity();
+        if (cap < kMinBucketSize) { return; }
+        const int idx = bucketIndexFor(cap);
+        if (idx >= kBuckets || buckets_[idx].size() >= kMaxVectorsPerBucket) {
+            std::vector<T>().swap(v);
+            return;
+        }
+        v.clear();
+        buckets_[idx].push_back(std::move(v));
+    }
 
-	void TrimAll() { for (auto& slot : buckets) { std::vector<std::vector<T>>().swap(slot); } }
+    void trimAll() {
+        for (auto& slot : buckets_) {
+            std::vector<std::vector<T>>().swap(slot);
+        }
+    }
 
-	void TrimToMaxPerBucket(size_t maxPerBucket) {
-		for (auto& slot : buckets) {
-			if (slot.size() > maxPerBucket) { slot.resize(maxPerBucket); }
-			slot.shrink_to_fit();
-		}
-	}
+    void trimToMaxPerBucket(size_t max_per_bucket) {
+        for (auto& slot : buckets_) {
+            if (slot.size() > max_per_bucket) { slot.resize(max_per_bucket); }
+            slot.shrink_to_fit();
+        }
+    }
+
+private:
+    static constexpr size_t kMinBucketSize = 64;
+    static constexpr int kBuckets = 12;
+    static constexpr size_t kMaxVectorsPerBucket = 100;
+
+    static int bucketIndexFor(size_t cap) {
+        if (cap <= kMinBucketSize) { return 0; }
+        const int idx = std::bit_width(cap - 1) - 6;
+        return std::clamp(idx, 0, kBuckets - 1);
+    }
+
+    static size_t capacityForIndex(int idx) { return kMinBucketSize << idx; }
+
+    std::array<std::vector<std::vector<T>>, kBuckets> buckets_;
 };
 
 struct FileGuard {
-	HANDLE handle = INVALID_HANDLE_VALUE;
-	std::filesystem::path path;
-	bool deleteOnFailure = false;
-	bool successful = false;
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    std::filesystem::path path;
+    bool delete_on_failure = false;
+    bool successful = false;
 
-	FileGuard(HANDLE h = INVALID_HANDLE_VALUE) : handle(h) {
-	}
+    FileGuard() = default;
 
-	FileGuard(FileGuard&& other) noexcept : handle(other.handle), path(std::move(other.path)), deleteOnFailure(other.deleteOnFailure), successful(other.successful) { other.handle = INVALID_HANDLE_VALUE; }
-	~FileGuard() { Close(); }
+    explicit FileGuard(HANDLE h) : handle(h) {}
 
-	HANDLE Release() {
-		HANDLE h = handle;
-		handle = INVALID_HANDLE_VALUE;
-		return h;
-	}
+    FileGuard(FileGuard&& other) noexcept
+        : handle(other.handle),
+          path(std::move(other.path)),
+          delete_on_failure(other.delete_on_failure),
+          successful(other.successful) {
+        other.handle = INVALID_HANDLE_VALUE;
+    }
 
-	void Close() {
-		if (handle != INVALID_HANDLE_VALUE) {
-			CloseHandle(handle);
-			handle = INVALID_HANDLE_VALUE;
-		}
-		if (deleteOnFailure && !successful && !path.empty()) {
-			std::error_code ec;
-			std::filesystem::remove(path, ec);
-		}
-	}
+    ~FileGuard() { close(); }
 
-	bool IsValid() const { return handle != INVALID_HANDLE_VALUE; }
-	operator HANDLE() const { return handle; }
+    FileGuard(const FileGuard&) = delete;
+    FileGuard& operator=(const FileGuard&) = delete;
+    FileGuard& operator=(FileGuard&&) = delete;
 
-	FileGuard(const FileGuard&) = delete;
-	FileGuard& operator=(const FileGuard&) = delete;
+    HANDLE release() {
+        HANDLE h = handle;
+        handle = INVALID_HANDLE_VALUE;
+        return h;
+    }
+
+    void close() {
+        if (handle != INVALID_HANDLE_VALUE) {
+            CloseHandle(handle);
+            handle = INVALID_HANDLE_VALUE;
+        }
+        if (delete_on_failure && !successful && !path.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+        }
+    }
+
+    [[nodiscard]]
+    bool isValid() const {
+        return handle != INVALID_HANDLE_VALUE;
+    }
+
+    explicit operator HANDLE() const { return handle; }
 };
 
 struct MappingGuard {
-	HANDLE handle = nullptr;
+    HANDLE handle = nullptr;
 
-	MappingGuard(HANDLE h = nullptr) : handle(h) {
-	}
+    MappingGuard() = default;
 
-	~MappingGuard() { Close(); }
+    explicit MappingGuard(HANDLE h) : handle(h) {}
 
-	HANDLE Release() {
-		HANDLE h = handle;
-		handle = nullptr;
-		return h;
-	}
+    ~MappingGuard() { close(); }
 
-	void Close() {
-		if (handle != nullptr) {
-			CloseHandle(handle);
-			handle = nullptr;
-		}
-	}
+    MappingGuard(const MappingGuard&) = delete;
+    MappingGuard& operator=(const MappingGuard&) = delete;
+    MappingGuard(MappingGuard&&) = delete;
+    MappingGuard& operator=(MappingGuard&&) = delete;
 
-	operator HANDLE() const { return handle; }
-	bool IsValid() const { return handle != nullptr; }
-	MappingGuard(const MappingGuard&) = delete;
-	MappingGuard& operator=(const MappingGuard&) = delete;
+    HANDLE release() {
+        HANDLE h = handle;
+        handle = nullptr;
+        return h;
+    }
+
+    void close() {
+        if (handle != nullptr) {
+            CloseHandle(handle);
+            handle = nullptr;
+        }
+    }
+
+    [[nodiscard]]
+    bool isValid() const {
+        return handle != nullptr;
+    }
+
+    explicit operator HANDLE() const { return handle; }
 };
 
 struct ViewGuard {
-	void* ptr = nullptr;
+    void* ptr = nullptr;
 
-	ViewGuard(void* p = nullptr) : ptr(p) {
-	}
+    ViewGuard() = default;
 
-	~ViewGuard() { Close(); }
+    explicit ViewGuard(void* p) : ptr(p) {}
 
-	void* Release() {
-		void* p = ptr;
-		ptr = nullptr;
-		return p;
-	}
+    ~ViewGuard() { close(); }
 
-	void Close() {
-		if (ptr) {
-			UnmapViewOfFile2(GetCurrentProcess(), ptr, MEM_PRESERVE_PLACEHOLDER);
-			ptr = nullptr;
-		}
-	}
+    ViewGuard(const ViewGuard&) = delete;
+    ViewGuard& operator=(const ViewGuard&) = delete;
+    ViewGuard(ViewGuard&&) = delete;
+    ViewGuard& operator=(ViewGuard&&) = delete;
 
-	operator void*() const { return ptr; }
-	ViewGuard(const ViewGuard&) = delete;
-	ViewGuard& operator=(const ViewGuard&) = delete;
+    void* release() {
+        void* p = ptr;
+        ptr = nullptr;
+        return p;
+    }
+
+    void close() {
+        if (ptr != nullptr) {
+            win10Api().unmap_view_of_file2(GetCurrentProcess(), ptr, MEM_PRESERVE_PLACEHOLDER);
+            ptr = nullptr;
+        }
+    }
+
+    explicit operator void*() const { return ptr; }
 };
 
 template <typename F>
 struct FinalAction {
-	F clean;
+    F clean;
 
-	FinalAction(F f) : clean(f) {
-	}
+    explicit FinalAction(F f) : clean(f) {}
 
-	~FinalAction() { clean(); }
-	FinalAction(const FinalAction&) = delete;
-	FinalAction& operator=(const FinalAction&) = delete;
+    ~FinalAction() {
+        try {
+            clean();
+        } catch (...) {}
+    }
+
+    FinalAction(const FinalAction&) = delete;
+    FinalAction& operator=(const FinalAction&) = delete;
+    FinalAction(FinalAction&&) = delete;
+    FinalAction& operator=(FinalAction&&) = delete;
 };
 
 using FontHash = uint64_t;
 
-inline FontHash HashFont(const FT_Byte* data, FT_Long size) {
-	uint64_t h = 0xcbf29ce484222325ULL;
-	for (FT_Long i = 0; i < size; ++i) {
-		h ^= data[i];
-		h *= 0x100000001b3ULL;
-	}
-	return h;
+inline FontHash hashFont(const FT_Byte* data, FT_Long size) {
+    uint64_t h = 0xcbf29ce484222325ULL;
+    if (size <= 0) { return h; }
+    for (const FT_Byte b : std::span(data, static_cast<size_t>(size))) {
+        h ^= b;
+        h *= 0x100000001b3ULL;
+    }
+    return h;
+}
+
+inline bool readFontFile(const std::filesystem::path& path, std::vector<uint8_t>& out) {
+    out.clear();
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) { return false; }
+    const std::streamsize size = file.tellg();
+    if (size <= 0 || static_cast<uint64_t>(size) > static_cast<uint64_t>(LONG_MAX)) { return false; }
+    out.resize(static_cast<size_t>(size));
+    file.seekg(0, std::ios::beg);
+    return static_cast<bool>(file.read(reinterpret_cast<char*>(out.data()), size));
 }

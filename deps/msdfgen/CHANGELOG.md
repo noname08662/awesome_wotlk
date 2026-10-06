@@ -1,4 +1,17 @@
 
+## Version 1.13 (2025-11-30)
+
+- Improved BMP file output - support for BGRA (`mtsdf` mode), optimized size of grayscale files
+    - For builds without PNG support, BMP replaces TIFF as the default output format
+- Fixed incorrect output with asymmetrical distance range when inversion occurs due to winding correction (`-guesswinding` / `-reversewinding`) or scanline pass (`-scanline`)
+- The library now operates on bitmap section references (instead of contiguous bitmap references), which makes it possible to generate a distance field directly into a subsection of a larger bitmap or a bitmap with the opposite row ordering
+- Improved semantics of specifying Y-axis orientation (upward / downward)
+- Improved precision of cubic curve distance computation
+- Fixed a bug incorrectly adjusting convergent edge segments in shape normalization
+- Renamed options `-guesswinding`, `-reversewinding`, `-keepwinding` from `-guessorder`, ... for clarity (old names kept for compatibility)
+- Adjusted the Readme example shader to improve anti-aliasing in a rotated frame
+- Minor CMake fixes
+
 ### Version 1.12.1 (2025-05-31)
 
 - Fixed a bug applying error correction incorrectly if shape's Y-axis is inverted (mainly affected SVG input)

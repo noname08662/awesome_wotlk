@@ -184,9 +184,13 @@ I would suggest precomputing `unitRange` as a uniform variable instead of `pxRan
 ```glsl
 uniform float pxRange; // set to distance field's pixel range
 
+vec2 sqr(vec2 x) { return x*x; } // squares vector components
+
 float screenPxRange() {
     vec2 unitRange = vec2(pxRange)/vec2(textureSize(msdf, 0));
-    vec2 screenTexSize = vec2(1.0)/fwidth(texCoord);
+    // If inversesqrt is not available, use vec2(1.0)/sqrt
+    vec2 screenTexSize = inversesqrt(sqr(dFdx(texCoord))+sqr(dFdy(texCoord)));
+    // Can also be approximated as screenTexSize = vec2(1.0)/fwidth(texCoord);
     return max(0.5*dot(unitRange, screenTexSize), 1.0);
 }
 ```
@@ -203,6 +207,7 @@ The text shape description has the following syntax.
  - The last point of each contour must be equal to the first, or the symbol `#` can be used, which represents the first point.
  - There can be an edge segment specification between any two points, also separated by semicolons.
    This can include the edge's color (`c`, `m`, `y` or `w`) and/or one or two Bézier curve control points inside parentheses.
+ - At the beginning, there may be an Y-axis direction specifier `@y-up` or `@y-down`.
 
 For example,
 ```

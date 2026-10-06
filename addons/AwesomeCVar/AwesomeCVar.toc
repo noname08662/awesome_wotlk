@@ -1,11 +1,11 @@
 ## Interface: 30300
 ## Title: Awesome CVar Manager
-## Notes: Manage CVars via UI
+## Notes: Settings window for the Awesome WotLK client mod
 ## Author: Widget, Crum
 ## Version: 3.0
 ## SavedVariables: AwesomeCVarDB
 
-# Load Localization files from the Locales sub-folder
+# Locales: enUS first, it is the fallback for missing keys
 Locales\enUS.lua
 Locales\deDE.lua
 Locales\esMX.lua
@@ -16,13 +16,10 @@ Locales\ruRU.lua
 Locales\zhCN.lua
 Locales\zhTW.lua
 
-# Load skins
+# Skins
 Skins\ElvUI.lua
 
-# Load XML frame definitions
-AwesomeCVar.xml
-
-# Load Lua logic files
+# Core
 Constants.lua
 UI.lua
 Core.lua

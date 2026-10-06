@@ -25,6 +25,52 @@ if(NOT MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+if(MSDFGEN_USE_VCPKG)
+    # Make sure that vcpkg toolchain file is set
+    if(NOT CMAKE_TOOLCHAIN_FILE)
+        if(DEFINED ENV{VCPKG_ROOT})
+            set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+        else()
+            message(SEND_ERROR "Vcpkg toolchain not configured. Either set VCPKG_ROOT environment variable or pass -DCMAKE_TOOLCHAIN_FILE=VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake to cmake")
+        endif()
+    endif()
+    # Default to statically linked vcpkg triplet on Windows
+    if(WIN32 AND NOT VCPKG_TARGET_TRIPLET AND NOT MSDFGEN_DYNAMIC_RUNTIME)
+        if(CMAKE_GENERATOR_PLATFORM MATCHES "64$" AND NOT CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+            set(VCPKG_TARGET_TRIPLET "x64-windows-static")
+        elseif(CMAKE_GENERATOR_PLATFORM MATCHES "32$" OR CMAKE_GENERATOR_PLATFORM STREQUAL "x86")
+            set(VCPKG_TARGET_TRIPLET "x86-windows-static")
+        else()
+            if(CMAKE_GENERATOR_PLATFORM)
+                message(WARNING "Vcpkg triplet not explicitly specified and could not be deduced. Recommend using -DVCPKG_TARGET_TRIPLET=x64-windows-static or similar")
+            else()
+                message(WARNING "Vcpkg triplet not explicitly specified and could not be deduced. Recommend using -A to explicitly select platform (Win32 or x64)")
+            endif()
+        endif()
+    endif()
+    # Select project features
+    if(NOT MSDFGEN_VCPKG_FEATURES_SET)
+        set(VCPKG_MANIFEST_NO_DEFAULT_FEATURES ON)
+        if(NOT MSDFGEN_CORE_ONLY)
+            list(APPEND VCPKG_MANIFEST_FEATURES "extensions")
+        endif()
+        if(MSDFGEN_BUILD_STANDALONE)
+            list(APPEND VCPKG_MANIFEST_FEATURES "standalone")
+        endif()
+        if(MSDFGEN_USE_SKIA)
+            list(APPEND VCPKG_MANIFEST_FEATURES "geometry-preprocessing")
+        endif()
+        if(MSDFGEN_USE_OPENMP)
+            list(APPEND VCPKG_MANIFEST_FEATURES "openmp")
+        endif()
+    endif()
+endif()
+
+if(MSDFGEN_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+endif()
+
 # Version is specified in vcpkg.json
 project(msdfgen VERSION ${MSDFGEN_VERSION} LANGUAGES CXX)
 
@@ -64,7 +110,7 @@ target_compile_definitions(msdfgen-core PUBLIC
     MSDFGEN_COPYRIGHT_YEAR=${MSDFGEN_COPYRIGHT_YEAR}
 )
 target_include_directories(msdfgen-core INTERFACE
-    $<INSTALL_INTERFACE:include/msdfgen>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/msdfgen>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/>
 )
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT msdfgen-core)
@@ -123,7 +169,7 @@ if(NOT MSDFGEN_CORE_ONLY)
     target_link_libraries(msdfgen-ext PRIVATE Freetype::Freetype msdfgen::msdfgen-core)
     target_include_directories(msdfgen-ext
         PUBLIC
-            $<INSTALL_INTERFACE:include/msdfgen>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/msdfgen>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -226,8 +272,6 @@ set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER meta)
 
 # Installation
 if(MSDFGEN_INSTALL)
-    include(GNUInstallDirs)
-    include(CMakePackageConfigHelpers)
     set(MSDFGEN_CONFIG_PATH "lib/cmake/msdfgen")
 
     # Generate msdfgen-config.h
@@ -288,8 +332,8 @@ if(MSDFGEN_INSTALL)
         @ONLY
     )
 
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/msdfgen-config.h" DESTINATION include/msdfgen)
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/msdfgen-config.h" DESTINATION include/msdfgen/msdfgen)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/msdfgen-config.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msdfgen)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/msdfgen-config.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msdfgen/msdfgen)
     install(TARGETS msdfgen-core EXPORT msdfgenTargets
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -297,9 +341,9 @@ if(MSDFGEN_INSTALL)
         FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR}
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msdfgen/core
     )
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/msdfgen.h" DESTINATION include/msdfgen)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/msdfgen.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msdfgen)
     if (NOT MSDFGEN_INSTALL_NO_GLOBAL_INCLUDE)
-        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/msdfgen.h" DESTINATION include)
+        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/msdfgen.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     endif()
     if(MSVC AND BUILD_SHARED_LIBS)
         install(FILES $<TARGET_PDB_FILE:msdfgen-core> DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
@@ -313,9 +357,9 @@ if(MSDFGEN_INSTALL)
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR}
             PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msdfgen/ext
         )
-        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/msdfgen-ext.h" DESTINATION include/msdfgen)
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/msdfgen-ext.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msdfgen)
         if (NOT MSDFGEN_INSTALL_NO_GLOBAL_INCLUDE)
-            install(FILES "${CMAKE_CURRENT_BINARY_DIR}/msdfgen-ext.h" DESTINATION include)
+            install(FILES "${CMAKE_CURRENT_BINARY_DIR}/msdfgen-ext.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
         endif()
         if(MSVC AND BUILD_SHARED_LIBS)
             install(FILES $<TARGET_PDB_FILE:msdfgen-ext> DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
