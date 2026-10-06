@@ -167,6 +167,16 @@ You can exempt specific fonts from vector-based (MSDF) rendering by blacklisting
    Note for Method B: The file name must match the font's internal name (case-insensitive), not the display name shown by your addons (e.g., 'Homespun TT BRK'). You can find the internal name by double-clicking the font file to open it in Windows Font Viewer (or a similar tool) and checking the font title. To exempt only one style of a font family, name the file `Family_Style` (e.g., `Arial_Bold`).
 3. Apply changes: Relaunch the game. The target font will now bypass the MSDF pipeline and render normally. Blacklisted fonts are also skipped by `/msdfpregen`.
 
+### Font Pre-generation
+With MSDF enabled, each character is generated the first time it appears in a font, which can cause a brief stutter. `/msdfpregen` generates the characters of the fonts you pick in advance and saves them to the disk cache (`Cache_AwesomeWotLK`), so they never stutter in game. This is optional for most languages, but **mandatory on Chinese and Korean clients (zhCN, zhTW, koKR)**: there, a font is rendered with MSDF only after its standard range has been pre-generated; until then, it keeps the default rendering.
+1. Open the console: With `MSDFMode` enabled, log in and type `/msdfpregen`. A console window opens and lists the fonts loaded by the game and every font under `Interface\AddOns`, with how many of their characters are already cached. Fonts whose standard range is done are tagged `[COMPLETE]` (`[CJK-READY]` on Chinese and Korean clients).
+2. Pick fonts: Enter a font number, several numbers and ranges (e.g., `1 3 5-7`), or `all`.
+3. Pick a range:
+   * Option 1: The standard range for your client's locale: U+0020-U+9FFF on zhCN/zhTW, U+0020-U+D7AF on koKR, U+0020-U+04FF on ruRU, U+0020-U+00FF on all others.
+   * Option 2: A custom range, entered as start and end hex codepoints (e.g., `4E00` and `9FFF`).
+4. Set a CPU limit: 1-100%, where 100 means unlimited.
+5. Wait for `Generation complete.`, then relaunch the game. The standard range counts as done once at least 95% of the font's characters in it were written. Ctrl+C closes the console at any time.
+
 ### AwesomeCVar Addon
 ![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/preview_v6.png)
 
