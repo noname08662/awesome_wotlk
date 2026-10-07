@@ -20,6 +20,8 @@ ___
 - **Nameplate Distance:** Nameplates can be shown up to 200 yards away; tab-targeting range follows the same distance.
 - **Session Logs:** Chat and combat logs are written to a new timestamped file on every client launch.
 - **Frame Capture:** `/fcapture [FrameName] [size]` saves a single UI frame and everything inside it as a PNG with a transparent background, cropped to its content, to the `Screenshots` folder. It can render the frame larger than on screen (`2x`, or a longer-side size in pixels such as `2048`), antialiased with up to 8x MSAA. Without a name, it captures the frame under the mouse.
+- **Voice Chat (Text-to-Speech):** Backported `C_VoiceChat` and `C_TTSSettings` text-to-speech API, using the voices installed in Windows (SAPI). Addons can read text aloud and query or select voices; speed, volume and voice are also available as CVars.
+- **Smart Interaction:** A single keybind (and `/interact` macro command) that loots, skins and interacts with the nearest or forward-facing mob or object, with an optional highlight on the current target.
 - **Macro Conditionals:**
   - Backported `cursor` conditional
   - Implemented `playerlocation` conditional
