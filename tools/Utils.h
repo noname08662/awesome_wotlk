@@ -42,6 +42,12 @@ inline bool isWin10() noexcept {
 }
 
 namespace utils {
+inline float minPixelSpan(float min_px, float ddc_per_px, float lo, float hi) {
+    const float span = hi - lo;
+    const float abs_span = std::fabs(span);
+    return abs_span >= ddc_per_px * min_px && abs_span < ddc_per_px ? lo + std::copysign(ddc_per_px, span) : hi;
+}
+
 inline const char* sessionStamp() {
     static const std::string stamp = [] {
         char s[40] = {};

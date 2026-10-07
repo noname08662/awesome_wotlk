@@ -340,7 +340,7 @@ void applyInteractionHighlight(int enabled) {
 
 // one detour per objectHighlightMode other than eHlDisabled, which runs the engine's
 template <ObjHlMode Mode>
-inline constexpr auto kPassiveHighlight = [](CGGameObject_C* self) {
+void passiveHighlight(CGGameObject_C* self) {
     self->checkForPassiveHighlight();
 
     GameobjectTypes go_type = self->descriptors_->subtype;
@@ -437,9 +437,9 @@ void applyObjHlMode(int mode, bool changed) {
     using Hook = CGGameObject_C::checkForPassiveHighlight_hook;
     void* detour = nullptr;
     if (new_mode == eHlAlways) {
-        detour = Hook::staticDetour<kPassiveHighlight<eHlAlways>>();
+        detour = Hook::staticDetour<passiveHighlight<eHlAlways>>();
     } else if (new_mode == eHlTracked) {
-        detour = Hook::staticDetour<kPassiveHighlight<eHlTracked>>();
+        detour = Hook::staticDetour<passiveHighlight<eHlTracked>>();
     }
     const bool switched = Hook::attached.load() ? Hook::resolveDetour() != detour : detour != nullptr;
     if (switched && hookkit::HookTransaction::reinstall(Hook{}, detour) != NO_ERROR) { return; }

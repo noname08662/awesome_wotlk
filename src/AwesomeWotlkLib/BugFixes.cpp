@@ -5,6 +5,7 @@
 #include <windef.h>
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <span>
@@ -22,7 +23,9 @@
 #include "include/Math/Math.h"
 #include "include/System/System.h"
 #include "include/Texture/CTexture.h"
+#include "include/Widget/CSimpleFrame.h"
 #include "include/Widget/CSimpleTexture.h"
+#include "include/Widget/CSimpleTop.h"
 
 namespace {
 HOOKKIT_BIND(os::clipboardGetStr_hook, [](HWND hwnd) {
@@ -83,7 +86,9 @@ constexpr std::array<const char*, 2> kSamplingEntries = {"mainNormal", "mainDesa
 constexpr CGxShaderExt::Name kSnapShader{"UISnap"};
 constexpr uint32_t kSnapConstRegister = 222;  // vertex c222 viewport size; MSDF's vertex constant is c220
 
-HOOKKIT_NAMED_HOOK(fetchGxTex_call, 0x00484DF5, {"jmpback", 0x00484DFA});
+constexpr float kMinSnapPx = 0.25f;  // thinner than this is left alone
+
+HOOKKIT_CALLSITE_HOOK(fetchGxTex_call, 0x00484DF5, CTexture::fetchGxTex);
 
 template <bool Sampling, bool Snap>
 CGxTex* fetchGxTexWithConstants(CTexture* texture, int rw_flag, CStatus* status) {
@@ -105,25 +110,41 @@ CGxTex* fetchGxTexWithConstants(CTexture* texture, int rw_flag, CStatus* status)
     return gx_tex;
 }
 
-template <bool Sampling, bool Snap>
-void* fetchGxTexDetour() {
-    static void* const detour = CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(
-        reinterpret_cast<uintptr_t>(&fetchGxTexWithConstants<Sampling, Snap>),
-        jmpTo(fetchGxTex_call::target("jmpback")));
-    return detour;
+Vec3f* thinQuadWiden(CSimpleTexture* self, const Rectf* rect, Vec3f* out) {
+    Vec3f* quad = CSimpleTexture::calcQuadVertices{}(self, rect, out);
+    const CGxDeviceD3dExt* gx = CGxDeviceD3dExt::of();
+    if (gx == nullptr) { return quad; }
+    const Vec2f vp = gx->viewportPixelSize();
+    if (vp.x <= 0.0f || vp.y <= 0.0f) { return quad; }
+    const Vec2f aspect = math::aspectNormal();
+    const Vec2f ddc_per_px = {aspect.x / vp.x, aspect.y / vp.y};
+    // corners: 0 = (left, top), 1 = (left, bottom), 2 = (right, top), 3 = (right, bottom)
+    const float right = utils::minPixelSpan(kMinSnapPx, ddc_per_px.x, rect->left, rect->right);
+    const float bottom = utils::minPixelSpan(kMinSnapPx, ddc_per_px.y, rect->top, rect->bottom);
+    std::span quad_view{quad, 4};
+    quad_view[2].x = right;
+    quad_view[3].x = right;
+    quad_view[1].y = bottom;
+    quad_view[3].y = bottom;
+    return quad;
 }
 
 void applyConstantsHook() {
     const bool sampling =
         static_cast<SamplingMode>(extensions::console::kCvarRegistry->get<"uiTextureSampling", int>()) != eEngine;
     const bool snap = extensions::console::kCvarRegistry->get<"uiPixelSnap", int>() != 0;
+
+    using QuadHook = CSimpleTexture::calcQuadVertices;
+    static_cast<void>(
+        hookkit::HookTransaction::reinstall(QuadHook{}, snap ? QuadHook::staticDetour<thinQuadWiden>() : nullptr));
+
     void* detour = nullptr;
     if (sampling && snap) {
-        detour = fetchGxTexDetour<true, true>();
+        detour = fetchGxTex_call::staticDetour<fetchGxTexWithConstants<true, true>>();
     } else if (sampling) {
-        detour = fetchGxTexDetour<true, false>();
+        detour = fetchGxTex_call::staticDetour<fetchGxTexWithConstants<true, false>>();
     } else if (snap) {
-        detour = fetchGxTexDetour<false, true>();
+        detour = fetchGxTex_call::staticDetour<fetchGxTexWithConstants<false, true>>();
     }
     static_cast<void>(hookkit::HookTransaction::reinstall(fetchGxTex_call{}, detour));
 }
@@ -144,6 +165,8 @@ void applyPixelSnap(int, bool changed) {
         }
     }
     applyConstantsHook();
+    if (!changed) { return; }
+    if (CSimpleTop* top = CSimpleTop::get()) { top->refreshTextureQuads(); }
 }
 
 HOOKKIT_BIND(CGxDevice::initUIShaders_hook, []() {

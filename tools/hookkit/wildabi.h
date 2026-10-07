@@ -187,7 +187,14 @@ struct WildHook {
     }
 
     static void* getOrCreateEndpoint() {
-        static void* built = buildEndpoint();
+        static void* built = buildEndpoint(direct_handler.load(std::memory_order_acquire));
+        return built;
+    }
+
+    template <const auto& Fn>
+    static void* staticDetour() {
+        if (RawFn invoker = getOrCreateInvoker()) { cached_invoker.store(invoker, std::memory_order_release); }
+        static void* const built = buildEndpoint(reinterpret_cast<void*>(&directThunk<Fn>));
         return built;
     }
 
@@ -324,7 +331,7 @@ private:
         return fn;
     }
 
-    static void* buildEndpoint() {
+    static void* buildEndpoint(void* direct) {
         using namespace asmjit;
         constexpr std::size_t kN = sizeof...(Params);
         const std::size_t stack_bytes = AbiSpec.stackBytes();
@@ -364,7 +371,6 @@ private:
             bytes_pushed += 4;
         }
 
-        void* const direct = direct_handler.load(std::memory_order_acquire);
         a.mov(x86::eax,
             asmjit::imm(direct ? reinterpret_cast<std::uintptr_t>(direct) : reinterpret_cast<std::uintptr_t>(kBridge)));
         a.call(x86::eax);

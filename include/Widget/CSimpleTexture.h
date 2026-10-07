@@ -54,6 +54,14 @@ public:
     Vec3f transformed_pos_scratch_[4];
     CTexCoords coords_;
     TextureMask mask_;
+
+    // preserve ecx
+    static constexpr hookkit::WildAbi<3> kCalcQuadAbi = {
+        {{hookkit::ArgLoc::inReg(hookkit::Reg::eCx), hookkit::ArgLoc::onStack(0), hookkit::ArgLoc::onStack(4)}}};
+    HOOKKIT_HOOK_WILD_HANDLE(calcQuadVertices, 0x00483220, hookkit::Conv::eUserpurge, Vec3f*, kCalcQuadAbi,
+        CSimpleTexture*, const Rectf*, Vec3f*);
+
+    HOOKKIT_HOOK(updateGeometry, 0x004834C0, hookkit::Conv::eThiscall, Vec3f*, CSimpleTexture*);
 };
 
 static_assert(sizeof(CSimpleTexture) == 0x164);

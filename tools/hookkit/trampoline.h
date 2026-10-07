@@ -6,6 +6,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -13,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "hook.h"
 #include "wildabi.h"
 
 namespace hookkit {
@@ -700,5 +702,45 @@ private:
     bool assert_on_failure_{false};
     Reg scratch_reg_{Reg::eAx};
 };
+
+// eax/ecx/edx are clobbered exactly as the original call would; one trampoline is JIT-built per Fn
+template <typename Tag, std::uintptr_t Site, typename Callee>
+struct CallsiteHook : Hook<Tag, Site, Conv::eCdecl, void> {
+    using CalleeHook = Callee;
+    static constexpr std::uintptr_t kResume = Site + 5;
+
+    template <const auto& Fn>
+    static void* staticDetour() {
+        [[maybe_unused]] static const bool verified = verifySite();
+        static void* const built = CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(
+            reinterpret_cast<std::uintptr_t>(&Callee::Descriptor::template detour<Fn>), jmpTo(kResume));
+        return built;
+    }
+
+private:
+    static bool verifySite() {
+        if (CallsiteHook::attached.load(std::memory_order_acquire)) { return true; }  // the site holds MinHook's jmp
+        const auto* bytes = reinterpret_cast<const std::uint8_t*>(Site);
+        std::int32_t rel = 0;
+        std::memcpy(&rel, bytes + 1, sizeof(rel));
+        const bool ok = bytes[0] == 0xE8 && kResume + static_cast<std::uintptr_t>(rel) == Callee::kAddress;
+        assert(ok && "hookkit: CallsiteHook: Site is not a `call rel32` to Callee::kAddress");
+        return ok;
+    }
+};
+
+/**
+ * @brief Defines a zero-sized CallsiteHook handle: the `call rel32` at ADDR, whose callee is the hook handle CALLEE.
+ *        Variants come from NAME::staticDetour<Fn>(), Fn having CALLEE's signature.
+ * @code
+ *   HOOKKIT_CALLSITE_HOOK(fetch_call, 0x..., CTexture::fetchGxTex);
+ *   reinstall(fetch_call{}, fetch_call::staticDetour<kFetchVariant<true>>());
+ * @endcode
+ */
+#define HOOKKIT_CALLSITE_HOOK(NAME, ADDR, CALLEE)                         \
+    struct NAME##_tag {};                                                 \
+    struct NAME : ::hookkit::CallsiteHook<NAME##_tag, (ADDR), CALLEE> {}; \
+    using NAME##_hook = NAME;                                             \
+    static_assert(std::is_empty_v<NAME>, #NAME " must stay zero-sized" HOOKKIT_ZERO_SIZED_WHY_)
 
 }  // namespace hookkit

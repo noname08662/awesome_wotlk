@@ -61,4 +61,16 @@ public:
             if ((frame->state_flags_ & eFlagBeingScrolled) != 0) { frame->dirty_layers_ |= 0x1F; }
         }
     }
+
+    void refreshTextureQuads() {
+        for (CSimpleFrame* frame = this->frames_.head(); frame != nullptr; frame = this->frames_.next(frame)) {
+            for (auto& layer : frame->draw_layers_) {
+                for (CSimpleTexture* region : layer) {
+                    if ((region->flag_ & CSimpleRegion::eFlagTransformDirty) != 0) { continue; }
+                    region->updateGeometry();
+                }
+            }
+        }
+        this->markAllBatchesDirty();
+    }
 };
