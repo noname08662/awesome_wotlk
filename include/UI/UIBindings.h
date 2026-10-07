@@ -89,7 +89,7 @@ public:
 
     bool bindgingExists(const char* name) {
         if (name && name[0]) {
-            if (keycmd_tsht_.get(name) != nullptr) { return true; }
+            if (keycmd_tsht_.get(storm::str::hashUtf8{}(name)) != nullptr) { return true; }
         }
 
         return false;
@@ -98,7 +98,7 @@ public:
     bool headerExists(const char* header) {
         if (header && header[0]) {
             std::string header_key = "HEADER_" + std::string(header);
-            if (keycmd_tsht_.get(header_key.c_str()) != nullptr) { return true; }
+            if (keycmd_tsht_.get(storm::str::hashUtf8{}(header_key.c_str())) != nullptr) { return true; }
         }
 
         return false;
