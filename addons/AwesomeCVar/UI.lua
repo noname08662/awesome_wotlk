@@ -1,6 +1,3 @@
--- File: UI.lua
--- Contains all functions for creating and managing UI elements.
-
 local addonName, ACVar = ...
 local L = ACVar.L
 local CONSTANTS = ACVar.CONSTANTS
@@ -12,12 +9,16 @@ local ipairs = ipairs
 local abs = math.abs
 local max = math.max
 local min = math.min
+local floor = math.floor
+local concat = table.concat
 local huge = math.huge
 local pairs = pairs
 local tinsert = table.insert
 local tremove = table.remove
 local tostring = tostring
 local format = string.format
+local gmatch = string.gmatch
+local gsub = string.gsub
 local unpack = unpack
 
 local CreateFrame = CreateFrame
@@ -95,6 +96,21 @@ local function getValueLabel(cvarDef, value)
         return cvarDef.options[value]
     end
     return tostring(value)
+end
+
+-- Steps by UTF-8 character so multibyte labels are never cut mid-character.
+local function setTruncatedText(fontString, text, maxWidth)
+    fontString:SetText(text)
+    if fontString:GetStringWidth() <= maxWidth then return end
+    local chars = {}
+    for char in gmatch(text,"[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = char end
+    local lo, hi = 0, #chars - 1
+    while lo < hi do
+        local mid = floor((lo + hi + 1) / 2)
+        fontString:SetText(concat(chars, "", 1, mid).."...")
+        if fontString:GetStringWidth() <= maxWidth then lo = mid else hi = mid - 1 end
+    end
+    fontString:SetText((gsub(concat(chars, "", 1, lo), "%s+$", "")).."...")
 end
 
 local function fitResetButton(button, maxWidth)
@@ -248,6 +264,9 @@ function ACVar:ShowFrame(tabName)
         if _G["AwesomeCVarChatMessagesCheck"] then
             _G["AwesomeCVarChatMessagesCheck"]:SetChecked(self.DB.showChatMessages)
         end
+        if _G["AwesomeCVarVersionAlertsCheck"] then
+            _G["AwesomeCVarVersionAlertsCheck"]:SetChecked(self.DB.showVersionAlerts)
+        end
 
         local category = self.ResolveCategory(tabName)
         if self._SelectTab and self.TabsByName and category and self.TabsByName[category] then
@@ -288,7 +307,6 @@ local function setClosesOnEscape(frameName, enabled)
     end
 end
 
--- ### Main Frame Creation Functions ###
 function ACVar:CreateDefaultConfirmationPopup()
     if self.DefaultConfirmationPopup then return end
 
@@ -409,12 +427,10 @@ function ACVar:CreateMainFrame()
 
     setClosesOnEscape("AwesomeCVarFrame", true)
 
-    -- Title
     local titleFontString = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalMed3")
     titleFontString:SetPoint("TOP", 0, -8)
     titleFontString:SetText(L.MAIN_FRAME_TITLE)
 
-    -- Tabs
     local tabStrip = CreateFrame("Frame", nil, frame)
     tabStrip:SetPoint("TOPLEFT", 20, -30)
     tabStrip:SetPoint("TOPRIGHT", -12, -30)
@@ -823,7 +839,6 @@ function ACVar:CreateMainFrame()
         selectTab(self.TabsByName[ACVar.DEFAULT_CATEGORY] or tabs[1])
     end
 
-    -- Bottom Buttons
     local okayButton = createButton(frame, "AwesomeCVarOkayButton", _G.OKAY)
     okayButton:SetPoint("BOTTOMRIGHT", -24, 16)
     okayButton:SetScript("OnClick", function()
@@ -850,34 +865,65 @@ function ACVar:CreateMainFrame()
         self.DefaultConfirmationPopup:Show()
     end)
 
-    local cbMinimap = CreateFrame("CheckButton", "AwesomeCVarMinimapCheck", frame, "UICheckButtonTemplate")
-    cbMinimap:SetPoint("LEFT", defaultsButton, "RIGHT", 12, 0)
-    local cbMinimapText = _G[cbMinimap:GetName().."Text"]
-    cbMinimapText:SetText(L.MINIMAP_ICON)
-    cbMinimap:SetChecked(not ACVar.DB.minimap.hide)
-    cbMinimap:SetScript("OnClick", function(self)
-        ACVar.DB.minimap.hide = not (self:GetChecked() and true or false)
-        ACVar:UpdateMinimapButton()
-        PlaySound("igMainMenuOptionCheckBoxOn")
-    end)
+    -- Labels share the row between Defaults and Okay evenly and are cut with "..." past their share;
+    -- the tooltip always shows the full label.
+    local optionChecks = {}
+    local function createOptionCheck(name, label, tooltip, checked, onClick)
+        local check = CreateFrame("CheckButton", name, frame, "UICheckButtonTemplate")
+        local previous = optionChecks[#optionChecks]
+        if previous then
+            check:SetPoint("LEFT", _G[previous:GetName().."Text"], "RIGHT", 12, 0)
+        else
+            check:SetPoint("LEFT", defaultsButton, "RIGHT", 12, 0)
+        end
+        check.label, check.tooltip = label, tooltip
+        check:SetChecked(checked)
+        check:SetScript("OnClick", function(self)
+            onClick(self:GetChecked() and true or false)
+            PlaySound("igMainMenuOptionCheckBoxOn")
+        end)
+        check:SetScript("OnEnter", function(self)
+            _G.GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            _G.GameTooltip:AddLine(self.label)
+            _G.GameTooltip:AddLine(self.tooltip, 1, 1, 1, true)
+            _G.GameTooltip:Show()
+        end)
+        check:SetScript("OnLeave", function() _G.GameTooltip:Hide() end)
+        optionChecks[#optionChecks + 1] = check
+    end
 
-    local cbGameMenu = CreateFrame("CheckButton", "AwesomeCVarGameMenuCheck", frame, "UICheckButtonTemplate")
-    cbGameMenu:SetPoint("LEFT", cbMinimapText, "RIGHT", 12, 0)
-    local cbGameMenuText = _G[cbGameMenu:GetName().."Text"]
-    cbGameMenuText:SetText(L.GAME_MENU_BUTTON)
-    cbGameMenu:SetChecked(ACVar.DB.showGameMenuButton)
-    cbGameMenu:SetScript("OnClick", function(self)
-        ACVar.DB.showGameMenuButton = self:GetChecked() and true or false
-        ACVar:UpdateGameMenuButton()
-        PlaySound("igMainMenuOptionCheckBoxOn")
-    end)
+    createOptionCheck("AwesomeCVarMinimapCheck", L.MINIMAP_ICON, L.MINIMAP_ICON_DESC, not ACVar.DB.minimap.hide,
+        function(checked)
+            ACVar.DB.minimap.hide = not checked
+            ACVar:UpdateMinimapButton()
+        end)
+    createOptionCheck("AwesomeCVarGameMenuCheck", L.GAME_MENU_BUTTON, L.GAME_MENU_BUTTON_DESC, ACVar.DB.showGameMenuButton,
+        function(checked)
+            ACVar.DB.showGameMenuButton = checked
+            ACVar:UpdateGameMenuButton()
+        end)
+    createOptionCheck("AwesomeCVarChatMessagesCheck", L.CHAT_MESSAGES, L.CHAT_MESSAGES_DESC, ACVar.DB.showChatMessages,
+        function(checked) ACVar.DB.showChatMessages = checked end)
+    createOptionCheck("AwesomeCVarVersionAlertsCheck", L.VERSION_ALERTS, L.VERSION_ALERTS_DESC, ACVar.DB.showVersionAlerts,
+        function(checked) ACVar.DB.showVersionAlerts = checked end)
 
-    local cbChat = CreateFrame("CheckButton", "AwesomeCVarChatMessagesCheck", frame, "UICheckButtonTemplate")
-    cbChat:SetPoint("LEFT", cbGameMenuText, "RIGHT", 12, 0)
-    _G[cbChat:GetName().."Text"]:SetText(L.CHAT_MESSAGES)
-    cbChat:SetChecked(ACVar.DB.showChatMessages)
-    cbChat:SetScript("OnClick", function(self)
-        ACVar.DB.showChatMessages = self:GetChecked() and true or false
-        PlaySound("igMainMenuOptionCheckBoxOn")
-    end)
+    -- Refit on show too: the ElvUI skin resizes the boxes after creation.
+    local function fitOptionLabels()
+        local available = frame:GetWidth() - (16 + defaultsButton:GetWidth()) - (24 + okayButton:GetWidth()) - 12
+        for _, check in ipairs(optionChecks) do
+            local _, _, _, textX = _G[check:GetName().."Text"]:GetPoint(1)
+            available = available - 12 - check:GetWidth() - (textX or 0)
+        end
+        local maxWidth = max(0, floor(available / #optionChecks))
+        for _, check in ipairs(optionChecks) do
+            local text = _G[check:GetName().."Text"]
+            local _, _, _, textX = text:GetPoint(1)
+            setTruncatedText(text, check.label, maxWidth)
+            -- The label hovers and clicks as the checkbox.
+            check:SetHitRectInsets(0, -((textX or 0) + text:GetStringWidth()), 0, 0)
+        end
+    end
+    frame:HookScript("OnSizeChanged", fitOptionLabels)
+    frame:HookScript("OnShow", fitOptionLabels)
+    fitOptionLabels()
 end

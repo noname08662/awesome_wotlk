@@ -1,5 +1,4 @@
-﻿-- File: esMX.lua
--- Language: Spanish (Mexico)
+﻿-- Language: Spanish (Mexico)
 local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
@@ -15,10 +14,15 @@ if GetLocale() == "esMX" then
     L.MAIN_FRAME_TITLE = "Awesome CVar Manager"
     L.RESET_TO = "Restablecer a %s"
     L.MINIMAP_ICON = "Icono del minimapa"
+    L.MINIMAP_ICON_DESC = "Muestra el botón de AwesomeCVar en el minimapa."
     L.MINIMAP_TOOLTIP = "Clic para abrir o cerrar\nArrastra para mover"
     L.GAME_MENU_BUTTON = "Botón del menú del juego"
+    L.GAME_MENU_BUTTON_DESC = "Añade un botón de AwesomeCVar al menú del juego (Esc)."
     L.OPEN_ADDON = "Abrir AwesomeCVar"
     L.CHAT_MESSAGES = "Mensajes en el chat"
+    L.CHAT_MESSAGES_DESC = "Muestra en el chat los cambios de ajustes y el mensaje de carga."
+    L.VERSION_ALERTS = "Versiones"
+    L.VERSION_ALERTS_DESC = "Te avisa cuando alguien de tu grupo o hermandad tiene una versión más reciente de Awesome WotLK. Tu versión se sigue compartiendo de todos modos."
 
     -- Ventanas emergentes
     L.RESET_POPUP_TITLE = "Restablecer valores predeterminados"
@@ -88,6 +92,7 @@ if GetLocale() == "esMX" then
     L.VERSION_ADDON_OUTDATED = "Awesome WotLK es más reciente que este addon. Actualiza AwesomeCVar: reemplaza Interface\\AddOns\\AwesomeCVar por el de la versión más reciente."
     L.VERSION_MOD_OUTDATED = "Este addon es más reciente que tu Awesome WotLK. Actualiza AwesomeWotlkLib.dll con el de la versión más reciente."
     L.VERSION_MISSING = "Awesome WotLK no está cargado, así que estos ajustes no tienen efecto. Comprueba que AwesomeWotlkLib.dll esté en la carpeta del juego y que Wow.exe se haya parcheado con AwesomeWotlkPatch.exe."
+    L.VERSION_NEWER_SEEN = "Hay una versión más reciente de Awesome WotLK (versión %d) disponible: %s"
     L.LINK_GITHUB = "GitHub"
     L.LINK_GITHUB_DESC = "Código fuente y reportes de errores."
     L.LINK_RELEASES = "Última versión"

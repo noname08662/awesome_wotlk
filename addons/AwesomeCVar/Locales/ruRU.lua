@@ -1,5 +1,4 @@
-﻿-- File: ruRU.lua
--- Language: Russian
+﻿-- Language: Russian
 local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
@@ -15,10 +14,15 @@ if GetLocale() == "ruRU" then
     L.MAIN_FRAME_TITLE = "Awesome CVar Manager"
     L.RESET_TO = "По умолчанию: %s"
     L.MINIMAP_ICON = "Значок у миникарты"
+    L.MINIMAP_ICON_DESC = "Показывает кнопку AwesomeCVar у миникарты."
     L.MINIMAP_TOOLTIP = "Щелчок: открыть или закрыть\nПеретаскивание: переместить"
     L.GAME_MENU_BUTTON = "Кнопка в меню игры"
+    L.GAME_MENU_BUTTON_DESC = "Добавляет кнопку AwesomeCVar в меню игры (Esc)."
     L.OPEN_ADDON = "Открыть AwesomeCVar"
     L.CHAT_MESSAGES = "Сообщения в чате"
+    L.CHAT_MESSAGES_DESC = "Выводит в чат изменения настроек и сообщение о загрузке."
+    L.VERSION_ALERTS = "Обновления"
+    L.VERSION_ALERTS_DESC = "Сообщает, когда у кого-то в группе или гильдии более новый релиз Awesome WotLK. Ваша версия передаётся в любом случае."
 
     -- Всплывающие окна
     L.RESET_POPUP_TITLE = "Сброс настроек"
@@ -88,6 +92,7 @@ if GetLocale() == "ruRU" then
     L.VERSION_ADDON_OUTDATED = "Awesome WotLK новее этого аддона. Обновите AwesomeCVar: замените Interface\\AddOns\\AwesomeCVar папкой из последнего релиза."
     L.VERSION_MOD_OUTDATED = "Этот аддон новее вашего Awesome WotLK. Обновите AwesomeWotlkLib.dll из последнего релиза."
     L.VERSION_MISSING = "Awesome WotLK не загружен, поэтому эти настройки ни на что не влияют. Проверьте, что AwesomeWotlkLib.dll лежит в папке игры и что Wow.exe пропатчен с помощью AwesomeWotlkPatch.exe."
+    L.VERSION_NEWER_SEEN = "Доступен новый релиз Awesome WotLK (версия %d): %s"
     L.LINK_GITHUB = "GitHub"
     L.LINK_GITHUB_DESC = "Исходный код и сообщения об ошибках."
     L.LINK_RELEASES = "Последний релиз"

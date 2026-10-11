@@ -1,5 +1,4 @@
-﻿-- File: koKR.lua
--- Language: Korean
+﻿-- Language: Korean
 local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
@@ -15,10 +14,15 @@ if GetLocale() == "koKR" then
     L.MAIN_FRAME_TITLE = "Awesome CVar Manager"
     L.RESET_TO = "%s(으)로 초기화"
     L.MINIMAP_ICON = "미니맵 아이콘"
+    L.MINIMAP_ICON_DESC = "미니맵에 AwesomeCVar 버튼을 표시합니다."
     L.MINIMAP_TOOLTIP = "클릭: 열기/닫기\n드래그: 이동"
     L.GAME_MENU_BUTTON = "게임 메뉴 버튼"
+    L.GAME_MENU_BUTTON_DESC = "게임 메뉴(Esc)에 AwesomeCVar 버튼을 추가합니다."
     L.OPEN_ADDON = "AwesomeCVar 열기"
     L.CHAT_MESSAGES = "채팅 메시지"
+    L.CHAT_MESSAGES_DESC = "설정 변경 내용과 로드 메시지를 채팅창에 출력합니다."
+    L.VERSION_ALERTS = "업데이트"
+    L.VERSION_ALERTS_DESC = "파티나 길드의 누군가가 더 새로운 Awesome WotLK 릴리스를 사용 중이면 알려 줍니다. 어느 쪽이든 내 버전은 계속 공유됩니다."
 
     -- 팝업
     L.RESET_POPUP_TITLE = "기본값으로 초기화"
@@ -88,6 +92,7 @@ if GetLocale() == "koKR" then
     L.VERSION_ADDON_OUTDATED = "Awesome WotLK가 이 애드온보다 최신입니다. AwesomeCVar를 업데이트하세요. Interface\\AddOns\\AwesomeCVar를 최신 릴리스의 것으로 교체하면 됩니다."
     L.VERSION_MOD_OUTDATED = "이 애드온이 사용 중인 Awesome WotLK보다 최신입니다. 최신 릴리스의 AwesomeWotlkLib.dll로 업데이트하세요."
     L.VERSION_MISSING = "Awesome WotLK가 로드되지 않아 이 설정들은 효과가 없습니다. AwesomeWotlkLib.dll이 게임 폴더에 있는지, Wow.exe가 AwesomeWotlkPatch.exe로 패치되었는지 확인하세요."
+    L.VERSION_NEWER_SEEN = "새 Awesome WotLK 릴리스(버전 %d)를 사용할 수 있습니다: %s"
     L.LINK_GITHUB = "GitHub"
     L.LINK_GITHUB_DESC = "소스 코드와 버그 제보."
     L.LINK_RELEASES = "최신 릴리스"

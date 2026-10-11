@@ -1,5 +1,4 @@
-﻿-- File: deDE.lua
--- Language: German
+﻿-- Language: German
 local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
@@ -15,10 +14,15 @@ if GetLocale() == "deDE" then
     L.MAIN_FRAME_TITLE = "Awesome CVar Manager"
     L.RESET_TO = "Auf %s zurücksetzen"
     L.MINIMAP_ICON = "Minikarten-Symbol"
+    L.MINIMAP_ICON_DESC = "Zeigt den AwesomeCVar-Button an der Minikarte."
     L.MINIMAP_TOOLTIP = "Klicken zum Öffnen oder Schließen\nZiehen zum Verschieben"
     L.GAME_MENU_BUTTON = "Spielmenü-Button"
+    L.GAME_MENU_BUTTON_DESC = "Fügt dem Spielmenü (Esc) einen AwesomeCVar-Button hinzu."
     L.OPEN_ADDON = "AwesomeCVar öffnen"
     L.CHAT_MESSAGES = "Chatnachrichten"
+    L.CHAT_MESSAGES_DESC = "Gibt Einstellungsänderungen und die Ladenachricht im Chat aus."
+    L.VERSION_ALERTS = "Updates"
+    L.VERSION_ALERTS_DESC = "Benachrichtigt dich, wenn jemand in deiner Gruppe oder Gilde ein neueres Awesome-WotLK-Release hat. Deine Version wird in jedem Fall weiter geteilt."
 
     -- Popups
     L.RESET_POPUP_TITLE = "Standardwerte wiederherstellen"
@@ -88,6 +92,7 @@ if GetLocale() == "deDE" then
     L.VERSION_ADDON_OUTDATED = "Awesome WotLK ist neuer als dieses Addon. Aktualisiere AwesomeCVar: Ersetze Interface\\AddOns\\AwesomeCVar durch die Version aus dem neuesten Release."
     L.VERSION_MOD_OUTDATED = "Dieses Addon ist neuer als dein Awesome WotLK. Aktualisiere AwesomeWotlkLib.dll aus dem neuesten Release."
     L.VERSION_MISSING = "Awesome WotLK ist nicht geladen, daher haben diese Einstellungen keine Wirkung. Prüfe, ob AwesomeWotlkLib.dll im Spielordner liegt und Wow.exe mit AwesomeWotlkPatch.exe gepatcht wurde."
+    L.VERSION_NEWER_SEEN = "Ein neueres Awesome-WotLK-Release (Version %d) ist verfügbar: %s"
     L.LINK_GITHUB = "GitHub"
     L.LINK_GITHUB_DESC = "Quellcode und Fehlerberichte."
     L.LINK_RELEASES = "Neuestes Release"

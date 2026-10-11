@@ -1,5 +1,4 @@
-﻿-- File: enUS.lua
--- Language: English (US)
+﻿-- Language: English (US)
 local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
@@ -15,10 +14,15 @@ do
     L.MAIN_FRAME_TITLE = "Awesome CVar Manager"
     L.RESET_TO = "Reset to %s"
     L.MINIMAP_ICON = "Minimap Icon"
+    L.MINIMAP_ICON_DESC = "Show the AwesomeCVar button on the minimap."
     L.MINIMAP_TOOLTIP = "Click to open or close\nDrag to move"
     L.GAME_MENU_BUTTON = "Game Menu Button"
+    L.GAME_MENU_BUTTON_DESC = "Add an AwesomeCVar button to the game menu (Esc)."
     L.OPEN_ADDON = "Open AwesomeCVar"
     L.CHAT_MESSAGES = "Chat Messages"
+    L.CHAT_MESSAGES_DESC = "Print setting changes and the load message to chat."
+    L.VERSION_ALERTS = "Updates"
+    L.VERSION_ALERTS_DESC = "Notify when someone in your group or guild has a newer Awesome WotLK release. Your version is shared either way."
 
     -- Popups
     L.RESET_POPUP_TITLE = "Reset to Defaults"
@@ -88,6 +92,7 @@ do
     L.VERSION_ADDON_OUTDATED = "Awesome WotLK is newer than this addon. Update AwesomeCVar: replace Interface\\AddOns\\AwesomeCVar with the one from the latest release."
     L.VERSION_MOD_OUTDATED = "This addon is newer than your Awesome WotLK. Update AwesomeWotlkLib.dll from the latest release."
     L.VERSION_MISSING = "Awesome WotLK is not loaded, so these settings have no effect. Check that AwesomeWotlkLib.dll is in the game folder and that Wow.exe has been patched with AwesomeWotlkPatch.exe."
+    L.VERSION_NEWER_SEEN = "A newer Awesome WotLK release (version %d) is available: %s"
     L.LINK_GITHUB = "GitHub"
     L.LINK_GITHUB_DESC = "Source code and bug reports."
     L.LINK_RELEASES = "Latest Release"

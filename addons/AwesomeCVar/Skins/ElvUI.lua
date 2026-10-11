@@ -135,36 +135,17 @@ ACVar.Skins.ElvUI = function()
         if okayBtn then S:HandleButton(okayBtn) end
         if defaultsBtn then S:HandleButton(defaultsBtn) end
 
-        local minimapCheck = _G["AwesomeCVarMinimapCheck"]
-        if minimapCheck then
-            S:HandleCheckBox(minimapCheck)
-            minimapCheck:Size(24, 24)
-            local text = _G["AwesomeCVarMinimapCheckText"]
-            if text then
-                text:ClearAllPoints()
-                text:Point("LEFT", minimapCheck, "RIGHT", 5, 0)
-            end
-        end
-
-        local gameMenuCheck = _G["AwesomeCVarGameMenuCheck"]
-        if gameMenuCheck then
-            S:HandleCheckBox(gameMenuCheck)
-            gameMenuCheck:Size(24, 24)
-            local text = _G["AwesomeCVarGameMenuCheckText"]
-            if text then
-                text:ClearAllPoints()
-                text:Point("LEFT", gameMenuCheck, "RIGHT", 5, 0)
-            end
-        end
-
-        local chatCheck = _G["AwesomeCVarChatMessagesCheck"]
-        if chatCheck then
-            S:HandleCheckBox(chatCheck)
-            chatCheck:Size(24, 24)
-            local text = _G["AwesomeCVarChatMessagesCheckText"]
-            if text then
-                text:ClearAllPoints()
-                text:Point("LEFT", chatCheck, "RIGHT", 5, 0)
+        for _, name in ipairs({ "AwesomeCVarMinimapCheck", "AwesomeCVarGameMenuCheck",
+            "AwesomeCVarChatMessagesCheck", "AwesomeCVarVersionAlertsCheck" }) do
+            local check = _G[name]
+            if check then
+                S:HandleCheckBox(check)
+                check:Size(24, 24)
+                local text = _G[name.."Text"]
+                if text then
+                    text:ClearAllPoints()
+                    text:Point("LEFT", check, "RIGHT", 5, 0)
+                end
             end
         end
 

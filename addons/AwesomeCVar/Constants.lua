@@ -1,12 +1,12 @@
--- File: Constants.lua
--- Holds all static definitions for the addon.
-
 local addonName, ACVar = ...
 local L = ACVar.L
+
+local gsub = string.gsub
+local lower = string.lower
+
 _G["AwesomeCVar"] = {} -- Public API table
 
--- Awesome WotLK version this addon was made for: the AwesomeWotlk global set in Entry.cpp.
--- Releases ship the mod and the addon together; bump this with Entry.cpp.
+-- Must match the AwesomeWotlk global set in Entry.cpp (checked by addons/version_check.lua).
 ACVar.MOD_VERSION = 38
 ACVar.URLS = {
     GITHUB = "https://github.com/noname08662/awesome_wotlk",
@@ -100,8 +100,7 @@ local REQUIRES = {
     cone = { reason = L.REASON_INTERACTION_RADIUS, test = function(get) return get("interactionMode") ~= 0 end },
 }
 
--- Every control shown in the window, keyed by category id.
--- Category ids are stable and locale-independent: frame names, tab lookup and the public API use them.
+-- Keyed by category id. Ids are locale-independent: frame names, tab lookup and the public API use them.
 ACVar.CVARS = {
     Rendering = {
         { name = "headerCamera", label = L.SECTION_CAMERA, type = "header" },
@@ -263,18 +262,16 @@ ACVar.CVARS = {
     },
 }
 
--- Entries that only display information and hold no CVar.
 function ACVar.IsReadOnly(cvarDef)
     return cvarDef.type == "header" or cvarDef.type == "description" or cvarDef.type == "link"
 end
 
--- Tab order; every category id in CVARS must be listed here.
+-- Tab order; must list every category id in CVARS.
 ACVar.CATEGORY_ORDER = { "Rendering", "Nameplates", "TextToSpeech", "Interaction", "Other", "About" }
 
 -- Tab selected when the window is first built; later opens keep the last selected tab.
 ACVar.DEFAULT_CATEGORY = "About"
 
--- Localized tab names, by category id.
 ACVar.CATEGORY_NAMES = {
     Rendering = L.CATEGORY_RENDERING,
     Nameplates = L.CATEGORY_NAMEPLATES,
@@ -288,7 +285,7 @@ ACVar.CATEGORY_NAMES = {
 local CATEGORY_ALIASES = { camera = "Rendering", ui = "Rendering" }
 
 local function normalizeTabName(name)
-    return (name:gsub("%s+", "")):lower()
+    return lower((gsub(name, "%s+", "")))
 end
 
 -- Resolves a tab name to its category id: the id itself, case and spaces ignored ("Text to Speech"),

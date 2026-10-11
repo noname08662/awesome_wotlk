@@ -1,5 +1,4 @@
-﻿-- File: zhTW.lua
--- Language: Traditional Chinese
+﻿-- Language: Traditional Chinese
 local _, AwesomeCVar = ...
 
 if not AwesomeCVar.L then
@@ -15,10 +14,15 @@ if GetLocale() == "zhTW" then
     L.MAIN_FRAME_TITLE = "Awesome CVar Manager"
     L.RESET_TO = "重設為 %s"
     L.MINIMAP_ICON = "小地圖圖示"
+    L.MINIMAP_ICON_DESC = "在小地圖上顯示 AwesomeCVar 按鈕。"
     L.MINIMAP_TOOLTIP = "點擊：開啟或關閉\n拖曳：移動"
     L.GAME_MENU_BUTTON = "遊戲選單按鈕"
+    L.GAME_MENU_BUTTON_DESC = "在遊戲選單（Esc）中加入 AwesomeCVar 按鈕。"
     L.OPEN_ADDON = "開啟 AwesomeCVar"
     L.CHAT_MESSAGES = "聊天訊息"
+    L.CHAT_MESSAGES_DESC = "在聊天框中輸出設定變更和載入訊息。"
+    L.VERSION_ALERTS = "更新提醒"
+    L.VERSION_ALERTS_DESC = "當隊伍或公會中有人使用更新的 Awesome WotLK 發行版時提醒你。無論是否開啟，你的版本都會繼續共享。"
 
     -- 彈出視窗
     L.RESET_POPUP_TITLE = "重設為預設值"
@@ -88,6 +92,7 @@ if GetLocale() == "zhTW" then
     L.VERSION_ADDON_OUTDATED = "Awesome WotLK 比此插件新。請更新 AwesomeCVar：用最新發行版中的資料夾取代 Interface\\AddOns\\AwesomeCVar。"
     L.VERSION_MOD_OUTDATED = "此插件比你的 Awesome WotLK 新。請用最新發行版中的 AwesomeWotlkLib.dll 進行更新。"
     L.VERSION_MISSING = "Awesome WotLK 未載入，因此這些設定不會生效。請確認 AwesomeWotlkLib.dll 位於遊戲資料夾中，且 Wow.exe 已用 AwesomeWotlkPatch.exe 修補過。"
+    L.VERSION_NEWER_SEEN = "Awesome WotLK 有更新的發行版（版本 %d）：%s"
     L.LINK_GITHUB = "GitHub"
     L.LINK_GITHUB_DESC = "原始碼和錯誤回報。"
     L.LINK_RELEASES = "最新發行版"
