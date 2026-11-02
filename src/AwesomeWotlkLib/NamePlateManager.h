@@ -151,7 +151,7 @@ public:
 private:
     // original logic, clamped search boundaries
     static bool isUnderCursor(const Entry* e, const Vec3f* pos) {
-        if ((e->ptr->CLayoutFrame::flags_ & CLayoutFrame::FLAG_VALID_RECT) == 0) { return false; }
+        if ((e->ptr->CLayoutFrame::flags_ & CLayoutFrame::eValidRect) == 0) { return false; }
         const Settings& s = *kSettings;
         const Vec2f hit_box = e->hasState(Entry::State::eIsFriendly)
             ? Vec2f{s.hitbox_width_friend, s.hitbox_height_friend}

@@ -16,20 +16,20 @@ public:
     static_assert(sizeof(CFramePoint) == 0x10);
 
     enum LayoutFlags : uint32_t {
-        RETRY_COUNT_MASK = 0xFF,
-        FLAG_RESIZE_PENDING = 0x2,
-        FLAG_DEFERRED_RESIZE = 0x4,
-        FLAG_VALID_RECT = 0x100,
-        FLAG_BATCH_RESIZE = 0x200,
-        FLAG_RESIZING = 0x400,
-        FLAG_RESIZE_FAILED = 0x800,
-        FLAG_CLAMP_TO_SCREEN = 0x1000,
-        FLAG_PROTECTED_EXPLICIT = 0x10000,
-        FLAG_PROTECTED_BY_CHILD = 0x20000,
-        FLAG_PROTECTED_DIRTY = 0x40000,
-        FLAG_PROTECTED_MASK = 0x70000,
-        FLAG_PROTECT_UPDATING = 0x80000,
-        REINIT_MASK = 0xFF0000FF,
+        eRetryCountMask = 0xFF,
+        eResizePending = 0x2,
+        eDeferredResize = 0x4,
+        eValidRect = 0x100,
+        eBatchResize = 0x200,
+        eResizing = 0x400,
+        eResizeFailed = 0x800,
+        eClampToScreen = 0x1000,
+        eProtectedExplicit = 0x10000,
+        eProtectedByChild = 0x20000,
+        eProtectedDirty = 0x40000,
+        eProtectedMask = 0x70000,
+        eProtectUpdating = 0x80000,
+        eReinitMask = 0xFF0000FF,
     };
 
     enum AnchorPoint : uint32_t {

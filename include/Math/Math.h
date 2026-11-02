@@ -322,4 +322,4 @@ inline bool trace(
     completed_before_intersection *= 100.0f;
     return static_cast<bool>(result);
 }
-};  // namespace math
+}  // namespace math
