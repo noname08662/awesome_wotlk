@@ -117,6 +117,7 @@ ACVar.CVARS = {
         { name = "headerInterface", label = L.SECTION_INTERFACE, type = "header" },
         { name = "uiHalfPixelFix", label = L.CVAR_LABEL_UI_HALF_PIXEL, desc = L.DESC_UI_HALF_PIXEL, perf = L.PERF_NONE, type = "toggle", min = 0, max = 1, default = 1 },
         { name = "uiPixelSnap", label = L.CVAR_LABEL_UI_PIXEL_SNAP, desc = L.DESC_UI_PIXEL_SNAP, perf = L.PERF_NEGLIGIBLE, type = "toggle", min = 0, max = 1, default = 1 },
+        { name = "uiCooldownSwipeFix", label = L.CVAR_LABEL_UI_COOLDOWN_SWIPE, desc = L.DESC_UI_COOLDOWN_SWIPE, perf = L.PERF_NEGLIGIBLE, type = "toggle", min = 0, max = 1, default = 1 },
         { name = "uiTextureSampling", label = L.CVAR_LABEL_UI_SAMPLING, desc = L.DESC_UI_SAMPLING, perf = L.PERF_UI_SAMPLING, type = "mode", default = 1, modes = {
             { value = 0, label = L.MODE_DISABLED },
             { value = 1, label = L.MODE_SAMPLING_BOX },

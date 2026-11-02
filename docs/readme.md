@@ -135,6 +135,7 @@ ___
   - `uiHalfPixelFix`
   - `uiTextureSampling`
   - `uiPixelSnap`
+  - `uiCooldownSwipeFix`
 - **Miscellaneous:**
   - `MSDFMode` _(requires client restart)_
   - `MSDFOutlinePass`

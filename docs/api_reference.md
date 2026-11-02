@@ -569,6 +569,12 @@ Improves sampling of UI textures drawn smaller than their native size, so thin b
 
 Snaps UI elements to whole pixels, keeping edges crisp at any UI scale.
 
+## uiCooldownSwipeFix `CVar`
+**Arguments:** `enabled` (boolean)  
+**Default:** 1
+
+Cooldown swipes on frames attached to a nameplate, such as aura icons from a nameplate addon, no longer disappear while the nameplate moves. Nameplates are placed during the world render, after a cooldown's update for that frame, and the engine resets the swipe when its frame moves; the swipe is now rebuilt right after that reset.
+
 ---
 
 # Misc
@@ -664,9 +670,6 @@ Sets the texture resolution used to render 3D unit portraits. Accepts values bet
 
 Stops selection circles, AoE targeting circles and M2 ground decals from being cut off on steep terrain, by growing the height range they are projected onto. A circle's range scales with its radius, 1.79 times the radius above and below it, between 3 and 50 yards and never less than the engine's own, which keeps a 50 degree slope at full strength out to its edge. M2 ground decals always get 50 yards. When an AoE targeting circle covers stacked surfaces, such as a roof over the ground or a tunnel's ceiling over its floor, its height range narrows and tilts onto the surface under the cursor, and it paints only the part of that surface connected to the cursor, so the others stay clear.
 
-- **0** = Disabled
-- **1** = Enabled
-
 ## groundTargetClamp `CVar`
 **Arguments:** `enabled` (number)  
 **Default:** 1
@@ -685,21 +688,15 @@ Sets the tab-targeting range in yards, between **41** and **200**.
 
 Replaces two parts of the engine's world culling, which decides what gets drawn, with exact reimplementations that fix their bugs: the portal walk (the view through the doorways and windows of buildings) and the terrain horizon test (what lies behind hills). Creatures and objects just behind a ridge are no longer hidden or shown by mistake, and the walk no longer reads freed memory when many doorways are on screen. A few smaller engine fixes come with it: WMO groups whose box grew while their doodads loaded are bucketed again on the grown box, invisible carriers (missiles, effects) no longer keep last frame's visibility, and an overflowing distance bucket no longer drops the groups after it. The replacements also run slightly faster than the engine's own culling.
 
-- **0** = Disabled
-- **1** = Enabled
-
 ## luaSwap `CVar`
 **Arguments:** `enabled` (number)  
 **Default:** 0
 
 Replaces the game's Lua VM, which runs every addon and the default UI, with LuaJIT 1.1.8, a just-in-time compiler. Lua code runs 2.5-3 times faster than on the stock VM. Read once at client start, so changing it requires a client restart.
 
-- **0** = Disabled
-- **1** = LuaJIT
+Addons run unchanged, and taint and secure execution behave as on the stock VM. Only the main thread is compiled: coroutines stay interpreted, and nothing is compiled while `scriptProfile` is on. The VM is based on Lua 5.1.5 instead of the client's 5.1.1, so some error message texts and the iteration order of `pairs` over number keys can differ.
 
 **Risk:** the swap hooks the game's Lua functions. A server whose Warden anti-cheat checks those functions could detect it, so use it at your own risk.
-
-Addons run unchanged, and taint and secure execution behave as on the stock VM. Only the main thread is compiled: coroutines stay interpreted, and nothing is compiled while `scriptProfile` is on. The VM is based on Lua 5.1.5 instead of the client's 5.1.1, so some error message texts and the iteration order of `pairs` over number keys can differ.
 
 ## chatLogSessionKey / combatLogSessionKey `CVar`
 **Arguments:** `enabled` (boolean)  
