@@ -5,11 +5,12 @@
 #include "Heap/CDataAllocator.h"
 #include "Math/Primitives.h"
 #include "ObjectManager/CGUnit_C.h"
-#include "UI/UIEnums.h"
 #include "Widget/CGSimpleHealthBar.h"
 #include "Widget/CSimpleFontString.h"
 #include "Widget/CSimpleFrame.h"
 #include "Widget/CSimpleStatusBar.h"
+
+class CVar;
 
 class CGNamePlateFrame : public CSimpleFrame {
 public:
@@ -20,7 +21,6 @@ public:
 
     inline static auto& CDA = *reinterpret_cast<CDataAllocator<CGNamePlateFrame>*>(0x00DCEC44);
     inline static auto& focus = *reinterpret_cast<CGNamePlateFrame**>(0x00CA1204);
-    inline static auto& max_distance_sq = *reinterpret_cast<float*>(0x00ADAA7C);
 
     // a CDA block that holds a constructed plate rather than a free-list link
     static bool isConstructed(const CGNamePlateFrame* block) {
@@ -81,4 +81,10 @@ public:
 
     HOOKKIT_HOOK_HANDLE(wipeCDA, 0x009DE370, hookkit::Conv::eCdecl, int);
     HOOKKIT_HOOK_HANDLE(wipeActive, 0x00727130, hookkit::Conv::eCdecl, CGNamePlateFrame*);
+
+    CGUnit_C* boundUnit() const {
+        if (this->is_shown_ == 0) { return nullptr; }
+        auto* unit = object_mgr::get<CGUnit_C>(this->owner_guid_, eTypemaskUnit);
+        return unit != nullptr && unit->nameplate_ == this ? unit : nullptr;
+    }
 };

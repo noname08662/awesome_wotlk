@@ -173,7 +173,12 @@ struct WildHook {
     template <const auto& Fn>
     static Ret HOOKKIT_CDECL directThunk(Params... args) {
         static_assert(detail::kDetourInvocable<Ret, Fn, Params...>, HOOKKIT_BIND_SIG_MSG_);
-        HOOKKIT_INLINE_CALL return Fn(std::forward<Params>(args)...);
+        if constexpr (detail::kFnIsPointer<Fn>) {
+            constexpr auto fn = Fn;
+            HOOKKIT_INLINE_CALL return fn(std::forward<Params>(args)...);
+        } else {
+            HOOKKIT_INLINE_CALL return Fn(std::forward<Params>(args)...);
+        }
     }
 
     template <const auto& Fn>
@@ -492,10 +497,14 @@ struct RawBinder {
  * @brief HOOKKIT_NAMED_HOOK + HOOKKIT_BIND_RAW in one: declares the named hook and binds the detour that the
  *        trailing captureless lambda body returns (e.g. a CallsiteTrampolineBuilder::build result).
  *        Inside the body, `NAME::target("label")` is available. Also declares `NAME##_hook`.
+ *        A bare address is the "jmpback" label, which `NAME::target()` resolves without a name.
  *
  * @code
- *   HOOKKIT_NAMED_BIND_RAW(site, 0x..., {"jmpback", 0x...,}) {
- *       return CallsiteTrampolineBuilder{}.build(jmpTo(site::target("jmpback")));
+ *   HOOKKIT_NAMED_BIND_RAW(site, 0x..., 0x...) {
+ *       return CallsiteTrampolineBuilder{}.build(jmpTo(site::target()));
+ *   };
+ *   HOOKKIT_NAMED_BIND_RAW(branch_site, 0x..., 0x..., {"skip", 0x...}) {
+ *       ... jmpTo(branch_site::target()) ... jmpTo(branch_site::target("skip")) ...
  *   };
  * @endcode
  * @note Same one-TU rule as HOOKKIT_BIND_RAW. The trailing `;` is required.

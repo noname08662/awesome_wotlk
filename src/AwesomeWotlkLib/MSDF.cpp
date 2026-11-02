@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -114,7 +115,8 @@ public:
         if constexpr (!OutlinePass) {
             return false;
         } else {
-            return font != nullptr && !this->hasFlag(CGxString::eGxStringFlag3D);
+            return font != nullptr && !this->hasFlag(CGxString::eGxStringFlag3D) &&
+                outlineMode(this->gxfont_->flags_) != 0;
         }
     }
 
@@ -250,17 +252,71 @@ public:
 
             const int count = std::min(remaining, end - current);
             const std::span<VertOut> chunk = out.subspan(written, static_cast<size_t>(count));
-            this->writeGeometry(
-                chunk.data(), index, static_cast<uint32_t>(current + offset), static_cast<uint32_t>(count));
-            if ((i & 1) == 0) {
-                // core pass sentinel, engine assigns all ui verts static z of 1.0f
-                for (VertOut& vert : chunk) {
-                    vert.z = -vert.z;
-                }
-            }
+            // outline pass sentinel: a negated z, the engine assigns all ui verts a static z of 1.0f
+            this->writeBatchGeometry(chunk.data(), index, static_cast<uint32_t>(current + offset),
+                static_cast<uint32_t>(count), (i & 1) == 0);
             written += static_cast<size_t>(count);
             current += count;
             remaining -= count;
+        }
+    }
+
+    // 0x6C4440 replacement
+    void writeBatchGeometry(VertOut* out, int index, uint32_t first, uint32_t count, bool outline) const {
+        const CGxString::TEXTLINETEXTURE* line = this->lines_[index];
+        if (line == nullptr || count == 0 || line->verts.count == 0) { return; }
+
+        const uint32_t vert_count = line->verts.count;
+        const VERT* verts = line->verts.data;
+        const Vec4u8* colors = line->colors.count == vert_count ? line->colors.data : nullptr;
+        const bool rgba = CGxDevice::getDevice()->caps_.rgba_vertex_colors == 1;
+        const auto deviceColor = [rgba](uint32_t bgra) {
+            return rgba ? (bgra & 0xFF00FF00) | ((bgra >> 16) & 0xFF) | ((bgra & 0xFF) << 16) : bgra;
+        };
+        const auto store = [&out, outline](uint32_t i, const VERT& vert, float x, float y, float z, uint32_t color) {
+            out[i] = {.x = x, .y = y, .z = outline ? -z : z, .color = color, .u = vert.u, .v = vert.v};
+        };
+
+        uint32_t remaining = count;
+        if (this->hasFlag(CGxString::eGxStringFlagShadow)) {
+            if (first >= vert_count) {
+                first -= vert_count;
+            } else {
+                const uint32_t shadow_count = std::min(remaining, vert_count - first);
+                const auto offset_y =
+                    static_cast<float>(std::floor(font_util::getFontEffectiveHeight{}(0, this->shadow_offset_.y)));
+                const auto offset_x =
+                    static_cast<float>(std::floor(font_util::getFontEffectiveWidth{}(0, this->shadow_offset_.x)));
+                const float base_x = this->final_pos_.x + offset_x;
+                const float base_y = this->final_pos_.y + offset_y;
+                const float base_z = this->final_pos_.z;
+
+                auto color = std::bit_cast<uint32_t>(this->shadow_color_);
+                if (this->hasFlag(CGxString::eGxStringFlagGradient) && colors != nullptr) {
+                    // trunc(a * a' * 2^-16), so always 0: the engine's gradient shadows are invisible, and it never
+                    // advances past the first vertex's color either
+                    const uint32_t alpha = (static_cast<uint32_t>(this->shadow_color_.a) * colors[first].a) >> 16;
+                    color = (color & 0x00FFFFFF) | (alpha << 24);
+                }
+                color = deviceColor(color);
+                for (uint32_t i = 0; i < shadow_count; ++i) {
+                    const VERT& vert = verts[first + i];
+                    store(i, vert, vert.pos.x + base_x, vert.pos.y + base_y, vert.pos.z + base_z, color);
+                }
+                out += shadow_count;
+                remaining -= shadow_count;
+                if (first + shadow_count >= vert_count) { first = 0; }
+            }
+        }
+
+        if (remaining == 0 || first >= vert_count) { return; }
+        const uint32_t main_count = std::min(remaining, vert_count - first);
+        const auto text_color = std::bit_cast<uint32_t>(this->text_color_);
+        const Vec3f& pos = this->final_pos_;
+        for (uint32_t i = 0; i < main_count; ++i) {
+            const VERT& vert = verts[first + i];
+            const uint32_t color = colors != nullptr ? std::bit_cast<uint32_t>(colors[first + i]) : text_color;
+            store(i, vert, pos.x + vert.pos.x, pos.y + vert.pos.y, pos.z + vert.pos.z, deviceColor(color));
         }
     }
 
@@ -405,21 +461,11 @@ void setStringShaderState(const CGxString* str, const MSDFFont* font) {
 }
 
 // the atlas pages only depend on the font, and a BATCHEDRENDERFONTDESC holds exactly one
-void bindAtlasPages(CGxDeviceD3dExt* gx, const MSDFFont* font) {
-    IDirect3DDevice9* device = gx->d3d();
+void bindAtlasPages(CGxDevice* device, const MSDFFont* font) {
     for (size_t page_index = 0; page_index < font->getAtlasPageCount(); ++page_index) {
         const auto* page = font->getAtlasPage(page_index);
         if (page == nullptr || page->texture == nullptr) { continue; }
-
-        IDirect3DTexture9* texture = page->texture->realize();
-        if (texture == nullptr) { continue; }
-        const auto slot = kFirstAtlasSampler + page_index;
-        device->SetTexture(slot, texture);
-        gx->dsSet(static_cast<GxD3dDsState>(eGxDsSampAddressu0 + slot), D3DTADDRESS_CLAMP);
-        gx->dsSet(static_cast<GxD3dDsState>(eGxDsSampAddressv0 + slot), D3DTADDRESS_CLAMP);
-        gx->dsSet(static_cast<GxD3dDsState>(eGxDsSampMinfilter0 + slot), D3DTEXF_LINEAR);
-        gx->dsSet(static_cast<GxD3dDsState>(eGxDsSampMagfilter0 + slot), D3DTEXF_LINEAR);
-        gx->dsSet(static_cast<GxD3dDsState>(eGxDsSampMipfilter0 + slot), D3DTEXF_NONE);
+        device->rsSet(static_cast<GxRenderState>(eGxRsTexture0 + kFirstAtlasSampler + page_index), page->texture);
     }
 }
 }  // namespace
@@ -484,16 +530,16 @@ HOOKKIT_BIND(CGxFont::getOrCreateGlyphEntry_hook, [](CGxFont* self, uint32_t cod
     return entry;
 });
 
-HOOKKIT_NAMED_BIND_RAW(allocateFontIndexBuffer_site, 0x006C480C, {"jmpback", 0x006C4811}) {
-    constexpr uintptr_t kJmpback = allocateFontIndexBuffer_site::target("jmpback");
+HOOKKIT_NAMED_BIND_RAW(allocateFontIndexBuffer_site, 0x006C480C, 0x006C4811) {
+    constexpr uintptr_t kJmpback = allocateFontIndexBuffer_site::target();
     return CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(
         jmpTo(kJmpback, movRegImm(Reg::eBx, kMaxFontQuads)));
 };
 
 // skip the engine's baseline (face->glyph->bitmap_top) for msdf faces, esi is the baseline here
 // monochrome glyphs (tagged in initGlyph_hook) keep the engine's behavior; the tag is stripped on both paths
-HOOKKIT_NAMED_BIND_RAW(glyphBearingY_site, 0x006C8C71, {"jmpback", 0x006C8C77}) {
-    constexpr uintptr_t kJmpback = glyphBearingY_site::target("jmpback");
+HOOKKIT_NAMED_BIND_RAW(glyphBearingY_site, 0x006C8C71, 0x006C8C77) {
+    constexpr uintptr_t kJmpback = glyphBearingY_site::target();
     constexpr int32_t kStripTag = ~kMonoBaselineSentinel;
     const uintptr_t skip_baseline = HOOKKIT_LAMBDA_ADDR([](FT_Face face, int32_t baseline) {
         return (baseline & kMonoBaselineSentinel) == 0 && MSDFFont::get(face) != nullptr;
@@ -570,11 +616,10 @@ void processBatch(CGxStringBatch::BATCHEDRENDERFONTDESC* desc) {
         written = 0;
     };
 
-    CGxDeviceD3dExt* gx = CGxDeviceD3dExt::of();
     if (font == nullptr) {
         setFontShaderState(kResetControl, kResetMetrics);
-    } else if (gx != nullptr && gx->d3d() != nullptr) {
-        bindAtlasPages(gx, font);
+    } else {
+        bindAtlasPages(device, font);
     }
 
     for (size_t page = 0; page < kEngineAtlasPages; ++page) {
@@ -630,7 +675,7 @@ namespace {
 void applyFontShaders() {
     CGxShaderExt::replace({
         {.type = eGxShaderPixel, .name = kFontShader, .slots = {&CGxShader::font_pixel_shader, 1}},
-        {.type = eGxShaderVertex, .name = kFontShader, .slots = {&CGxShader::font_vertex_shader, 1}}
+        {.type = eGxShaderVertex, .name = kFontShader, .slots = CGxShader::font_vertex_shaders}
     });
 }
 
@@ -661,7 +706,7 @@ HOOKKIT_BIND(font_util::init_hook, []() {
 
     CGxDevice* device = CGxDevice::getDevice();
     bool msdf_enabled = false;
-    device->shaderCreate(&CGxShader::font_vertex_shader, eGxShaderVertex, "Shaders\\Vertex", "UI", 2);
+    device->shaderCreate(CGxShader::font_vertex_shaders.data(), eGxShaderVertex, "Shaders\\Vertex", "UI", 2);
     device->shaderCreate(&CGxShader::font_pixel_shader, eGxShaderPixel, "Shaders\\Pixel", "UI", 1);
 
     if (enableMsdf()) {
@@ -699,7 +744,7 @@ void msdf::initialize(hookkit::HookTransaction& tx) {
         .min{static_cast<int>(Mode::eDisabled)},
         .max{static_cast<int>(Mode::eEnabledUnsafe)}
     });
-    cvars.add<int>({.name = "MSDFOutlinePass", .init = 1, .min{0}, .max{1}, .on_change = applyOutlinePass});
+    cvars.add<int>({.name = "MSDFOutlinePass", .init = 0, .min{0}, .max{1}, .on_change = applyOutlinePass});
     CGxShaderExt::define(eGxShaderPixel, kFontShader,
         {
             .hlsl = msdf_shaders::kPixelShaderHlsl,
@@ -712,6 +757,7 @@ void msdf::initialize(hookkit::HookTransaction& tx) {
                 };
             }
         });
-    CGxShaderExt::define(eGxShaderVertex, kFontShader, {.hlsl = msdf_shaders::kVertexShaderHlsl});
+    CGxShaderExt::define(
+        eGxShaderVertex, kFontShader, {.hlsl = msdf_shaders::kVertexShaderHlsl, .entries = {"main", "mainStereo"}});
     tx.attach(font_util::init_hook{});
 }

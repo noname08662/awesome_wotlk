@@ -26,8 +26,6 @@ inline constexpr auto kEventUnitRemoved = "NAME_PLATE_UNIT_REMOVED";
 
 enum class ClickLogic : uint8_t { eNone, eThruEnemy, eThruFriend };
 
-enum class MouseInput : uint8_t { eIdle, eClickPending, eDragging };
-
 class EntryManager {
 public:
     std::vector<Entry*>& get() { return entries_; }
@@ -131,19 +129,24 @@ public:
         return prio;
     }
 
-    // the one plate to freeze: the topmost of the focus and the target under the cursor. the engine never
-    // focuses the target, so with the target on top the focus is a plate underneath it
-    CGNamePlateFrameExt* hoverPlate(const CGNamePlateFrame* focus, const Vec3f* pos) const {
+    // the plate under the cursor, consumed by the next update: the topmost of the focus and the target under the
+    // cursor. the engine never focuses the target, so with the target on top the focus is a plate underneath it.
+    // one the freeze mode doesn't pin still ends the other pins
+    template <bool FreezeTarget, FreezeAffiliation Affiliation>
+    void setHover(const CGNamePlateFrame* focus, const Vec3f* pos) {
         const guid_t target_guid = object_mgr::getTargetGuid();
         for (const Entry* e : entries_) {  // still in the last draw order, topmost first
-            if (e->ptr == focus) { return e->ptr; }
-            if (target_guid != 0 && e->ptr->owner_guid_ == target_guid && isUnderCursor(e, pos)) { return e->ptr; }
+            const bool is_target = target_guid != 0 && e->ptr->owner_guid_ == target_guid;
+            if (e->ptr != focus && !(is_target && isUnderCursor(e, pos))) { continue; }
+            const bool pins = (FreezeTarget || !is_target) &&
+                freezesAffiliation(Affiliation, e->hasState(Entry::State::eIsFriendly));
+            hover_ = reinterpret_cast<uintptr_t>(e->ptr) | (pins ? kHoverPinned : 0);
+            return;
         }
-        return nullptr;
+        hover_ = 0;
     }
 
-    // plate under the cursor this frame, consumed by the next update
-    void setHover(CGNamePlateFrame* plate) { hover_ = plate; }
+    void onBound(CGNamePlateFrameExt* plate);
 
 private:
     // original logic, clamped search boundaries
@@ -243,7 +246,7 @@ private:
         }
 
     private:
-        std::vector<PairState> pairs_{};
+        std::vector<PairState> pairs_;
     };
 
     PairState* getPair(const Entry* e1, const Entry* e2) {
@@ -300,7 +303,8 @@ private:
     Entry* initEntry(CGNamePlateFrameExt* plate);
     void markRemoved(Entry* e, int id) const;
     void track(CGNamePlateFrameExt* plate);
-    MouseInput mouseInput(uint64_t ms);
+    // per-unit state from scratch: a new plate, or one the engine moved to another unit since the last pass
+    void bindEntry(Entry* e, CGUnit_C* unit);
     void stack(uint64_t ms, float scene_time, float pull_scale);
 
     static void onPlateCreated(CGNamePlateFrameExt* plate);
@@ -313,9 +317,9 @@ private:
 
     std::array<uint64_t, kMaxPlates / 64> pending_{};
 
-    CGNamePlateFrame* hover_ = nullptr;
-    CGNamePlateFrame* last_hover_ = nullptr;
-    uint64_t press_ms_ = 0;
+    static constexpr uintptr_t kHoverPinned = 1;
+    // CGNamePlateFrameExt*, bit 0 kHoverPinned
+    uintptr_t hover_ = 0;
 };
 
 inline constexpr utils::Accessor<EntryManager, struct PlatesTag> kPlates;

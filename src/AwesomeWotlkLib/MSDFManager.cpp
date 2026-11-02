@@ -106,7 +106,7 @@ void MSDFManager::prefetchGlyphs(const MSDFCache::BlockWrap& wrap, std::span<con
     const MappedBlock* block = getOrLoadMappedBlock(wrap);
     if (block == nullptr) { return; }
 
-    std::array<WIN32_MEMORY_RANGE_ENTRY, MSDFCache::kBlockSize> ranges;
+    std::array<WIN32_MEMORY_RANGE_ENTRY, MSDFCache::kBlockSize> ranges{};
     size_t count = 0;
     for (const uint32_t codepoint : codepoints) {
         const uint32_t entry_index = block->hash_table[codepoint & (MSDFCache::kBlockSize - 1)];

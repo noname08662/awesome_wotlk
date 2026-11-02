@@ -45,4 +45,6 @@ HOOKKIT_HOOK_HANDLE(handleObjectTrackChange, 0x0051F790, hookkit::Conv::eCdecl, 
 inline guid_t getTargetGuid() { return *reinterpret_cast<guid_t*>(0x00BD07B0); }
 
 inline guid_t getPlayerGuid() { return reinterpret_cast<guid_t (*)()>(0x004D3790)(); }
+
+inline bool isTransportGuid(guid_t guid) { return guid >> 52 == 0x1FC; }
 }  // namespace object_mgr

@@ -1,20 +1,27 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 
 #include "BaseTypes.h"
 
 #include "Character/CCharacterComponent.h"
+#include "DB/ClientDB.h"
 #include "DB/DBRecords.h"
 #include "FX/CEffect.h"
 #include "FX/CMissile.h"
+#include "Game/CGGameUI.h"
+#include "M2/CM2Model.h"
+#include "M2/CM2Scene.h"
 #include "Movement/CMovement.h"
 #include "ObjectManager/CGObject_C.h"
 #include "ObjectManager/ObjectManager.h"
 #include "ObjectManager/ObjectManagerEnums.h"
+#include "Spell/CGSpellBook.h"
 
-class CGWorldFrame;
 class CGNamePlateFrame;
+class CGWorldFrame;
 
 class CGUnit_C : public CGObject_C {
 public:
@@ -194,6 +201,10 @@ public:
     HOOKKIT_HOOK(getUnitReaction, 0x007251C0, hookkit::Conv::eThiscall, UnitReaction, CGUnit_C*, CGUnit_C*);
     HOOKKIT_HOOK(canAssist, 0x007293D0, hookkit::Conv::eThiscall, bool, CGUnit_C*, CGUnit_C*, char);
     HOOKKIT_HOOK(canAttack, 0x00729A70, hookkit::Conv::eThiscall, bool, CGUnit_C*, CGUnit_C*);
+    // canAttack without its mount and possession gates
+    HOOKKIT_HOOK(canAttackAny, 0x00729740, hookkit::Conv::eThiscall, bool, CGUnit_C*, CGUnit_C*);
+    // same faction group, neither charmed, can't attack
+    HOOKKIT_HOOK(isSameSideFriend, 0x00729B30, hookkit::Conv::eThiscall, bool, CGUnit_C*, CGUnit_C*);
     // enum all visible units
     HOOKKIT_HOOK(updateReaction, 0x0071F8F0, hookkit::Conv::eThiscall, int, CGUnit_C*, char);
     HOOKKIT_HOOK(hideNamePlate, 0x00725840, hookkit::Conv::eThiscall, CGNamePlateFrame*, CGUnit_C*);
@@ -213,5 +224,73 @@ public:
         float reach = descriptors_->combatreach;
         float val = reach + friendly_reach_added_dist;  // 4.0f
         return val * val;
+    }
+
+    bool isLootable() const { return (getValue<uint32_t>(eUnitDynamicFlags) & eUnitDynflagLootable) != 0; }
+
+    bool isNamedUnit() {
+        const char* name = this->getName(nullptr, 1);
+        if (name == nullptr) { return false; }
+        const char* unknown_text = framescript::getText{}("UNKNOWNOBJECT", -1, 0);
+        return (unknown_text == nullptr || *unknown_text == '\0' || std::strcmp(name, unknown_text) != 0) &&
+            std::strcmp(name, "Unknown Being") != 0;
+    }
+
+    bool namePointFinal() {
+        CM2Model* name_model = this->highlight_model_;
+        return name_model != nullptr && this->isReadyToDraw() && name_model->isLoaded(0, 0) != 0 &&
+            this->nameChainPlaced();
+    }
+
+    bool readyForPlate() {
+        if (!this->isNamedUnit()) { return false; }
+        if (this->namePointFinal()) { return true; }
+        const CM2Model* name_model = this->highlight_model_;
+        if (name_model == nullptr) { return true; }
+        constexpr uint32_t kNamePointWaitMs = 1000;
+        const uint32_t born = std::max(name_model->init_time_, name_model->chainRoot()->init_time_);
+        return name_model->scene_->time_ - born >= kNamePointWaitMs;
+    }
+
+    // same test as the engine's skin cursor
+    bool canSkin() const {
+        return (getValue<uint32_t>(eUnitFieldFlags) & eUnitFlagSkinnable) != 0 &&
+            CGSpellBook::getSkinningSpell{}(const_cast<CGUnit_C*>(this)) != 0;
+    }
+
+    bool nameChainPlaced() const {
+        if (highlight_model_ == nullptr) { return false; }
+        const CM2Model* root = highlight_model_->chainRoot();
+        if ((root->flags10_ & CM2Model::eWorldTransformSet) == 0) { return false; }
+        const Mat4f& w = root->world_transform_;
+        return w[3][0] != 0.0f || w[3][1] != 0.0f || w[3][2] != 0.0f;
+    }
+
+    // 0x0072B2F5
+    bool inPlateRange() {
+        const CGCamera* camera = CGCamera::get{}();
+        auto* target = camera != nullptr ? object_mgr::get<CGUnit_C>(camera->target_guid_, eTypemaskUnit) : nullptr;
+        if (target == nullptr || target == this) { return false; }
+        Vec3f from;
+        Vec3f to;
+        target->getPosition(from);
+        this->getPosition(to);
+        const Vec3f d = to - from;
+        const auto sq = [](float v) { return static_cast<double>(v) * v; };
+        if (sq(d.y) + sq(d.x) + sq(d.z) <= game_ui::nameplate_max_distance_sq) { return true; }
+        const auto* map = client_db::getRowById<MapRec>("map", game_ui::current_map_id);
+        return map != nullptr && map->instance_type == MapRec::kInstanceArena;
+    }
+
+    bool plateKindShown() {
+        if (this->getValue<int32_t>(eUnitFieldHealth) <= 0 ||
+            (this->getValue<uint32_t>(eUnitFieldFlags) & eUnitFlagUninteractible) != 0) {
+            return false;
+        }
+        auto* player = object_mgr::get<CGUnit_C>(object_mgr::getPlayerGuid(), eTypemaskPlayer);
+        if (player == nullptr) { return false; }
+        const bool friendly =
+            (this->entry_->type & eTypemaskPlayer) != 0 ? player->isSameSideFriend(this) : !player->canAttackAny(this);
+        return (friendly ? game_ui::nameplate_show_friends : game_ui::nameplate_show_enemies)->int_value_ != 0;
     }
 };

@@ -18,3 +18,4 @@ set(MSDFGEN_USE_SKIA ON CACHE BOOL "" FORCE)
 
 add_subdirectory(msdfgen)
 add_subdirectory(unordered_dense)
+add_subdirectory(luajit)

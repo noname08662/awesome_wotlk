@@ -98,7 +98,7 @@ public:
     virtual void onSpellEffectClear();                              // 46
     virtual void getAppropriateSpellVisual();                       // 47
     virtual void connectToLightningThisFrame();                     // 48
-    virtual void getMatrix();                                       // 49
+    virtual Mat4f* getMatrix(Mat4f* out);                           // 49
     virtual void objectNameVisibilityChanged();                     // 50
     virtual void updateObjectNameString();                          // 51
     virtual void shouldRenderObjectName();                          // 52
@@ -166,6 +166,9 @@ public:
     HOOKKIT_HOOK(showHighlightType, 0x00743C70, hookkit::Conv::eThiscall, int, CGObject_C*, CGObject_C::HighlightType);
     HOOKKIT_HOOK(hideHighlightType, 0x00743BC0, hookkit::Conv::eThiscall, int, CGObject_C*, CGObject_C::HighlightType);
     HOOKKIT_HOOK(getDistanceToPosSq, 0x004F61D0, hookkit::Conv::eThiscall, double, CGObject_C*, const Vec3f*);
+    HOOKKIT_HOOK(isReadyToDraw, 0x00743450, hookkit::Conv::eThiscall, bool, CGObject_C*);
+
+    HOOKKIT_HOOK_HANDLE(getNameFontScale, 0x007E5420, hookkit::Conv::eCdecl, float, CGObject_C*);
 };
 
 static_assert(sizeof(CGObject_C) == 0xD0);

@@ -197,9 +197,6 @@ public:
     static CGxTexExt* create(const Desc& desc, Source* source);
     static void destroy(CGxTexExt*& tex);
     void markDirty(std::initializer_list<Region> regions = {}, bool upload = true);
-
-    [[nodiscard]]
-    IDirect3DTexture9* realize();
 };
 
 static_assert(sizeof(CGxTexExt) == sizeof(CGxTex));

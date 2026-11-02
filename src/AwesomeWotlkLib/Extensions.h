@@ -260,6 +260,7 @@ private:
 inline constexpr utils::Accessor<CVarRegistry, struct CvarRegistryTag> kCvarRegistry;
 inline constexpr utils::Accessor<EventRegistry, struct EventRegistryTag> kEventRegistry;
 inline constexpr utils::Accessor<LuaLibRegistry, struct LuaLibRegistryTag> kLuaLibRegistry;
+inline constexpr utils::Accessor<CallbackList, struct OnCvarsLoadedTag> kOnCvarsLoaded;
 
 }  // namespace console
 

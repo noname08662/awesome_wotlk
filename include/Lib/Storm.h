@@ -91,6 +91,9 @@ HOOKKIT_HOOK_WILD_HANDLE(
 
 namespace str {
 
+// STORM_MAX_STR, up to the terminator
+inline constexpr uint32_t kMaxStr = 0x7FFFFFFF;
+
 // string, c
 HOOKKIT_HOOK_HANDLE(chr, 0x0076E6E0, hookkit::Conv::eCdecl, const char*, const char*, char);
 // string, c
@@ -198,14 +201,19 @@ HOOKKIT_HOOK_HANDLE(catchUnhandledExceptions, 0x00772B20, hookkit::Conv::eCdecl,
 }  // namespace err
 
 namespace cmd {
+enum CmdLineArg : uint32_t {
+    eCmdLineD3d = 0,
+    eCmdLineD3d9Ex = 1,
+    eCmdLineOpenGl = 6,
+};
 
-// hash
+// id
 HOOKKIT_HOOK_HANDLE(getNum, 0x00773460, hookkit::Conv::eStdcall, int32_t, uint32_t);
 // , dest, num
 HOOKKIT_HOOK_HANDLE(registerArgListInternal1, 0x007734C0, hookkit::Conv::eStdcall, int, int, char*, int);
 // cmd_array, num_cmds
 HOOKKIT_HOOK_HANDLE(registerArgList, 0x00773590, hookkit::Conv::eStdcall, int32_t, void**, uint32_t);
-// hash
+// id
 HOOKKIT_HOOK_HANDLE(getBool, 0x00773870, hookkit::Conv::eStdcall, uint32_t, uint32_t);
 // cmd_line, a2, a3, a4
 HOOKKIT_HOOK_HANDLE(process, 0x00773890, hookkit::Conv::eStdcall, bool, char*, int, int, int);
@@ -472,12 +480,13 @@ struct TSListImpl {
         T* next_node = node_link.next;
 
         if (isTerminal(next_node)) {
-            link.prev_link = prev_node;
+            reinterpret_cast<TSLink<T>*>(purify(next_node))->prev_link = prev_node;
         } else {
             accessor.link(next_node).prev_link = prev_node;
         }
 
         prev_node->next = next_node;
+        node_link = {};
     }
 
     void unlinkAll() {
@@ -485,7 +494,33 @@ struct TSListImpl {
         link.next = reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(&link) | 1);
     }
 
+    void unlinkNodes() {
+        for (T* ptr = head(); ptr != nullptr; ptr = head()) {
+            if (accessor.link(ptr).prev_link != nullptr) { unlinkNode(ptr); }
+        }
+    }
+
+    void relinkToTail(T* ptr) {
+        TSLink<T>& node_link = accessor.link(ptr);
+        if (node_link.prev_link != nullptr) { unlinkNode(ptr); }
+        TSLink<T>* old_tail = link.prev_link;
+
+        node_link.prev_link = old_tail;
+        node_link.next = old_tail->next;
+
+        old_tail->next = ptr;
+        link.prev_link = &node_link;
+    }
+
     bool isEmpty() const { return isTerminal(link.next); }
+
+    uint32_t length() const {
+        uint32_t n = 0;
+        for (T* ptr = head(); ptr != nullptr; ptr = next(ptr)) {
+            ++n;
+        }
+        return n;
+    }
 
     template <typename Callback>
     bool enumerate(Callback&& callback) const {
@@ -631,8 +666,17 @@ struct TSGrowableArray : TSBaseArray<T> {
     }
 
     bool setCount(uint32_t new_count) {
-        static_assert(std::is_trivially_copyable_v<T>, "setCount neither constructs nor destroys elements");
-        if (new_count > this->capacity && !grow(new_count)) { return false; }
+        if (new_count <= this->count) {
+            std::destroy_n(this->data + new_count, this->count - new_count);
+        } else {
+            if (new_count > this->capacity) {
+                const uint32_t step = chunk != 0 ? chunk : calcChunkSize(new_count);
+                const uint32_t remainder = new_count % step;
+                reallocate(remainder != 0 ? new_count + step - remainder : new_count);
+                if (new_count > this->capacity) { return false; }
+            }
+            std::uninitialized_value_construct_n(this->data + this->count, new_count - this->count);
+        }
         this->count = new_count;
         return true;
     }
@@ -671,6 +715,19 @@ struct TSGrowableArray : TSBaseArray<T> {
     void swap(TSGrowableArray& other) noexcept { std::swap(*this, other); }
 
 private:
+    uint32_t calcChunkSize(uint32_t new_count) {
+        constexpr uint32_t kMaxChunk = 256 / sizeof(T) > 8 ? 256 / sizeof(T) : 8;
+        if (new_count >= kMaxChunk) {
+            chunk = kMaxChunk;
+            return kMaxChunk;
+        }
+        uint32_t result = new_count;
+        for (uint32_t i = new_count & (new_count - 1); i != 0; i &= i - 1) {
+            result = i;
+        }
+        return result != 0 ? result : 1;
+    }
+
     bool grow(uint32_t min_capacity) {
         uint32_t new_capacity = this->capacity > 0 ? this->capacity : (chunk > 0 ? chunk : 1);
         while (new_capacity < min_capacity) {
@@ -784,3 +841,20 @@ using storm::ts::TSHashObject;
 using storm::ts::TSHashTable;
 using storm::ts::TSLink;
 using storm::ts::TSList;
+
+// new (__FILE__, __LINE__) T
+inline void* operator new(size_t bytes, const char* file_name, int32_t line_number) {
+    return storm::memory::alloc::viaDetour(bytes, file_name, line_number, 0);
+}
+
+inline void* operator new[](size_t bytes, const char* file_name, int32_t line_number) {
+    return storm::memory::alloc::viaDetour(bytes, file_name, line_number, 0);
+}
+
+inline void operator delete(void* ptr, const char* file_name, int32_t line_number) {
+    storm::memory::free::viaDetour(ptr, file_name, line_number, 0);
+}
+
+inline void operator delete[](void* ptr, const char* file_name, int32_t line_number) {
+    storm::memory::free::viaDetour(ptr, file_name, line_number, 0);
+}

@@ -4,9 +4,11 @@
 #include <hookkit/accessor.h>
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <map>
 #include <span>
 #include <string>
@@ -14,6 +16,9 @@
 #include <utility>
 #include <vector>
 
+#include "Utils.h"
+
+#include "include/CVar/CVar.h"
 #include "include/Graphics/CGxDevice.h"
 #include "include/Graphics/CGxDeviceD3d.h"
 #include "include/Lib/Storm.h"
@@ -350,11 +355,38 @@ void CGxTexExt::markDirty(std::initializer_list<Region> regions, bool upload) {
     CGxTex::markDirty{}(this, box.x0, box.y0, box.x1, box.y1, upload ? 1 : 0);
 }
 
-IDirect3DTexture9* CGxTexExt::realize() {
-    CGxDeviceD3dExt* device = CGxDeviceD3dExt::of();
-    if (device == nullptr || device->d3d() == nullptr) { return nullptr; }
-    device->texMarkAsUpdated(this);
-    return needs_create_ == 0 ? d3d_tex_ : nullptr;
+namespace {
+std::string launchOptions() {
+    std::string flags;
+    if (storm::cmd::getBool{}(storm::cmd::eCmdLineOpenGl) != 0) { flags += " -opengl"; }
+    if (storm::cmd::getBool{}(storm::cmd::eCmdLineD3d9Ex) != 0) { flags += " -d3d9ex"; }
+    return flags;
 }
 
-void d3d::initialize(hookkit::HookTransaction& tx) { tx.attach(CGxDevice::iShaderLoad_hook{}); }
+HOOKKIT_BIND(CGxDevice::gxApiSupported_hook, [](GxApi api) { return api == eGxApiD3d9; });
+HOOKKIT_BIND(CGxDevice::devCreate_hook, [](GxApi api, void* window_proc, const void* format) {
+    if (api == eGxApiD3d9 || CGxDevice::gxApiSupported_hook::attached.load()) {
+        return CGxDevice::devCreate_hook{}(eGxApiD3d9, window_proc, format);
+    }
+    const std::string_view name = CGxDevice::gxApiSupported{}(api) ? CGxDevice::gx_api[api] : "an unsupported api";
+    std::string text =
+        std::format("World of Warcraft is set to start with {}, but AwesomeWotlk only supports D3D9.\n\n", name);
+    if (const std::string flags = launchOptions(); !flags.empty()) {
+        text += std::format("These launch options override the setting, remove them from your shortcut:{}\n\n", flags);
+    }
+    text += "Yes: run with D3D9 and keep it as the setting\nNo: close the game";
+    if (MessageBoxA(nullptr, text.c_str(), "AwesomeWotlk", MB_YESNO | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND) ==
+        IDNO) {
+        TerminateProcess(GetCurrentProcess(), 0);
+    }
+    if (CVar* cvar = CVar::find{}("gxApi")) { cvar->setValue(CGxDevice::gx_api[eGxApiD3d9], 1, 0, 0, 1); }
+    hookkit::HookTransaction tx;
+    tx.attach(CGxDevice::gxApiSupported_hook{});
+    static_cast<void>(tx.commit());
+    return CGxDevice::devCreate_hook{}(eGxApiD3d9, window_proc, format);
+});
+}  // namespace
+
+void d3d::initialize(hookkit::HookTransaction& tx) {
+    tx.attach(CGxDevice::iShaderLoad_hook{}, CGxDevice::devCreate_hook{});
+}

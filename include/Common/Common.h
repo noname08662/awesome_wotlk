@@ -44,6 +44,16 @@ public:
 
 static_assert(sizeof(CStatus) == 0x14);
 
+// writes its entries to a Storm log when destroyed (Logs\GlueXML.log, Logs\FrameXML.log, etc.)
+class CStatusLog : public CStatus {
+public:
+    void* log_handle_;
+
+    HOOKKIT_HOOK(dtor, 0x004DA2D0, hookkit::Conv::eThiscall, void, CStatusLog*);
+};
+
+static_assert(sizeof(CStatusLog) == 0x18);
+
 class RCString : CHandle {
 public:
     const char* str_;

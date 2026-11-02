@@ -10,22 +10,21 @@ ___
 
 ### Features
 - **MSDF Font Rendering:** Optionally enables smooth, vector-based font rendering, reducing pixelation across all in-game text. Each character is generated the first time it appears in a font, which can cause a brief stutter, and is saved to a disk cache (`Cache_AwesomeWotLK`) that is kept across game launches, so it is generated only once. Type `/msdfpregen` in-game to open a console window that generates the characters of the fonts you pick in advance. This is optional for most languages, but mandatory for Chinese and Korean clients (zhCN, zhTW, koKR): a font is rendered with MSDF only after at least its standard range (option 1) has been pre-generated; until then, it keeps the default rendering.
+- **LuaJIT:** Optionally replaces the game's Lua VM with LuaJIT, so Lua code runs 2.5-3 times faster than on the stock VM (`luaSwap`, off by default, requires a client restart). **Risk:** this hooks the game's Lua functions, so a server whose Warden checks them could detect it. Use it at your own risk.
 - **UI Rendering Fixes:** Corrects the engine's half-pixel offset, snaps UI elements to whole pixels and improves texture sampling, so thin borders and edges no longer blur or vanish when scaled down.
-- **Projected Textures Fix:** AoE targeting and selection circles no longer clip on steep terrain.
-- **Clipboard Fix:** Fixes non-English text turning into "???" when copied from or pasted into the game.
+- **Projected Textures Fix:** AoE targeting and selection circles no longer clip on steep terrain, and an AoE circle over stacked surfaces, such as a roof or a tunnel, stays on the surface under the cursor.
+- **Ground Target Clamp:** Hovering past a ground-targeted spell's range keeps the targeting circle at the edge of that range instead of turning it into an out-of-range cursor, and a click casts there, as on retail.
 - **Auto Login:** Launch with credentials via command line/shortcuts.  
   Usage: `Wow.exe -login "LOGIN" -password "PASSWORD" -realmlist "REALMLIST" -realmname "REALMNAME"`
 - **Camera FOV Control:** Adjust the camera's field of view.
 - **Improved Nameplate Sorting:** Enhanced nameplate stacking and collision logic.
-- **Nameplate Distance:** Nameplates can be shown up to 200 yards away; tab-targeting range follows the same distance.
-- **Session Logs:** Chat and combat logs are written to a new timestamped file on every client launch.
-- **Frame Capture:** `/fcapture [FrameName] [size]` saves a single UI frame and everything inside it as a PNG with a transparent background, cropped to its content, to the `Screenshots` folder. It can render the frame larger than on screen (`2x`, or a longer-side size in pixels such as `2048`), antialiased with up to 8x MSAA. Without a name, it captures the frame under the mouse.
+- **Nameplate and Tab Targeting Distance:** Nameplates can be shown up to 200 yards away, tab-targeting range can be raised up to 200 yards.
 - **Voice Chat (Text-to-Speech):** Backported `C_VoiceChat` and `C_TTSSettings` text-to-speech API, using the voices installed in Windows (SAPI). Addons can read text aloud and query or select voices; speed, volume and voice are also available as CVars.
-- **Smart Interaction:** A single keybind (and `/interact` macro command) that loots, skins and interacts with the nearest or forward-facing mob or object, with an optional highlight on the current target.
+- **Smart Interaction:** A single keybind (and `/interact` macro command) that loots, skins and interacts with the nearest or forward-facing mob or object, with an optional highlight on the current target. Repeated presses cycle through nearby corpses and chests instead of reopening the same one, and skip corpses you can't skin.
 - **Macro Conditionals:**
   - Backported `cursor` conditional
   - Implemented `playerlocation` conditional
-- ...a few other miscellaneous fixes/tweaks.
+- ...and other fixes, tweaks, and features.
 
 ### New API Functions
 - **C_NamePlate:**
@@ -112,7 +111,10 @@ ___
   - `nameplateClampModeVOffset`
   - `nameplateClampModeHOffset`
   - `nameplateClampModeFilter`
+  - `nameplateClampModeAffiliation`
+  - `nameplateClampViews`
   - `nameplateMouseFreeze`
+  - `nameplateMouseFreezeAffiliation`
   - `nameplateMouseFreezeGrace`
   - `nameplateMouseFreezeTime`
   - `nameplateStacking`
@@ -134,10 +136,15 @@ ___
   - `uiTextureSampling`
   - `uiPixelSnap`
 - **Miscellaneous:**
-  - `MSDFMode`
+  - `MSDFMode` _(requires client restart)_
   - `MSDFOutlinePass`
   - `objectHighlightMode`
   - `portraitResolution`
+  - `projectedTextureMode`
+  - `groundTargetClamp`
+  - `tabTargetDistance`
+  - `worldCullMode`
+  - `luaSwap` _(requires client restart)_
   - `chatLogSessionKey`
   - `combatLogSessionKey`
 
@@ -180,7 +187,7 @@ With MSDF enabled, each character is generated the first time it appears in a fo
 5. Wait for `Generation complete.`, then relaunch the game. The standard range counts as done once at least 95% of the font's characters in it were written. Ctrl+C closes the console at any time.
 
 ### AwesomeCVar Addon
-![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/preview_v6.png)
+![AwesomeCVar Preview](https://raw.githubusercontent.com/noname08662/awesome_wotlk/refs/heads/main/docs/assets/awesome_cvar_3.1.png)
 
 ### Nameplate Features
 To benefit from some of the new nameplate functionality (such as castbars on all targets or class-colored bars), you must use AwesomeWotLK-aware addons.
@@ -205,3 +212,4 @@ ___
 - [msdfgen](https://github.com/Chlumsky/msdfgen) - [License](https://github.com/Chlumsky/msdfgen/blob/master/LICENSE.txt)
 - [skia](https://github.com/google/skia) - [License](https://github.com/google/skia/blob/main/LICENSE)
 - [unordered_dense](https://github.com/martinus/unordered_dense) - [License](https://github.com/martinus/unordered_dense/blob/main/LICENSE)
+- [LuaJIT](https://luajit.org/) - [License](https://github.com/noname08662/awesome_wotlk/blob/main/licenses/luajit.txt)

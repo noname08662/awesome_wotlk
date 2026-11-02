@@ -1,5 +1,11 @@
 #pragma once
 
+#include <cstdint>
+
+#include "Lib/Storm.h"
+#include "Math/Primitives.h"
+
+class CM2Model;
 class CMapEntity;
 
 struct Shard {
@@ -14,6 +20,8 @@ struct Shard {
 static_assert(sizeof(Shard) == 0x20);
 
 struct BlizzardObject {
+    inline static auto* TSL = reinterpret_cast<TSExplicitList<BlizzardObject>*>(0x00AF5094);
+
     TSLink<BlizzardObject> link;
     char model_path[260];
     CMapEntity* map_entity;
@@ -23,7 +31,7 @@ struct BlizzardObject {
     unk_t unk[4];
     TSExplicitList<Shard> shard_link;
     Mat4f transform_mat;
-    int attached;
+    int attached;  // sphere is relative to transform_mat
 };
 
 static_assert(sizeof(BlizzardObject) == 0x188);

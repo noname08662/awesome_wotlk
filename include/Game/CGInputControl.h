@@ -28,7 +28,7 @@ public:
     };
 
     enum MouseMode {
-        eMouseModeHidden = 0x1,
+        eMouseModeCursor = 0x1,  // the cursor is live; world hit tests bail without it
         eMouseMode2 = 0x2,
         eMouseMode4 = 0x4,
         eMouseMode6 = 0x6,
@@ -51,12 +51,14 @@ public:
     static constexpr uint32_t kMouseBusyFlags = CGInputControl::eTurnOrAction | CGInputControl::eCameraOrSelect |
         CGInputControl::eMouseLook | CGInputControl::eMouseSteer;
 
+    inline static auto& input_event_time = *reinterpret_cast<uint32_t*>(0x00B499A4);
+
     uint32_t world_enter_time_;
     uint32_t control_flags_;
-    float mouse_x_;
-    float mouse_y_;
-    uint32_t field_10_;
-    uint32_t mouse_press_time_;  // input event clock, set when the first mouse bit goes down
+    float drag_dist_x_;
+    float drag_dist_y_;
+    uint32_t last_drag_move_frame_;
+    uint32_t mouse_press_time_;
     uint32_t click_type_;
     TSHashTable<MOUSELOOKBINDING> bindings_table_;
     uint32_t has_override_yaw_;
@@ -75,10 +77,19 @@ public:
     [[nodiscard]]
     bool isMouseDrag(int32_t held_ms) const {
         if (held_ms >= 800) { return true; }
-        return (mouse_x_ >= 8.0f || mouse_y_ >= 8.0f) && held_ms >= 200;
+        return (drag_dist_x_ >= 8.0f || drag_dist_y_ >= 8.0f) && held_ms >= 200;
+    }
+
+    [[nodiscard]]
+    bool isDragging(uint32_t now) const {
+        if ((control_flags_ & kMouseBusyFlags) == 0) { return false; }
+        return (control_flags_ & (eMouseLook | eMouseSteer)) != 0 ||
+            isMouseDrag(static_cast<int32_t>(now - mouse_press_time_));
     }
 
     HOOKKIT_HOOK_HANDLE(get, 0x005F95D0, hookkit::Conv::eCdecl, CGInputControl*);
+    // event
+    HOOKKIT_HOOK(handleMouseMoveRelative, 0x005FBA60, hookkit::Conv::eThiscall, void, CGInputControl*, void*);
 };
 
 static_assert(sizeof(CGInputControl) == 0x70);

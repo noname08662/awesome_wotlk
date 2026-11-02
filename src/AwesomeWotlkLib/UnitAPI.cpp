@@ -103,10 +103,9 @@ int luaUnitTokenFromGuid(LuaState* l) {
 }
 
 int luaOpenUnit(LuaState* l) {
-    static constexpr std::array<lua::LuaLReg, 6> kFuncs = {{
+    static constexpr std::array<lua::LuaLReg, 5> kFuncs = {{
         {.name = "UnitIsControlled", .func = luaUnitIsControlled},
         {.name = "UnitIsDisarmed", .func = luaUnitIsDisarmed},
-        {.name = "UnitIsSilenced", .func = luaUnitIsSilenced},
         {.name = "UnitOccupations", .func = luaUnitOccupations},
         {.name = "UnitOwner", .func = luaUnitOwner},
         {.name = "UnitTokenFromGUID", .func = luaUnitTokenFromGuid},
@@ -115,6 +114,11 @@ int luaOpenUnit(LuaState* l) {
         lua::pushCFunction(l, func);
         lua::setGlobal(l, name);
     }
+
+    // replaces the engine's voice-chat UnitIsSilenced(name[, channel]) (0x004FCCF0);
+    // kept for compatibility with addons built against this API since the original release
+    lua::pushCFunction(l, luaUnitIsSilenced);
+    lua::setGlobal(l, "UnitIsSilenced", true);
     return 0;
 }
 }  // namespace

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #include "BaseTypes.h"
 
 #include "M2/CM2Light.h"
@@ -156,6 +158,19 @@ public:
     HOOKKIT_HOOK(ctor, 0x0082BE60, hookkit::Conv::eThiscall, CM2Model*, CM2Model*);
     HOOKKIT_HOOK(dtor, 0x00832640, hookkit::Conv::eThiscall, void, CM2Model*);
     HOOKKIT_HOOK(setAnimating, 0x00823F10, hookkit::Conv::eThiscall, void, CM2Model*, int);
+    HOOKKIT_HOOK(isLoaded, 0x00824F00, hookkit::Conv::eThiscall, int, CM2Model*, int, int);
+    // section, out world box, out camera-relative xy to uv; 0 = not a projectable quad
+    HOOKKIT_HOOK(calcProjBoundingBox, 0x008292A0, hookkit::Conv::eThiscall, int, CM2Model*, const M2SkinSection*,
+        AaBox*, Mat4f*);
+
+    const CM2Model* chainRoot() const {
+        auto model = this;
+        for (int depth = 0; model->attach_parent_ != nullptr && depth < 8; ++depth) {
+            model = model->attach_parent_;
+        }
+        return model;
+    }
 };
 
+static_assert(offsetof(CM2Model, first_child_) == 0x58);
 static_assert(sizeof(CM2Model) == 0x2F0);

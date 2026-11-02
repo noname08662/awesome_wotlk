@@ -26,8 +26,7 @@ HOOKKIT_HOOK_HANDLE(getCharIndex, 0x009911A0, hookkit::Conv::eCdecl, FT_UInt, FT
 // face, glyph idx, load flags
 HOOKKIT_HOOK_HANDLE(loadGlyph, 0x00992DA0, hookkit::Conv::eCdecl, int, FT_Face, FT_ULong, FT_Int32);
 // face left glyph, right glyph, kern mode, akerning
-HOOKKIT_HOOK_HANDLE(
-    getKerning, 0x00991050, ::hookkit::Conv::eCdecl, int, FT_Face, FT_UInt, FT_UInt, FT_UInt, FT_Vector*);
+HOOKKIT_HOOK_HANDLE(getKerning, 0x00991050, hookkit::Conv::eCdecl, int, FT_Face, FT_UInt, FT_UInt, FT_UInt, FT_Vector*);
 HOOKKIT_HOOK_HANDLE(doneFreeType, 0x00992CB0, hookkit::Conv::eCdecl, int, FT_Library);
 // library, face desc
 HOOKKIT_HOOK_HANDLE(newFace, 0x009931A0, hookkit::Conv::eCdecl, int, int*, int);

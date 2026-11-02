@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "Map/CMapBaseObj.h"
@@ -12,14 +13,24 @@ public:
     virtual char updateInteriorLight(int, int, uint16_t*, Vec3f*) = 0;  // 3
 
     enum Flags : uint32_t {
+        eInWmoGroup = 0x1,
+        eNoSceneCull = 0x4,
         eGroupClamped = 0x20,
         eBelowLightThreshold = 0x40,
         eLightingResolved = 0x80,
         eHasInteriorLight = 0x1000,
+        eGroundRayHigh = 0x2000,
+        eInvisibleCarrier = 0x4000,
+    };
+
+    enum CullState : uint8_t {
+        eDrawn = 0,
+        eCulled = 1,
+        eNotSceneTested = 2,
     };
 
     uint8_t _unk24;
-    uint8_t _unk25;
+    CullState cull_state_;
     uint16_t _unk26;
     uint8_t _unk28;
     uint8_t _unk29;

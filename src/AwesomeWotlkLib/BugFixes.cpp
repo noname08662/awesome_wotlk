@@ -4,10 +4,13 @@
 #include <hookkit/hookkit.h>
 #include <windef.h>
 
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <span>
 #include <string>
 #include <utility>
@@ -23,7 +26,7 @@
 #include "include/Math/Math.h"
 #include "include/System/System.h"
 #include "include/Texture/CTexture.h"
-#include "include/Widget/CSimpleFrame.h"
+#include "include/Widget/CCooldown.h"
 #include "include/Widget/CSimpleTexture.h"
 #include "include/Widget/CSimpleTop.h"
 
@@ -39,11 +42,72 @@ HOOKKIT_BIND(os::clipboardSetStr_hook, [](const char* buf, HWND hwnd) { return u
 }  // namespace
 
 namespace {
+// buffered SavedVariables write
+constexpr uint32_t kSavedVariablesBufferSize = 256 * 1024;
+
+std::atomic<void*> saved_variables_file{nullptr};
+std::array<char, kSavedVariablesBufferSize> saved_variables_buffer;
+uint32_t saved_variables_used = 0;
+
+void flushSavedVariables(void* file) {
+    if (saved_variables_used == 0) { return; }
+    uint32_t written = 0;
+    static_cast<void>(os::writeFile{}(file, saved_variables_buffer.data(), saved_variables_used, &written));
+    saved_variables_used = 0;
+}
+
+void* openSavedVariables(
+    const char* name, uint32_t access, uint32_t share_mode, uint32_t disposition, uint32_t attributes) {
+    // a file the writer never closed (an error unwound it) still gets its bytes
+    if (void* stale = saved_variables_file.exchange(nullptr)) { flushSavedVariables(stale); }
+    void* file = os::createFile{}(name, access, share_mode, disposition, attributes);
+    if (file != os::kInvalidFile) { saved_variables_file.store(file); }
+    return file;
+}
+
+bool closeSavedVariables(void* file) {
+    if (file == saved_variables_file.load()) {
+        flushSavedVariables(file);
+        saved_variables_file.store(nullptr);
+    }
+    return os::closeFile{}(file);
+}
+
+HOOKKIT_CALLSITE_HOOK(addonSavedVariablesOpen_call, 0x005F5790, os::createFile);
+HOOKKIT_CALLSITE_HOOK(addonSavedVariablesClose_call, 0x005F5833, os::closeFile);
+HOOKKIT_CALLSITE_HOOK(addonCharacterSavedVariablesOpen_call, 0x005F5941, os::createFile);
+HOOKKIT_CALLSITE_HOOK(addonCharacterSavedVariablesClose_call, 0x005F59E5, os::closeFile);
+HOOKKIT_CALLSITE_HOOK(registeredSavedVariablesOpen_call, 0x0052724D, os::createFile);
+HOOKKIT_CALLSITE_HOOK(registeredSavedVariablesClose_call, 0x005272EA, os::closeFile);
+HOOKKIT_BIND(addonSavedVariablesOpen_call, openSavedVariables);
+HOOKKIT_BIND(addonSavedVariablesClose_call, closeSavedVariables);
+HOOKKIT_BIND(addonCharacterSavedVariablesOpen_call, openSavedVariables);
+HOOKKIT_BIND(addonCharacterSavedVariablesClose_call, closeSavedVariables);
+HOOKKIT_BIND(registeredSavedVariablesOpen_call, openSavedVariables);
+HOOKKIT_BIND(registeredSavedVariablesClose_call, closeSavedVariables);
+
+HOOKKIT_BIND(os::writeFile_hook, [](void* file, const void* data, uint32_t count, uint32_t* written) -> int {
+    void* buffered = saved_variables_file.load(std::memory_order_relaxed);
+    if (buffered == nullptr || file != buffered || data == nullptr || written == nullptr) {
+        return os::writeFile{}(file, data, count, written);
+    }
+    if (count > kSavedVariablesBufferSize - saved_variables_used) {
+        flushSavedVariables(file);
+        if (count >= kSavedVariablesBufferSize) { return os::writeFile{}(file, data, count, written); }
+    }
+    std::copy_n(static_cast<const char*>(data), count, std::next(saved_variables_buffer.begin(), saved_variables_used));
+    saved_variables_used += count;
+    *written = count;
+    return 1;
+});
+}  // namespace
+
+namespace {
 // 004BEE60's D3D9 half-pixel offset adds 0.5 * rect_ddc / window_px to a clip-space translation,
 // shifting the UI by rect_ddc/4 px instead of 0.5 px; every 1:1 texel then blends ~30%
 // with its neighbour and footprints lose their right/bottom texels
-HOOKKIT_NAMED_BIND_RAW(screenHalfPixel_site, 0x004BEFE9, {"jmpback", 0x004BF01E}) {
-    constexpr uintptr_t kJmpback = screenHalfPixel_site::target("jmpback");
+HOOKKIT_NAMED_BIND_RAW(screenHalfPixel_site, 0x004BEFE9, 0x004BF01E) {
+    constexpr uintptr_t kJmpback = screenHalfPixel_site::target();
     const uintptr_t fix = HOOKKIT_LAMBDA_ADDR([](Mat4f* dst, const Rectf* win, const Rectf* rect) {
         const Vec2f ndc = math::ddcToNdc({rect->width(), rect->height()});
         const Vec2f px = ndc * Vec2f{win->width(), win->height()};
@@ -134,9 +198,7 @@ void applyConstantsHook() {
         static_cast<SamplingMode>(extensions::console::kCvarRegistry->get<"uiTextureSampling", int>()) != eEngine;
     const bool snap = extensions::console::kCvarRegistry->get<"uiPixelSnap", int>() != 0;
 
-    using QuadHook = CSimpleTexture::calcQuadVertices;
-    static_cast<void>(
-        hookkit::HookTransaction::reinstall(QuadHook{}, snap ? QuadHook::staticDetour<thinQuadWiden>() : nullptr));
+    static_cast<void>(hookkit::HookTransaction::reinstallIf<thinQuadWiden>(CSimpleTexture::calcQuadVertices{}, snap));
 
     void* detour = nullptr;
     if (sampling && snap) {
@@ -178,6 +240,23 @@ HOOKKIT_BIND(CGxDevice::initUIShaders_hook, []() {
     CGxShaderExt::replace(eGxShaderVertex, CGxDevice::ui_vertex_shaders, kSnapShader);
     applyConstantsHook();
 });
+
+// a rect change after OnLayerUpdate (nameplates placed during the world render) reaches resetVerts, which collapses
+// the swipe until the next update, so it's rebuilt here; undrawn frames get no OnLayerUpdate, hence the clock, and
+// past the end it holds the last step like the engine's reverse hold
+HOOKKIT_BIND(CCooldown::onLayoutFrameSizeChanged_hook, [](CLayoutFrame* layout_frame, const Rectf* rect) -> int {
+    const int res = CCooldown::onLayoutFrameSizeChanged_hook{}(layout_frame, rect);
+    auto* self = static_cast<CCooldown*>(layout_frame);
+    if (self->is_shown_ == 0 || self->duration_ == 0) { return res; }
+    const uint32_t elapsed = static_cast<uint32_t>(os::getAsyncTimeMs{}()) - self->start_time_;
+    self->elapsed_time_ = std::min(elapsed, self->duration_ - 1);
+    self->animateVerts();
+    return res;
+});
+
+void applyCooldownSwipeFix(int enabled) {
+    static_cast<void>(hookkit::HookTransaction::reinstallIf(CCooldown::onLayoutFrameSizeChanged_hook{}, enabled != 0));
+}
 }  // namespace
 
 void bug_fixes::initialize(hookkit::HookTransaction& tx) {
@@ -186,6 +265,7 @@ void bug_fixes::initialize(hookkit::HookTransaction& tx) {
     cvars.add<int>(
         {.name = "uiTextureSampling", .init = eBox, .min{eEngine}, .max{eTent}, .on_change = applySamplingMode});
     cvars.add<int>({.name = "uiPixelSnap", .init = 1, .min{0}, .max{1}, .on_change = applyPixelSnap});
+    cvars.add<int>({.name = "uiCooldownSwipeFix", .init = 1, .min{0}, .max{1}, .on_change = applyCooldownSwipeFix});
     for (size_t i = 0; i < 2; ++i) {
         CGxShaderExt::define(eGxShaderPixel, kSamplingShaders[i],
             {
@@ -218,9 +298,8 @@ void bug_fixes::initialize(hookkit::HookTransaction& tx) {
             .use_fallback = [] { return extensions::console::kCvarRegistry->get<"uiPixelSnap", int>() == 0; }
         });
 
-    // z sample offs; 2.0f -> 50.0f
-    std::array<uint8_t, 6> proj_depth_patch = {0xD9, 0x05, 0xA8, 0x93, 0xA3, 0x00};
-    tx.patchBytes(reinterpret_cast<void*>(0x00820809), proj_depth_patch.data(), proj_depth_patch.size());
-
     tx.attach(os::clipboardGetStr_hook{}, os::clipboardSetStr_hook{}, CGxDevice::initUIShaders_hook{});
+    tx.attach(os::writeFile_hook{}, addonSavedVariablesOpen_call{}, addonSavedVariablesClose_call{},
+        addonCharacterSavedVariablesOpen_call{}, addonCharacterSavedVariablesClose_call{},
+        registeredSavedVariablesOpen_call{}, registeredSavedVariablesClose_call{});
 }

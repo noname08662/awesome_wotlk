@@ -80,8 +80,8 @@ struct CaptureRequest {
 struct FrameCaptureState {
     CaptureRequest pending;
     CSimpleFrame* root = nullptr;
-    TSGrowableArray<std::string> batch{{}, 8};
-    TSGrowableArray<std::string> messages{{}, 8};  // Lua chunks run on the next update
+    TSGrowableArray<std::string> batch{.chunk = 8};
+    TSGrowableArray<std::string> messages{.chunk = 8};  // Lua chunks run on the next update
 
     bool isInCaptureTree(const CSimpleFrame* frame) const {
         for (const CSimpleFrame* it = frame; it != nullptr; it = it->parent_) {

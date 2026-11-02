@@ -11,12 +11,14 @@
 #include "Extensions.h"
 #include "Inventory.h"
 #include "Item.h"
+#include "LuaSwap.h"
 #include "MSDF.h"
 #include "Misc.h"
 #include "NamePlates.h"
 #include "Spell.h"
 #include "UnitAPI.h"
 #include "VoiceChat.h"
+#include "WorldCull.h"
 
 #include "include/Lib/Lua.h"
 
@@ -31,12 +33,12 @@ int luaDebugBreak(LuaState*) {
 #endif
 
 int luaOpenAwesomeWotlk(LuaState* l) {
-    lua::pushNumber(l, 38);
+    lua::pushNumber(l, 39);
     lua::setGlobal(l, "AwesomeWotlk");
 
 #ifdef _DEBUG
     lua::pushCFunction(l, luaDebugBreak);
-    lua::setGlobal(l, "debugbreak");
+    lua::setGlobal(l, "debugbreak", true);
 #endif
     return 0;
 }
@@ -56,6 +58,7 @@ void onAttach() {
     camera::initialize(tx);
     bug_fixes::initialize(tx);
     command_line::initialize(tx);
+    lua_swap::initialize(tx);
     inventory::initialize(tx);
     item::initialize(tx);
     msdf::initialize(tx);
@@ -64,6 +67,7 @@ void onAttach() {
     unit_api::initialize(tx);
     spell::initialize(tx);
     voice_chat::initialize(tx);
+    world_cull::initialize(tx);
 
     if (tx.commit() != NO_ERROR) {
         assert(false && "AwesomeWotlk: startup hooks failed to install, the mod stays disabled");

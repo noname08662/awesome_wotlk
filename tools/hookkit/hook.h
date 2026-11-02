@@ -138,9 +138,33 @@ private:
     static_assert(std::is_empty_v<NAME>, #NAME " must stay zero-sized" HOOKKIT_ZERO_SIZED_WHY_)
 
 struct NamedTarget {
+    static constexpr std::string_view kJmpback = "jmpback";
+
     std::string_view name;
     std::uintptr_t addr;
+
+    explicit constexpr NamedTarget(std::uintptr_t address) : name(kJmpback), addr(address) {}
+
+    explicit constexpr NamedTarget(std::string_view label, std::uintptr_t address) : name(label), addr(address) {}
 };
+
+namespace detail {
+struct NamedTargetEntry : NamedTarget {
+    constexpr NamedTargetEntry(std::uintptr_t address) : NamedTarget(address) {}
+
+    constexpr NamedTargetEntry(std::string_view label, std::uintptr_t address) : NamedTarget(label, address) {}
+};
+
+template <std::size_t N>
+constexpr bool uniqueLabels(const NamedTargetEntry (&targets)[N]) {
+    for (std::size_t i = 0; i < N; ++i) {
+        for (std::size_t j = i + 1; j < N; ++j) {
+            if (targets[i].name == targets[j].name) { return false; }
+        }
+    }
+    return true;
+}
+}  // namespace detail
 
 /**
  * @brief Defines a zero-sized Hook struct whose branch targets are addressed
@@ -158,32 +182,38 @@ struct NamedTarget {
  *
  *   // Retrieve a target at runtime:
  *   std::uintptr_t addr = func_hook::target("fallback");
+ *
+ *   // A bare address is the "jmpback" label, and target() with no name resolves it:
+ *   HOOKKIT_NAMED_HOOK(site_hook, 0x..., 0x...);
+ *   std::uintptr_t jmpback = site_hook::target();
  * @endcode
  *
  * @param NAME      The name of the generated struct.
  * @param ADDR      The address of the patch site to hook.
- * @param ...       Brace-initialised @c ::hookkit::NamedTarget entries,
- *                  e.g. @c {"ret", 0x...}.
+ * @param ...       @c ::hookkit::NamedTarget entries: brace-initialised @c {"ret", 0x...},
+ *                  or a bare @c 0x... for @c {"jmpback", 0x...}. Labels must be unique.
  */
-#define HOOKKIT_NAMED_HOOK(NAME, ADDR, ...)                                              \
-    struct NAME##_tag {};                                                                \
-    struct NAME : ::hookkit::Hook<NAME##_tag, (ADDR), ::hookkit::Conv::eCdecl, void> {   \
-        static constexpr ::hookkit::NamedTarget kTargets[] = {__VA_ARGS__};              \
-        static constexpr std::uintptr_t target(std::string_view name) {                  \
-            for (const auto& t : kTargets) {                                             \
-                if (t.name == name) { return t.addr; }                                   \
-            }                                                                            \
-            if (std::is_constant_evaluated()) {                                          \
-                throw "hookkit: unknown target for " #NAME                               \
-                      "::target(name), no label in its HOOKKIT_NAMED_HOOK list matches"; \
-            }                                                                            \
-            assert(false &&                                                              \
-                "hookkit: unknown target for " #NAME                                     \
-                "::target(name), no label in its HOOKKIT_NAMED_HOOK list matches");      \
-            return 0;                                                                    \
-        }                                                                                \
-    };                                                                                   \
-    using NAME##_hook = NAME;                                                            \
-    static_assert(std::is_empty_v<NAME>, #NAME " must stay zero-sized" HOOKKIT_ZERO_SIZED_WHY_)
+#define HOOKKIT_NAMED_HOOK(NAME, ADDR, ...)                                                                \
+    struct NAME##_tag {};                                                                                  \
+    struct NAME : ::hookkit::Hook<NAME##_tag, (ADDR), ::hookkit::Conv::eCdecl, void> {                     \
+        static constexpr ::hookkit::detail::NamedTargetEntry kTargets[] = {__VA_ARGS__};                   \
+        static constexpr std::uintptr_t target(std::string_view name = ::hookkit::NamedTarget::kJmpback) { \
+            for (const auto& t : kTargets) {                                                               \
+                if (t.name == name) { return t.addr; }                                                     \
+            }                                                                                              \
+            if (std::is_constant_evaluated()) {                                                            \
+                throw "hookkit: unknown target for " #NAME                                                 \
+                      "::target(name), no label in its HOOKKIT_NAMED_HOOK list matches";                   \
+            }                                                                                              \
+            assert(false &&                                                                                \
+                "hookkit: unknown target for " #NAME                                                       \
+                "::target(name), no label in its HOOKKIT_NAMED_HOOK list matches");                        \
+            return 0;                                                                                      \
+        }                                                                                                  \
+    };                                                                                                     \
+    using NAME##_hook = NAME;                                                                              \
+    static_assert(std::is_empty_v<NAME>, #NAME " must stay zero-sized" HOOKKIT_ZERO_SIZED_WHY_);           \
+    static_assert(::hookkit::detail::uniqueLabels(NAME::kTargets),                                         \
+        #NAME ": duplicate label in its HOOKKIT_NAMED_HOOK list (a bare address is \"jmpback\")")
 
 }  // namespace hookkit

@@ -20,11 +20,11 @@ public:
     struct AddonFace {
         const std::filesystem::path& kPath;
         std::span<const uint8_t> data;
-        FontHash hash;
-        FT_Face face;
-        msdfgen::FontHandle* handle;
-        const char* family;
-        const char* style;
+        FontHash hash{};
+        FT_Face face{};
+        msdfgen::FontHandle* handle{};
+        const char* family{};
+        const char* style{};
     };
 
     using AddonFaceVisitor = std::function<void(const AddonFace&)>;

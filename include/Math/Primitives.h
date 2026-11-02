@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
+#include <span>
 
 template <typename T>
 struct Vec2 {
@@ -272,6 +274,15 @@ struct Vec3 {
     Vec3 normalized() const noexcept {
         auto len = length();
         return (len > 0) ? *this / static_cast<T>(len) : Vec3{};
+    }
+
+    [[nodiscard]]
+    int dominantAxis() const noexcept {
+        const auto a = std::abs(x);
+        const auto b = std::abs(y);
+        const auto c = std::abs(z);
+        if (a > b) { return a > c ? 0 : 2; }
+        return b > c ? 1 : 2;
     }
 };
 
@@ -697,6 +708,11 @@ struct Rect {
     }
 
     [[nodiscard]]
+    constexpr bool isValid() const noexcept {
+        return left < right && bottom < top;
+    }
+
+    [[nodiscard]]
     constexpr Vec2<T> minPoint() const noexcept {
         return {(std::min)(left, right), (std::min)(top, bottom)};
     }
@@ -713,20 +729,92 @@ struct Rect {
         return pt.x >= min_x && pt.x <= max_x && pt.y >= min_y && pt.y <= max_y;
     }
 
-    // clamps into [min_x, max_x] x [min_y, max_y] as stored, without normalizing
     [[nodiscard]]
     constexpr Vec2<T> clamp(const Vec2<T>& pt) const noexcept {
         return {std::clamp(pt.x, min_x, max_x), std::clamp(pt.y, min_y, max_y)};
     }
 
     [[nodiscard]]
-    constexpr bool intersects(const Rect& other) const noexcept {
-        auto [min_x1, min_y1] = minPoint();
-        auto [max_x1, max_y1] = maxPoint();
-        auto [min_x2, min_y2] = other.minPoint();
-        auto [max_x2, max_y2] = other.maxPoint();
+    constexpr Rect merged(const Rect& other) const noexcept {
+        return {other.min_y > min_y ? min_y : other.min_y, other.min_x > min_x ? min_x : other.min_x,
+            other.max_y < max_y ? max_y : other.max_y, other.max_x < max_x ? max_x : other.max_x};
+    }
 
-        return !(min_x1 > max_x2 || max_x1 < min_x2 || min_y1 > max_y2 || max_y1 < min_y2);
+    [[nodiscard]]
+    constexpr Rect clipped(const Rect& other) const noexcept {
+        return {(std::max)(min_y, other.min_y), (std::max)(min_x, other.min_x), (std::min)(max_y, other.max_y),
+            (std::min)(max_x, other.max_x)};
+    }
+
+    template <bool Normalized = true>
+    [[nodiscard]]
+    constexpr bool intersects(const Rect& other) const noexcept {
+        if constexpr (!Normalized) {
+            return !(max_x < other.min_x) && !(max_y < other.min_y) && !(min_x > other.max_x) && min_y <= other.max_y;
+        } else {
+            auto [min_x1, min_y1] = minPoint();
+            auto [max_x1, max_y1] = maxPoint();
+            auto [min_x2, min_y2] = other.minPoint();
+            auto [max_x2, max_y2] = other.maxPoint();
+
+            return !(min_x1 > max_x2 || max_x1 < min_x2 || min_y1 > max_y2 || max_y1 < min_y2);
+        }
+    }
+
+    template <typename Calc = T>
+    [[nodiscard]]
+    constexpr Rect remapped(const Rect& from, const Rect& to) const noexcept {
+        const auto map = [](T v, T from_min, T from_max, T to_min, T to_max) {
+            const auto c = [](T t) { return static_cast<Calc>(t); };
+            return static_cast<T>(
+                (c(v) - c(from_min)) * (c(to_max) - c(to_min)) / (c(from_max) - c(from_min)) + c(to_min));
+        };
+        return {map(min_y, from.min_y, from.max_y, to.min_y, to.max_y),
+            map(min_x, from.min_x, from.max_x, to.min_x, to.max_x),
+            map(max_y, from.min_y, from.max_y, to.min_y, to.max_y),
+            map(max_x, from.min_x, from.max_x, to.min_x, to.max_x)};
+    }
+
+    [[nodiscard]]
+    static constexpr Rect empty() noexcept {
+        return {(std::numeric_limits<T>::max)(), (std::numeric_limits<T>::max)(), std::numeric_limits<T>::lowest(),
+            std::numeric_limits<T>::lowest()};
+    }
+
+    [[nodiscard]]
+    static constexpr Rect basic() noexcept {
+        return {T{0}, T{0}, T{1}, T{1}};
+    }
+
+    [[nodiscard]]
+    static constexpr Rect ndc() noexcept {
+        return {T{-1}, T{-1}, T{1}, T{1}};
+    }
+
+    template <typename VecType>
+    [[nodiscard]]
+    static constexpr Rect fromVerts(const VecType* verts, uint32_t count) noexcept {
+        if (count == 0) { return {T{}, T{}, T{}, T{}}; }
+
+        T min_x = (std::numeric_limits<T>::max)();
+        T max_x = std::numeric_limits<T>::lowest();
+        T min_y = (std::numeric_limits<T>::max)();
+        T max_y = std::numeric_limits<T>::lowest();
+
+        for (uint32_t i = 0; i < count; ++i) {
+            min_x = (std::min)(min_x, static_cast<T>(verts[i].x));
+            max_x = (std::max)(max_x, static_cast<T>(verts[i].x));
+            min_y = (std::min)(min_y, static_cast<T>(verts[i].y));
+            max_y = (std::max)(max_y, static_cast<T>(verts[i].y));
+        }
+
+        return {min_y, min_x, max_y, max_x};
+    }
+
+    template <typename VecType, size_t Extent>
+    [[nodiscard]]
+    static constexpr Rect fromVerts(std::span<VecType, Extent> verts) noexcept {
+        return fromVerts(verts.data(), static_cast<uint32_t>(verts.size()));
     }
 };
 
@@ -819,8 +907,15 @@ struct AaBox {
 
     [[nodiscard]]
     constexpr bool intersects(const AaBox& other) const noexcept {
-        return !(min.x > other.max.x || max.x < other.min.x || min.y > other.max.y || max.y < other.min.y ||
-            min.z > other.max.z || max.z < other.min.z);
+        return max.x >= other.min.x && max.y >= other.min.y && max.z >= other.min.z && min.x <= other.max.x &&
+            min.y <= other.max.y && min.z <= other.max.z;
+    }
+
+    [[nodiscard]]
+    constexpr Vec3f nearCorner(const Vec3f& eye, const Vec3f& target) const noexcept {
+        const auto pick = [](float t, float e, float lo, float hi) { return t < e ? hi : lo; };
+        return {pick(target.x, eye.x, min.x, max.x), pick(target.y, eye.y, min.y, max.y),
+            pick(target.z, eye.z, min.z, max.z)};
     }
 
     [[nodiscard]]

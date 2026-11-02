@@ -3,7 +3,9 @@
 #include <hookkit/hookkit.h>
 
 #include <array>
+#include <cassert>
 #include <ranges>
+#include <source_location>
 #include <string>
 
 #include "BaseTypes.h"
@@ -229,7 +231,26 @@ inline bool isNoneOrNil(LuaState* l, int n) {
     return (t == kTNone || t == kTNil);
 }
 
-inline void setGlobal(LuaState* l, const char* s) { setField(l, kGlobalsindex, s); }
+inline void setGlobal(LuaState* l, const char* s, [[maybe_unused]] bool overwrite = false,
+    [[maybe_unused]] const std::source_location& caller = std::source_location::current()) {
+#ifndef NDEBUG
+    if (!overwrite) {
+        pushString(l, s);
+        rawGet(l, kGlobalsindex);
+        const bool taken = !isNil(l, -1);
+        pop(l, 1);
+        if (taken) {
+            const std::string msg = std::string("lua::setGlobal: global \"") + s +
+                "\" already exists (client or another mod defines it), pass overwrite = true if "
+                "deliberate";
+            const std::string_view file = caller.file_name();
+            _wassert(std::wstring(msg.begin(), msg.end()).c_str(), std::wstring(file.begin(), file.end()).c_str(),
+                caller.line());
+        }
+    }
+#endif
+    setField(l, kGlobalsindex, s);
+}
 
 inline void getGlobal(LuaState* l, const char* s) { getField(l, kGlobalsindex, s); }
 
@@ -284,7 +305,8 @@ inline bool checkSlashCommandExists(const char* cmd_key) {
     return exists;
 }
 
-inline void registerSlashCommand(const char* cmd_key, const char* slash_str, LuaCFunction func) {
+inline void registerSlashCommand(const char* cmd_key, const char* slash_str, LuaCFunction func,
+    const std::source_location& caller = std::source_location::current()) {
     LuaState* l = getLuaState();
     if (!l || !cmd_key || !slash_str) { return; }
 
@@ -300,6 +322,6 @@ inline void registerSlashCommand(const char* cmd_key, const char* slash_str, Lua
 
     std::string global_var = "SLASH_" + std::string(cmd_key) + "1";
     pushString(l, slash_str);
-    setGlobal(l, global_var.c_str());
+    setGlobal(l, global_var.c_str(), false, caller);
 }
 }  // namespace lua

@@ -704,17 +704,24 @@ private:
 };
 
 // eax/ecx/edx are clobbered exactly as the original call would; one trampoline is JIT-built per Fn
-template <typename Tag, std::uintptr_t Site, typename Callee>
+template <typename Tag, std::uintptr_t Site, typename Callee, std::uintptr_t Skip = 0, std::int32_t Clean = 0>
 struct CallsiteHook : Hook<Tag, Site, Conv::eCdecl, void> {
+    static_assert(Clean >= 0, "hookkit: CallsiteHook: Clean is a byte count popped off the stack, it can't be negative");
+
     using CalleeHook = Callee;
-    static constexpr std::uintptr_t kResume = Site + 5;
+    static constexpr std::uintptr_t kResume = Site + 5 + Skip;
 
     template <const auto& Fn>
     static void* staticDetour() {
         [[maybe_unused]] static const bool verified = verifySite();
         static void* const built = CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(
-            reinterpret_cast<std::uintptr_t>(&Callee::Descriptor::template detour<Fn>), jmpTo(kResume));
+            reinterpret_cast<std::uintptr_t>(&Callee::Descriptor::template detour<Fn>), jmpTo(kResume), Clean);
         return built;
+    }
+
+    template <const auto& Fn>
+    static void bindStatic() {
+        CallsiteHook::raw_detour.store(staticDetour<Fn>(), std::memory_order_release);
     }
 
 private:
@@ -723,7 +730,7 @@ private:
         const auto* bytes = reinterpret_cast<const std::uint8_t*>(Site);
         std::int32_t rel = 0;
         std::memcpy(&rel, bytes + 1, sizeof(rel));
-        const bool ok = bytes[0] == 0xE8 && kResume + static_cast<std::uintptr_t>(rel) == Callee::kAddress;
+        const bool ok = bytes[0] == 0xE8 && Site + 5 + static_cast<std::uintptr_t>(rel) == Callee::kAddress;
         assert(ok && "hookkit: CallsiteHook: Site is not a `call rel32` to Callee::kAddress");
         return ok;
     }
@@ -731,16 +738,20 @@ private:
 
 /**
  * @brief Defines a zero-sized CallsiteHook handle: the `call rel32` at ADDR, whose callee is the hook handle CALLEE.
- *        Variants come from NAME::staticDetour<Fn>(), Fn having CALLEE's signature.
+ *        Variants come from NAME::staticDetour<Fn>(), Fn having CALLEE's signature; HOOKKIT_BIND binds one statically.
+ *        Optional trailing SKIP, CLEAN: resume SKIP bytes past the call, popping CLEAN stack bytes first.
  * @code
  *   HOOKKIT_CALLSITE_HOOK(fetch_call, 0x..., CTexture::fetchGxTex);
  *   reinstall(fetch_call{}, fetch_call::staticDetour<kFetchVariant<true>>());
+ *
+ *   HOOKKIT_CALLSITE_HOOK(update_call, 0x..., CFoo::update, 10, 8);
+ *   HOOKKIT_BIND(update_call, [](CFoo* self) { ... });
  * @endcode
  */
-#define HOOKKIT_CALLSITE_HOOK(NAME, ADDR, CALLEE)                         \
-    struct NAME##_tag {};                                                 \
-    struct NAME : ::hookkit::CallsiteHook<NAME##_tag, (ADDR), CALLEE> {}; \
-    using NAME##_hook = NAME;                                             \
+#define HOOKKIT_CALLSITE_HOOK(NAME, ADDR, CALLEE, ...)                                   \
+    struct NAME##_tag {};                                                                \
+    struct NAME : ::hookkit::CallsiteHook<NAME##_tag, (ADDR), CALLEE, ##__VA_ARGS__> {}; \
+    using NAME##_hook = NAME;                                                            \
     static_assert(std::is_empty_v<NAME>, #NAME " must stay zero-sized" HOOKKIT_ZERO_SIZED_WHY_)
 
 }  // namespace hookkit

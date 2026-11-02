@@ -1,13 +1,11 @@
 #include "NamePlateManager.h"
 
 #include <bit>
-#include <cstring>
 #include <format>
 #include <utility>
 
 #include "Extensions.h"
 
-#include "include/FrameScript/FrameScript.h"
 #include "include/Game/CGInputControl.h"
 #include "include/ObjectManager/CGUnit_C.h"
 #include "include/ObjectManager/ObjectManager.h"
@@ -17,14 +15,6 @@
 namespace name_plates {
 namespace {
 using extensions::console::kEventRegistry;
-
-bool isNamedUnit(CGUnit_C* unit) {
-    const char* name = unit->getName(nullptr, 1);
-    if (name == nullptr) { return false; }
-    const char* unknown_text = framescript::getText{}("UNKNOWNOBJECT", -1, 0);
-    return (unknown_text == nullptr || *unknown_text == '\0' || std::strcmp(name, unknown_text) != 0) &&
-        std::strcmp(name, "Unknown Being") != 0;
-}
 
 int luaSetStackingEnabled(LuaState* l) {
     if (Entry* e = kPlates->entryArg(l)) {
@@ -54,6 +44,13 @@ int luaGetOcclusionEnabled(LuaState* l) {
     }
     return 0;
 }
+
+constexpr std::array<lua::LuaLReg, 4> kMethods = {{
+    {.name = "SetStackingEnabled", .func = luaSetStackingEnabled},
+    {.name = "GetStackingEnabled", .func = luaGetStackingEnabled},
+    {.name = "SetOcclusionEnabled", .func = luaSetOcclusionEnabled},
+    {.name = "GetOcclusionEnabled", .func = luaGetOcclusionEnabled},
+}};
 }  // namespace
 
 Entry* EntryManager::entryArg(LuaState* l) {
@@ -83,8 +80,7 @@ void EntryManager::clearAll() {
     by_id_.clear();
     entries_.clear();
     pending_.fill(0);
-    hover_ = last_hover_ = nullptr;
-    press_ms_ = 0;
+    hover_ = 0;
 }
 
 void EntryManager::update(CGWorldFrame* wf) {
@@ -96,17 +92,13 @@ void EntryManager::update(CGWorldFrame* wf) {
     // bulk flush now so callbacks receive a complete gapless snapshot of the previous frame
     flushRemoved();
     const uint64_t ms = os::getAsyncTimeMs{}();
-    const MouseInput input = mouseInput(ms);
-    CGNamePlateFrame* hover = std::exchange(hover_, nullptr);
-    if (hover == nullptr && input == MouseInput::eClickPending) { hover = last_hover_; }
-    last_hover_ = hover;
-    // a camera drag or another plate under the cursor ends a pin outright
-    const bool release_now = hover != nullptr || input == MouseInput::eDragging;
-    // the engine stops updating focus while a mouse button is held, a camera drag would keep the highlight
-    if (CGNamePlateFrame*& focus = CGNamePlateFrame::focus; input == MouseInput::eDragging && focus != nullptr) {
-        focus->onFocusLost();
-        focus = nullptr;
-    }
+    const CGInputControl* input = CGInputControl::get{}();
+    const bool dragging = input != nullptr && input->isDragging(static_cast<uint32_t>(ms));
+    const uintptr_t hover_bits = dragging ? 0 : hover_;  // the plate pressed on stays pinned through a click only
+    hover_ = 0;
+    const auto* hover = reinterpret_cast<const CGNamePlateFrameExt*>(hover_bits & ~kHoverPinned);
+    const bool pinned = (hover_bits & kHoverPinned) != 0;
+
     if (entries_.empty()) {
         clearPending();
         CLayoutFrame::resizePending{}();
@@ -118,10 +110,11 @@ void EntryManager::update(CGWorldFrame* wf) {
     const float scene_time = sceneDelta(wf);
     const guid_t target_guid = object_mgr::getTargetGuid();
     const bool in_combat = game_ui::inCombatLockdown();
+    const bool release_now = hover != nullptr || dragging;
 
-    const bool freeze_on = s.freezeActive();
+    // the freeze mode is the focus hook's detour, inactive it leaves the hover unset
     for (Entry* e : entries_) {
-        e->updateFreeze(freeze_on && e->ptr == hover, release_now, ms, s.freeze_grace);
+        e->updateFreeze(pinned && e->ptr == hover, release_now, ms, s.freeze_grace);
     }
 
     sort(SortPass::eStack);  // no target/focus
@@ -300,59 +293,51 @@ void EntryManager::markRemoved(Entry* e, int id) const {
     e->setState(Entry::State::eIsActive, false);
 }
 
+void EntryManager::onBound(CGNamePlateFrameExt* plate) {
+    const int id = plate->getPlateId();
+    // a plate never announced is track()'s
+    if (id < 0 || id >= getTotalSize()) { return; }
+    if (Entry& e = by_id_.at(id); e.ptr == plate && e.hasState(Entry::State::eIsActive)) {
+        e.setState(Entry::State::eIsRebound, true);
+    }
+}
+
 void EntryManager::track(CGNamePlateFrameExt* plate) {
     const int id = plate->getPlateId();
     Entry* e = getEntry(id);
-    const bool active = e != nullptr && e->hasState(Entry::State::eIsActive);
-    if (plate->is_shown_ == 0) {
-        if (active) { markRemoved(e, id); }
-        return;
-    }
-
-    auto* unit = object_mgr::get<CGUnit_C>(plate->owner_guid_, eTypemaskUnit);
-    if (active) {
-        if (unit == nullptr || unit->nameplate_ == nullptr) {
+    CGUnit_C* unit = plate->boundUnit();
+    if (e != nullptr && e->hasState(Entry::State::eIsActive)) {
+        if (unit == nullptr) {
             markRemoved(e, id);
-        } else if (unit->nameplate_->owner_guid_ != e->guid) {
-            // a pinned plate would keep the cursor while showing another unit
-            e->setState(Entry::State::eIsFrozen, false);
-            e->setState(Entry::State::eIsSliding, false);
+        } else if (e->hasState(Entry::State::eIsRebound)) {
             kEventRegistry->fire(kEventUnitRemoved, "%s", getToken(id));
-            appendAdded(id);
+            bindEntry(e, unit);
         }
         return;
     }
 
-    if (unit == nullptr || !isNamedUnit(unit)) { return; }
+    if (unit == nullptr) { return; }
     e = initEntry(plate);
     if (e == nullptr) { return; }
+    bindEntry(e, unit);
+}
 
+void EntryManager::bindEntry(Entry* e, CGUnit_C* unit) {
+    // a rebound entry is still listed in entries_, appendAdded must not list it twice
+    const bool listed = e->hasState(Entry::State::eIsActive);
     e->clearState();
+    e->setState(Entry::State::eIsActive, listed);
     e->setState(Entry::State::eIsFriendly, unit->isFriendly());
     e->classification = unit->getCreatureRank();
 
     e->updateStacking();
     e->updateClamping();
     resolvePairs(e, static_cast<uint64_t>(-1), 0);
-    appendAdded(plate->getPlateId());
+    appendAdded(e->ptr->getPlateId());
 
     // for occlusion
-    plate->setFresh(true);
-    plate->setOpaque(false);
-}
-
-// press timed here, the engine's own press time runs on the input event clock
-MouseInput EntryManager::mouseInput(uint64_t ms) {
-    const CGInputControl* input = CGInputControl::get{}();
-    const uint32_t flags = input != nullptr ? input->control_flags_ : 0;
-    if ((flags & CGInputControl::kMouseBusyFlags) == 0) {
-        press_ms_ = 0;
-        return MouseInput::eIdle;
-    }
-    if (press_ms_ == 0) { press_ms_ = ms; }
-    const bool dragging = (flags & (CGInputControl::eMouseLook | CGInputControl::eMouseSteer)) != 0 ||
-        input->isMouseDrag(static_cast<int32_t>(ms - press_ms_));
-    return dragging ? MouseInput::eDragging : MouseInput::eClickPending;
+    e->ptr->setFresh(true);
+    e->ptr->setOpaque(false);
 }
 
 void EntryManager::stack(uint64_t ms, float scene_time, float pull_scale) {
@@ -415,13 +400,6 @@ void EntryManager::stack(uint64_t ms, float scene_time, float pull_scale) {
 }
 
 void EntryManager::onPlateCreated(CGNamePlateFrameExt* plate) {
-    static constexpr std::array<lua::LuaLReg, 4> kMethods = {{
-        {.name = "SetStackingEnabled", .func = luaSetStackingEnabled},
-        {.name = "GetStackingEnabled", .func = luaGetStackingEnabled},
-        {.name = "SetOcclusionEnabled", .func = luaSetOcclusionEnabled},
-        {.name = "GetOcclusionEnabled", .func = luaGetOcclusionEnabled},
-    }};
-
     LuaState* l = lua::getLuaState();
     lua::pushString(l, kEventCreated);
     lua::pushframe(l, plate);

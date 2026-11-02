@@ -54,6 +54,12 @@ inline constexpr auto kPixelShaderHlsl = R"(
     static const float kBoxBudget = 8.0;          // taps per axis the box footprint may use
     static const float kTentBudget = 16.0;        // the tent spans twice as far; 12 per axis still drops lines
 
+    float gradLod(float2 du, float2 dv, float2 size) {
+        float2 a = du * size;
+        float2 b = dv * size;
+        return size.x > 0.0 ? 0.5 * log2(max(max(dot(a, a), dot(b, b)), 1e-8)) : 0.0;
+    }
+
     float4 sampleFootprint(float2 uv) {
         float2 du = ddx(uv);
         float2 dv = ddy(uv);
@@ -61,7 +67,7 @@ inline constexpr auto kPixelShaderHlsl = R"(
 
         float2 extent = (abs(du) + abs(dv)) * size.xy;  // pixel footprint bounding box, texels
         [branch] if (size.x <= 0.0 || max(extent.x, extent.y) <= kMinTexelsPerPixel) {
-            return tex2Dgrad(uiTexture, uv, du, dv);
+            return tex2Dlod(uiTexture, float4(uv, 0.0, gradLod(du, dv, size.xy)));
         }
 
         float2 half_span = kTent ? extent : extent * 0.5;

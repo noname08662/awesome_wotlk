@@ -102,6 +102,7 @@ HOOKKIT_BIND(framescript::fillEvents_hook, [](const char** list, size_t count) {
 HOOKKIT_BIND(CVar::init_hook, []() {
     CVar::init{}();
     console::kCvarRegistry->registerAll();
+    console::kOnCvarsLoaded->fire();
 });
 
 HOOKKIT_BIND(framescript::paintCallback_hook, [](int unused1, int unused2, int unused3, float elapsed) {
@@ -121,7 +122,6 @@ HOOKKIT_BIND(game_ui::leaveWorld_hook, []() {
 
 HOOKKIT_HOOK_BIND(openFrameXML_site, 0x0051226D, hookkit::Conv::eCdecl, void)[]() {
     framescript::registerBNScriptFunctions{}();
-
     if (LuaState* l = lua::getLuaState()) { console::kLuaLibRegistry->loadInto(l); }
 };
 
@@ -146,13 +146,10 @@ HOOKKIT_NAMED_BIND_RAW(getGuidFromToken_site, 0x0060AFAA, {"resolved", 0x0060AD5
         .build(kBulk, branchOnResult(ResultWidth::eByte, jmpTo(kResolved), jmpTo(kOrig), popAllStep()));
 };
 
-HOOKKIT_BIND_RAW(glue::loadGlueXML_site, ([] {
-    constexpr uintptr_t kResumeStatusDtor = glue::loadGlueXML_site::target("resumeStatusDtor");
-    constexpr uintptr_t kJmpback = glue::loadGlueXML_site::target("jmpback");
-    const uintptr_t kBulk = HOOKKIT_LAMBDA_ADDR([]() { glue::kPostLoad->fire(); });
-    return CallsiteTrampolineBuilder{}.assertOnBuildFailure().build(
-        kResumeStatusDtor, jmpTo(kJmpback, pushAllStep(), callTo(kBulk), popAllStep()), 0);
-}()));
+HOOKKIT_BIND(glue::loadGlueXML_call, [](CStatusLog* status) {
+    status->dtor();
+    glue::kPostLoad->fire();
+});
 
 HOOKKIT_BIND_RAW(glue::loadCharacters_site, ([] {
     const uintptr_t kBulk = HOOKKIT_LAMBDA_ADDR([]() { glue::kCharEnum->fire(); });
@@ -169,5 +166,5 @@ HOOKKIT_BIND_RAW(glue::loadCharacters_site, ([] {
 void extensions::initialize(hookkit::HookTransaction& tx) {
     tx.attach(CVar::init_hook{}, framescript::paintCallback_hook{}, framescript::fillEvents_hook{},
         framescript::getTokensFromGuid_hook{}, getGuidFromToken_site{}, openFrameXML_site{}, game_ui::enterWorld_hook{},
-        game_ui::leaveWorld_hook{}, glue::loadGlueXML_site{}, glue::loadCharacters_site{});
+        game_ui::leaveWorld_hook{}, glue::loadGlueXML_call{}, glue::loadCharacters_site{});
 }

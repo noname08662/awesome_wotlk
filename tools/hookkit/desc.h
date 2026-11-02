@@ -146,6 +146,8 @@ template <typename Ret, const auto& Fn, typename... Params>
 inline constexpr bool kDetourInvocable =
     std::is_invocable_r_v<Ret, const std::remove_cvref_t<decltype(Fn)>&, Params...>;
 
+template <const auto& Fn>
+inline constexpr bool kFnIsPointer = std::is_pointer_v<std::remove_cvref_t<decltype(Fn)>>;
 }  // namespace detail
 
 #define HOOKKIT_BIND_SIG_MSG_                                                                                        \
@@ -176,7 +178,12 @@ inline constexpr bool kDetourInvocable =
         template <const auto& Fn>                                                                                  \
         static Ret KEYWORD detour(Params... args) {                                                                \
             static_assert(detail::kDetourInvocable<Ret, Fn, Params...>, HOOKKIT_BIND_SIG_MSG_);                    \
-            HOOKKIT_INLINE_CALL return Fn(std::forward<Params>(args)...);                                          \
+            if constexpr (detail::kFnIsPointer<Fn>) {                                                              \
+                constexpr auto fn = Fn;                                                                            \
+                HOOKKIT_INLINE_CALL return fn(std::forward<Params>(args)...);                                      \
+            } else {                                                                                               \
+                HOOKKIT_INLINE_CALL return Fn(std::forward<Params>(args)...);                                      \
+            }                                                                                                      \
         }                                                                                                          \
     }
 
@@ -212,7 +219,12 @@ struct ThiscallImpl<false, Ret, This, Params...> {
     template <const auto& Fn>
     static Ret HOOKKIT_FASTCALL detour(This self, void*, Params... args) {
         static_assert(detail::kDetourInvocable<Ret, Fn, This, Params...>, HOOKKIT_BIND_SIG_MSG_);
-        HOOKKIT_INLINE_CALL return Fn(self, std::forward<Params>(args)...);
+        if constexpr (kFnIsPointer<Fn>) {
+            constexpr auto fn = Fn;
+            HOOKKIT_INLINE_CALL return fn(self, std::forward<Params>(args)...);
+        } else {
+            HOOKKIT_INLINE_CALL return Fn(self, std::forward<Params>(args)...);
+        }
     }
 
     static Ret invoke(std::uintptr_t target, This self, Params... args) {
@@ -245,7 +257,12 @@ struct ThiscallImpl<true, Ret, This, Params...> {
     template <const auto& Fn>
     static Ret* HOOKKIT_FASTCALL detour(This self, void*, Ret* out, Params... args) {
         static_assert(detail::kDetourInvocable<Ret, Fn, This, Params...>, HOOKKIT_BIND_SIG_MSG_);
-        HOOKKIT_INLINE_CALL ::new (static_cast<void*>(out)) Ret(Fn(self, std::forward<Params>(args)...));
+        if constexpr (kFnIsPointer<Fn>) {
+            constexpr auto fn = Fn;
+            HOOKKIT_INLINE_CALL ::new (static_cast<void*>(out)) Ret(fn(self, std::forward<Params>(args)...));
+        } else {
+            HOOKKIT_INLINE_CALL ::new (static_cast<void*>(out)) Ret(Fn(self, std::forward<Params>(args)...));
+        }
         return out;
     }
 

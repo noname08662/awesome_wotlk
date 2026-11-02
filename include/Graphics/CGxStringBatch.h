@@ -9,6 +9,7 @@
 class CGxStringBatch {
 public:
     inline static auto& TSL = *reinterpret_cast<TSExplicitList<CGxStringBatch>*>(0x00AD9970);
+    inline static auto& is_world_space_batch = *reinterpret_cast<uint32_t*>(0x00C7D2E4);
 
     enum BatchFlags : uint32_t {
         eNone = 0x0,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <blpcodec.h>
+#include <hookkit/hookkit.h>
 
 #include <cstdint>
 
@@ -134,7 +135,34 @@ enum GxShaderType : uint32_t {
     eGxShaderCount = 6,
 };
 
-enum GxRenderState : uint32_t { eGxRsTexture0 = 0x15, eGxRsVertexShader = 0x4D, eGxRsPixelShader = 0x4E };
+enum GxApi : uint32_t {
+    eGxApiOpenGl = 0,
+    eGxApiD3d9 = 1,
+    eGxApiD3d9Ex = 2,
+    eGxApiD3d10 = 3,
+    eGxApiD3d11 = 4,
+    eGxApiGll = 5,
+    eGxApiCount = 6,
+};
+
+enum GxRenderState : uint32_t {
+    eGxRsBlendingMode = 0x6,
+    eGxRsTexture0 = 0x15,
+    eGxRsColorOp0 = 0x25,
+    eGxRsAlphaOp0 = 0x2D,
+    eGxRsTexGen0 = 0x35,
+    eGxRsTexMatrixMode0 = 0x3D,
+    eGxRsVertexShader = 0x4D,
+    eGxRsPixelShader = 0x4E
+};
+
+enum GxTexGen : uint32_t {
+    eGxTexGenWorldPosition = 0x2,  // relative to the camera
+};
+
+enum GxTexMatrixMode : uint32_t {
+    eGxTexMatrixModeAffine = 0x1,
+};
 
 enum GxPrimMask : uint32_t {
     eGxPrimVertex = 0x1,
@@ -352,9 +380,9 @@ enum CPixelFormat : uint32_t {
 union GxTexFlags {
     struct {
         GxTexFilter filter_mode : 3;
-        uint32_t use_mip_maps : 1;
         uint32_t wrap_u : 1;
         uint32_t wrap_v : 1;
+        uint32_t force_mip_tracking : 1;
         uint32_t gen_mipmaps : 1;
         uint32_t is_render_target : 1;
         uint32_t unk_glow_ffx : 1;
@@ -366,7 +394,7 @@ union GxTexFlags {
 
     uint32_t packed = 0;
 
-    // filter mode, use mip maps, wrap u, wrap v, is dynamic, is render target, max aniso, unk glow ffx, unk, is atlas page
+    // filter mode, wrap u, wrap v, force mip tracking, gen mipmaps, render target, max aniso, unk glow ffx, unk, atlas
     HOOKKIT_HOOK(ctor, 0x00681BE0, hookkit::Conv::eThiscall, GxTexFlags*, GxTexFilter, bool, bool, bool, bool, bool,
         uint8_t, bool, bool, bool);
 };

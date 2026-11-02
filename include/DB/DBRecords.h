@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <iterator>
 
 #include "BaseTypes.h"
 
@@ -36,11 +37,26 @@ struct LockRec {
         eLockKeySkill = 2,  // profession skill check (e.g. gathering nodes)
     };
 
+    // index[] of an eLockKeySkill entry (LockType.dbc)
+    enum SkillType : int {
+        eLockSkillHerbalism = 2,
+        eLockSkillMining = 3,
+    };
+
     int id;
     Type type[8];
     int index[8];
     int skill[8];
     int action[8];
+
+    bool isGatheringLock() const {
+        for (size_t i = 0; i < std::size(type); ++i) {
+            if (type[i] == eLockKeySkill && (index[i] == eLockSkillHerbalism || index[i] == eLockSkillMining)) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 struct ItemCacheRec {
@@ -423,3 +439,29 @@ struct UnitBloodLevelsRec {
 };
 
 static_assert(sizeof(UnitBloodLevelsRec) == 0x10);
+
+struct MapRec {
+    static constexpr uint32_t kInstanceArena = 4;
+
+    uint32_t id;
+    const char* directory;
+    uint32_t instance_type;
+    uint32_t flags;
+    uint32_t pvp;
+    const char* map_name_lang;
+    uint32_t area_table_id;
+    const char* map_description0_lang;
+    const char* map_description1_lang;
+    uint32_t loading_screen_id;
+    float minimap_icon_scale;
+    uint32_t corpse_map_id;
+    float corpse_x;
+    float corpse_y;
+    uint32_t time_of_day_override;
+    uint32_t expansion_id;
+    uint32_t raid_offset;
+    uint32_t max_players;
+    uint32_t parent_map_id;
+};
+
+static_assert(sizeof(MapRec) == 0x4C);

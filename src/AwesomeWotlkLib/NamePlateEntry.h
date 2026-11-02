@@ -46,6 +46,8 @@ public:
 };
 
 static_assert(sizeof(CGNamePlateFrameExt) == sizeof(CGNamePlateFrame));
+// EntryManager::hover_ keeps its pin bit in bit 0 of the plate pointer
+static_assert(alignof(CGNamePlateFrameExt) >= 2);
 
 // per axis: x pulls sideways, y raises/lowers
 struct MotionParams {
@@ -71,6 +73,7 @@ struct alignas(64) Entry {
         eIsFrozen = 0x40,
         eIsSliding = 0x80,
         eIsResync = 0x100,
+        eIsRebound = 0x200,
     };
 
     CGNamePlateFrameExt* ptr = nullptr;

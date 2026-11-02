@@ -55,6 +55,17 @@ local function createButton(parent, name, text, width, height, template)
     return button
 end
 
+-- One small colored line under a card's description
+local function createNoteLine(control, anchor, width, color, message)
+    local line = control:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    line:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+    line:SetWidth(width)
+    line:SetJustifyH("LEFT")
+    line:SetTextColor(unpack(color))
+    line:SetText(message)
+    return line
+end
+
 local function createPopupFrame(name, title, message, width, height)
     local frame = CreateFrame("Frame", name, UIParent, "DialogBoxFrame")
     frame:SetPoint("CENTER")
@@ -246,7 +257,7 @@ function ACVar:ToggleFrame(tabName)
 end
 
 -- Public API: AwesomeCVar:ToggleFrame([tabName])
--- tabName: "Rendering", "Nameplates", "TextToSpeech", "Interaction", "Other" or "About" (case and spaces ignored),
+-- tabName: "Rendering", "World", "Nameplates", "TextToSpeech", "Interaction", "Other" or "About" (case and spaces ignored),
 -- the localized tab name, or the former "Camera"/"UI" tabs (now part of "Rendering")
 _G["AwesomeCVar"].ToggleFrame = function(self, tabName) ACVar:ToggleFrame(tabName) end
 
@@ -565,19 +576,22 @@ function ACVar:CreateMainFrame()
                 descText:SetText(cvarDef.desc)
             end
 
+            local noteWidth = control:GetWidth() + (paddingRight - paddingLeft)
             local perfText
             if cvarDef.perf then
-                perfText = control:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-                perfText:SetPoint("TOPLEFT", descText or text, "BOTTOMLEFT", 0, -4)
-                perfText:SetWidth(control:GetWidth() + (paddingRight - paddingLeft))
-                perfText:SetJustifyH("LEFT")
-                perfText:SetTextColor(unpack(CONSTANTS.COLORS.PERF_TEXT))
-                perfText:SetText(format(L.PERF_FORMAT, cvarDef.perf))
+                perfText = createNoteLine(control, descText or text, noteWidth, CONSTANTS.COLORS.PERF_TEXT,
+                    format(L.PERF_FORMAT, cvarDef.perf))
             end
 
-            -- Widget, anchored below label/desc/perf
+            local restartText
+            if cvarDef.restart then
+                restartText = createNoteLine(control, perfText or descText or text, noteWidth,
+                    CONSTANTS.COLORS.RESTART_TEXT, L.REQUIRES_RESTART)
+            end
+
+            -- Widget, anchored below label/desc/perf/restart
             local widgetFrame = CreateFrame("Frame", getFrameName(cvarDef.name, "Widget"), control)
-            widgetFrame:SetPoint("TOPLEFT", perfText or descText or text, "BOTTOMLEFT", 0, -8)
+            widgetFrame:SetPoint("TOPLEFT", restartText or perfText or descText or text, "BOTTOMLEFT", 0, -8)
             widgetFrame:SetPoint("RIGHT", control, "RIGHT", paddingRight, 0)
 
             if cvarDef.type == "toggle" then
@@ -783,11 +797,13 @@ function ACVar:CreateMainFrame()
                 end
                 if descText then descText:SetWidth(innerWidth) end
                 if perfText then perfText:SetWidth(innerWidth) end
+                if restartText then restartText:SetWidth(innerWidth) end
                 if reason then reason:SetWidth(innerWidth) end
                 if self.dropdown then UIDropDownMenu_SetWidth(self.dropdown, self:GetWidth() - 40) end
 
                 local descH = descText and (descText:GetStringHeight() + 8 + 8) or 0
                 local perfH = perfText and (perfText:GetStringHeight() + 4) or 0
+                local restartH = restartText and (restartText:GetStringHeight() + 4) or 0
 
                 if cvarDef.type == "mode" and self.radios then
                     local totalH = 0
@@ -817,7 +833,7 @@ function ACVar:CreateMainFrame()
                 end
 
                 local widgetH = (cvarDef.type ~= "description" and not isHeader) and (widgetFrame:GetHeight() + 8) or 0
-                self.baseHeight = abs(paddingTop) + text:GetStringHeight() + descH + perfH + widgetH + paddingBottom
+                self.baseHeight = abs(paddingTop) + text:GetStringHeight() + descH + perfH + restartH + widgetH + paddingBottom
                 applyCardHeight(self)
             end
             control:SetScript("OnUpdate", layoutCardOnce)

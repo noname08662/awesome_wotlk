@@ -3,9 +3,9 @@
 #include "BaseTypes.h"
 
 #include "Graphics/CGxDevice.h"
+#include "Lib/Storm.h"
 #include "M2/M2Data.h"
 #include "M2/M2Sequence.h"
-#include "Lib/Storm.h"
 #include "Texture/CTexture.h"
 
 class CM2Cache;

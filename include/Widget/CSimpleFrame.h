@@ -25,41 +25,41 @@ public:
 
     virtual void preLoadXML(XMLNode* node, int unused);  // 21
     virtual void getScriptTime(LuaState* l, double* out_total_time, uint32_t* out_call_count,
-        int include_children);                                          // 22
-    virtual void postLoadXML(XMLNode* node, CStatus* status);           // 23
-    virtual void unregisterRegion(CSimpleRegion* region);               // 24
-    virtual bool getBoundsRect(Rectf* out_rect);                        // 25
-    virtual void resize1();                                             // 26
-    virtual void resize2();                                             // 27
-    virtual void onShow();                                              // 28
-    virtual void onHide();                                              // 29
-    virtual void onUpdate(float elapsed);                               // 30
-    virtual int onInput(void* input_event);                             // 31
-    virtual void onFrameRender();                                       // 32
+        int include_children);                                             // 22
+    virtual void postLoadXML(XMLNode* node, CStatus* status);              // 23
+    virtual void unregisterRegion(CSimpleRegion* region);                  // 24
+    virtual bool getBoundsRect(Rectf* out_rect);                           // 25
+    virtual void resize1();                                                // 26
+    virtual void resize2();                                                // 27
+    virtual void onShow();                                                 // 28
+    virtual void onHide();                                                 // 29
+    virtual void onUpdate(float elapsed);                                  // 30
+    virtual int onInput(void* input_event);                                // 31
+    virtual void onFrameRender();                                          // 32
     virtual void onFrameRenderLayer(CRenderBatch* batch, uint32_t layer);  // 33
-    virtual void onScreenSizeChanged();                                 // 34
-    virtual void onFrameSizeChanged(float width, float height);         // 35
-    virtual void onLayerCursorEnter(int motion);                        // 36
-    virtual void onLayerCursorExit(int motion, int clear_click_state);  // 37
-    virtual int nullsub0();                                             // 38
-    virtual int nullsub1();                                             // 39
-    virtual int onChar(void* input_event);                              // 40
-    virtual int onKeyDown(void* input_event);                           // 41
-    virtual int onKeyUp(void* input_event);                             // 42
-    virtual int onMouseDown(void* input_event, const char* button);     // 43
-    virtual int onMouseUp(void* input_event, const char* button);       // 44
-    virtual int onMouseWheel(void* input_event);                        // 45
-    virtual int onDragStart(void* input_event);                         // 46
-    virtual void onDragStop(void* input_event);                         // 47
-    virtual void onReceiveDrag(void* input_event);                      // 48
-    virtual void lockHighlight(CSimpleTop*);                            // 49
-    virtual void hideThis();                                            // 50
-    virtual void showThis();                                            // 51
-    virtual void updateScale(int force);                                // 52
-    virtual void updateRegions();                                       // 53
-    virtual void updateDepth(int force);                                // 54
-    virtual void parentFrame(CSimpleFrame* frame);                      // 55
-    virtual void unparentFrame(CSimpleFrame* frame);                    // 56
+    virtual void onScreenSizeChanged();                                    // 34
+    virtual void onFrameSizeChanged(float width, float height);            // 35
+    virtual void onLayerCursorEnter(int motion);                           // 36
+    virtual void onLayerCursorExit(int motion, int clear_click_state);     // 37
+    virtual int nullsub0();                                                // 38
+    virtual int nullsub1();                                                // 39
+    virtual int onChar(void* input_event);                                 // 40
+    virtual int onKeyDown(void* input_event);                              // 41
+    virtual int onKeyUp(void* input_event);                                // 42
+    virtual int onMouseDown(void* input_event, const char* button);        // 43
+    virtual int onMouseUp(void* input_event, const char* button);          // 44
+    virtual int onMouseWheel(void* input_event);                           // 45
+    virtual int onDragStart(void* input_event);                            // 46
+    virtual void onDragStop(void* input_event);                            // 47
+    virtual void onReceiveDrag(void* input_event);                         // 48
+    virtual void lockHighlight(CSimpleTop*);                               // 49
+    virtual void hideThis();                                               // 50
+    virtual void showThis();                                               // 51
+    virtual void updateScale(int force);                                   // 52
+    virtual void updateRegions();                                          // 53
+    virtual void updateDepth(int force);                                   // 54
+    virtual void parentFrame(CSimpleFrame* frame);                         // 55
+    virtual void unparentFrame(CSimpleFrame* frame);                       // 56
 
     template <typename T>
     T* as() {
@@ -76,7 +76,7 @@ public:
     float getWidth() override;                              // 10
     float getHeight() override;                             // 11
     int32_t stubReturnInt32One() override;                  // 17
-    void onFrameSizeChanged(Rectf rect) override;           // 18
+    void onFrameSizeChanged(const Rectf& rect) override;    // 18
 
     struct SIMPLEFRAMENODE {
         TSLink<SIMPLEFRAMENODE> link;
@@ -178,8 +178,8 @@ public:
     HOOKKIT_HOOK(hide, 0x0048F620, hookkit::Conv::eThiscall, int, CSimpleFrame*);
     HOOKKIT_HOOK(show, 0x0048F660, hookkit::Conv::eThiscall, int, CSimpleFrame*);
     HOOKKIT_HOOK(setBeingScrolled, 0x00490F60, hookkit::Conv::eThiscall, void, CSimpleFrame*, int, int);
-    HOOKKIT_HOOK(onFrameRenderLayerBase, 0x00490840, hookkit::Conv::eThiscall, void, CSimpleFrame*, CRenderBatch*,
-        uint32_t);
+    HOOKKIT_HOOK(
+        onFrameRenderLayerBase, 0x00490840, hookkit::Conv::eThiscall, void, CSimpleFrame*, CRenderBatch*, uint32_t);
 };
 
 static_assert(sizeof(CSimpleFrame) == 0x29C);

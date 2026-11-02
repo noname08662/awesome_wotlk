@@ -111,7 +111,8 @@ inline constinit utils::Accessor<std::atomic<bool>, struct TransactionJoinedTag>
 
 inline constinit utils::Accessor<std::mutex, struct MhMapMutexTag> mh_map_mutex{};
 
-inline constinit utils::Accessor<std::unordered_map<void*, void*>, struct MhOriginalByTrampolineTag> mh_original_by_trampoline{};
+inline constinit utils::Accessor<std::unordered_map<void*, void*>, struct MhOriginalByTrampolineTag>
+    mh_original_by_trampoline{};
 
 inline LONG mhLazyInitialize() {
     static bool initialized = false;
@@ -201,7 +202,8 @@ inline DWORD_PTR translateIp(const IpBoundaryInfo& info, DWORD_PTR ip) {
     return 0;
 }
 
-inline constinit utils::Accessor<std::unordered_map<void*, IpBoundaryInfo>, struct IpBoundaryByTargetTag> ip_boundary_by_target{};
+inline constinit utils::Accessor<std::unordered_map<void*, IpBoundaryInfo>, struct IpBoundaryByTargetTag>
+    ip_boundary_by_target{};
 
 inline void runMhPostApplySuccess() {
     std::lock_guard lk(*mh_pending_ops_mutex);
@@ -239,7 +241,8 @@ inline constinit utils::Accessor<PageGuardState, struct PageGuardStateTag> page_
 
 inline HANDLE createPageGuardReleaseEvent() { return CreateEventW(nullptr, TRUE, FALSE, nullptr); }
 
-inline constinit utils::Accessor<HANDLE, struct PageGuardReleaseEventTag, &createPageGuardReleaseEvent> page_guard_release_event{};
+inline constinit utils::Accessor<HANDLE, struct PageGuardReleaseEventTag, &createPageGuardReleaseEvent>
+    page_guard_release_event{};
 
 inline void pageGuardHomeModuleAnchor() {}
 
@@ -250,7 +253,8 @@ inline HMODULE queryPageGuardHomeModule() {
     return h;
 }
 
-inline constinit utils::Accessor<HMODULE, struct PageGuardHomeModuleTag, &queryPageGuardHomeModule> page_guard_home_module{};
+inline constinit utils::Accessor<HMODULE, struct PageGuardHomeModuleTag, &queryPageGuardHomeModule>
+    page_guard_home_module{};
 
 inline LONG WINAPI pageGuardVeh(EXCEPTION_POINTERS* info) {
     if (info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) { return EXCEPTION_CONTINUE_SEARCH; }
@@ -658,13 +662,25 @@ public:
         return attached;
     }
 
+    template <const auto& Fn, typename HookType>
+    static LONG reinstallIf(const HookType& hook, bool on) {
+        return reinstall(hook, on ? HookType::template staticDetour<Fn>() : nullptr);
+    }
+
+    template <typename HookType>
+    static LONG reinstallIf(const HookType& hook, bool on) {
+        return reinstall(hook, on ? HookType::resolveDetour() : nullptr);
+    }
+
     template <typename Addr, typename Detour>
     HookTransaction& attachRaw(Addr** target, Detour detour) {
         auto** const slot = reinterpret_cast<void**>(target);
         auto* const detour_ptr = reinterpret_cast<void*>(detour);
-        const RecordedOp op{.run = [](HookTransaction& tx, const RecordedOp& self) {
-            tx.doAttachRaw(self.slot, self.detour);
-        }, .slot = slot, .detour = detour_ptr};
+        const RecordedOp op{
+            .run = [](HookTransaction& tx, const RecordedOp& self) { tx.doAttachRaw(self.slot, self.detour); },
+            .slot = slot,
+            .detour = detour_ptr
+        };
         if (record(op)) { doAttachRaw(slot, detour_ptr); }
         return *this;
     }
@@ -920,14 +936,20 @@ private:
             (*detail::mh_original_by_trampoline)[trampoline] = target_addr;
             (*detail::ip_boundary_by_target)[target_addr] = detail::buildIpBoundaryInfo(target_addr, trampoline);
         }
-        detail::pushMhPendingOp({target_addr, trampoline, slot, /*is_detach=*/false, +[]() {
-            detail::flushQuiesce();
-            const ULONGLONG deadline = GetTickCount64() + kDetachDrainTimeoutMs;
-            while (!HookType::quiescent()) {
-                if (GetTickCount64() >= deadline) { break; }
-                YieldProcessor();
+        detail::pushMhPendingOp({
+            target_addr,
+            trampoline,
+            slot,
+            false,
+            +[]() {
+                detail::flushQuiesce();
+                const ULONGLONG deadline = GetTickCount64() + kDetachDrainTimeoutMs;
+                while (!HookType::quiescent()) {
+                    if (GetTickCount64() >= deadline) { break; }
+                    YieldProcessor();
+                }
             }
-        }});
+        });
 
         mh = MH_QueueEnableHook(target_addr);
         if (mh != MH_OK) {
@@ -1120,7 +1142,7 @@ private:
         }
     }
 
-    static constexpr std::size_t kMaxCommitActions = 64;
+    static constexpr std::size_t kMaxCommitActions = 128;
 
     static constexpr ULONGLONG kDetachDrainTimeoutMs = HOOKKIT_DETACH_DRAIN_TIMEOUT_MS;
 

@@ -1,0 +1,375 @@
+|//
+|// Common DynASM definitions and macros for x86 CPUs.
+|// Copyright (C) 2005-2012 Mike Pall. See Copyright Notice in luajit.h
+|//
+|
+|// Standard DynASM declarations.
+|.arch x86
+|.section code, deopt, tail, mfmap
+|
+|// Type definitions with (almost) global validity.
+|.type L,		lua_State,	esi	// L.
+|.type BASE,		TValue,		ebx	// L->base.
+|.type TOP,		TValue,		edi	// L->top (calls/open ops).
+|.type CI,		CallInfo,	ecx	// L->ci (calls, locally).
+|.type LCL,		LClosure,	eax	// func->value (calls).
+|
+|// Type definitions with local validity.
+|.type GL,		global_State
+|.type TVALUE,		TValue
+|.type VALUE,		Value
+|.type CINFO,		CallInfo
+|.type GCOBJECT,	GCObject
+|.type TSTRING,		TString
+|.type TABLE,		Table
+|.type CCLOSURE,	CClosure
+|.type PROTO,		Proto
+|.type UPVAL,		UpVal
+|.type NODE,		Node
+|
+|// Definitions copied to DynASM domain to avoid unnecessary constant args.
+|// CHECK: must match with the definitions in lua.h!
+|.define LUA_TNIL,		0
+|.define LUA_TBOOLEAN,		1
+|.define LUA_TLIGHTUSERDATA,	2
+|.define LUA_TNUMBER,		3
+|.define LUA_TSTRING,		4
+|.define LUA_TTABLE,		5
+|.define LUA_TFUNCTION,		6
+|.define LUA_TUSERDATA,		7
+|.define LUA_TTHREAD,		8
+|
+|.define LUA_TNUM_NUM,		0x33
+|.define LUA_TNUM_NUM_NUM,	0x333
+|.define LUA_TSTR_STR,		0x44
+|.define LUA_TSTR_NUM,		0x43
+|.define LUA_TSTR_NUM_NUM,	0x433
+|.define LUA_TTABLE_NUM,	0x53
+|.define LUA_TTABLE_STR,	0x54
+|
+|// Macros to test, set and copy stack slots.
+|.macro istt, idx, tp;  cmp dword BASE[idx].tt, tp; .endmacro
+|.macro isnil, idx;  istt idx, LUA_TNIL; .endmacro
+|.macro isnumber, idx;  istt idx, LUA_TNUMBER; .endmacro
+|.macro isstring, idx;  istt idx, LUA_TSTRING; .endmacro
+|.macro istable, idx;  istt idx, LUA_TTABLE; .endmacro
+|.macro isfunction, idx;  istt idx, LUA_TFUNCTION; .endmacro
+|
+|.macro isnumber2, idx1, idx2, reg
+|  mov reg, BASE[idx1].tt;  shl reg, 4;  or reg, BASE[idx2].tt
+|  cmp reg, LUA_TNUM_NUM
+|.endmacro
+|.macro isnumber2, idx1, idx2; isnumber2, idx1, idx2, eax; .endmacro
+|
+|.macro isnumber3, idx1, idx2, idx3, reg
+|  mov reg, BASE[idx1].tt;  shl reg, 4;  or reg, BASE[idx2].tt
+|  shl reg, 4;  or reg, BASE[idx3].tt;  cmp reg, LUA_TNUM_NUM_NUM
+|.endmacro
+|.macro isnumber3, idx1, idx2, idx3; isnumber3, idx1, idx2, idx3, eax; .endmacro
+|
+|.macro tvisnil, tv;  cmp dword tv.tt, LUA_TNIL; .endmacro
+|
+|// Blizzard's taint (lobject.h). Every TValue carries one at .taint. lua_tainted is the running code's
+|// taint; reading a tainted value makes it the running code's taint too, while the host expects taint
+|// (lua_taintexpected) and the running closure isn't tainted itself (lua_taintedclosure). All four are at
+|// fixed addresses (JIT_TAINT* in ljit_x86.dasc). None of these macros uses a local label or the flags they're given.
+|.define TAINTED, dword [JIT_TAINTED]
+|.define TAINTEXPECTED, dword [JIT_TAINTEXPECTED]
+|.define TAINTEDCLOSURE, dword [JIT_TAINTEDCLOSURE]
+|.define TAINTCALLBACK, dword [JIT_TAINTCALLBACK]
+|
+|// set*value: the stored value takes the running code's taint, through R, a register the site doesn't need.
+|.macro stamp, tv, R
+|  mov R, TAINTED
+|  mov dword tv.taint, R
+|.endmacro
+|// The same where no register is free: memory to memory through the stack.
+|.macro stamppush, tv
+|  push TAINTED
+|  pop dword tv.taint
+|.endmacro
+|
+|// The taint-on-read of setobj/setobj2s: R holds the read value's taint, or lua_tainted when it has none
+|// (so the store below changes nothing). Destroys R.
+|.macro taintread, R
+|  cmp TAINTEDCLOSURE, 0
+|  cmovne R, TAINTED
+|  cmp TAINTEXPECTED, 0
+|  cmove R, TAINTED
+|  mov TAINTED, R
+|.endmacro
+|
+|// setobj2s/setobjs2s (to the stack): D = S, except that an untainted S lands with the running code's taint.
+|.macro copy2s, D, S, R1, R2		// Uses xmm0.
+|  movq xmm0, qword S.value
+|  mov R1, S.tt
+|  mov R2, S.taint
+|  movq qword D.value, xmm0
+|  mov D.tt, R1
+|  test R2, R2
+|  cmovz R2, TAINTED
+|  mov D.taint, R2
+|  taintread R2
+|.endmacro
+|.macro copy2s, D, S;  copy2s D, S, ecx, edx; .endmacro
+|
+|// setobj/setobj2t/setobj2n (to a table, upvalue or temporary): D = S with its taint.
+|.macro copy2t, D, S, R1, R2		// Uses xmm0.
+|  movq xmm0, qword S.value
+|  mov R1, S.tt
+|  mov R2, S.taint
+|  movq qword D.value, xmm0
+|  mov D.tt, R1
+|  mov D.taint, R2
+|  test R2, R2
+|  cmovz R2, TAINTED
+|  taintread R2
+|.endmacro
+|
+|// The interpreter's reentry (cl->taint) and its return from a C function (the taint saved by taintcall):
+|// a non-NULL X marks the running closure tainted, and is the running code's taint if the host expects taint.
+|// Destroys X and R.
+|.macro taintenter, X, R
+|  cmp X, 1
+|  sbb R, R
+|  inc R				// R = X != NULL
+|  mov TAINTEDCLOSURE, R
+|  test X, X
+|  cmovz X, TAINTED
+|  cmp TAINTEXPECTED, 0
+|  cmove X, TAINTED
+|  mov TAINTED, X
+|.endmacro
+|
+|// OP_CALL/OP_TAILCALL before the call: TMP3 = the taint a C callee restores (the running code's taint if the
+|// running closure is tainted, else NULL), and the callee starts with lua_taintedclosure clear.
+|.macro taintcall, R
+|  mov R, TAINTEDCLOSURE
+|  neg R
+|  sbb R, R
+|  and R, TAINTED
+|  mov TMP3, R
+|  mov TAINTEDCLOSURE, 0
+|.endmacro
+|
+|.macro settt, tv, tp;  mov dword tv.tt, tp; .endmacro
+|.macro setnilvalue, tv, R;  settt tv, LUA_TNIL;  stamp tv, R; .endmacro
+|
+|.macro setbvalue, tv, val		// May use edx.
+||if (val) {  /* true */
+|   mov edx, LUA_TBOOLEAN
+|   mov dword tv.value, edx		// Assumes: LUA_TBOOLEAN == 1
+|   settt tv, edx
+||} else {  /* false */
+|   mov dword tv.value, 0
+|   settt tv, LUA_TBOOLEAN
+||}
+|  stamp tv, edx
+|.endmacro
+|
+|.macro loadnvaluek, vptr
+||if ((vptr)->na[0] == 0 && (vptr)->na[1] == 0) {  /* +0 only. -0 == 0, and fldz would drop its sign. */
+|  fldz
+||} else if ((vptr)->n == (lua_Number)1) {
+|  fld1
+||} else {
+|  fld qword [vptr]
+||}
+|.endmacro
+|
+|.macro setnvaluek, tv, vptr, R		// Pass a Value *! With permanent addr.
+|  // SSE2 does not pay off here (I tried).
+|  loadnvaluek vptr
+|  fstp qword tv.value
+|  settt tv, LUA_TNUMBER
+|  stamp tv, R
+|.endmacro
+|
+|.macro setnvalue, tv, vptr, R		// Pass a Value *! Temporary ok.
+|  mov dword tv.value, (vptr)->na[0]
+|  mov dword tv.value.na[1], (vptr)->na[1]
+|  settt tv, LUA_TNUMBER
+|  stamp tv, R
+|.endmacro
+|
+|.macro setsvalue, tv, vptr, R
+|  mov aword tv.value, vptr
+|  settt tv, LUA_TSTRING
+|  stamp tv, R
+|.endmacro
+|
+|.macro sethvalue, tv, vptr, R
+|  mov aword tv.value, vptr
+|  settt tv, LUA_TTABLE
+|  stamp tv, R
+|.endmacro
+|
+|// setobj2s from a constant (OP_LOADK). Constants are stamped when the chunk is parsed, so the
+|// constant's taint is known here: the copy keeps it and it taints execution, or the copy takes lua_tainted.
+|.macro copyconst, tv, tvk		// May use edx.
+||switch (ttype(tvk)) {
+||case LUA_TNIL:
+|   settt tv, LUA_TNIL
+||  break;
+||case LUA_TBOOLEAN:
+||  if (bvalue(tvk)) {
+|     mov dword tv.value, 1
+||  } else {
+|     mov dword tv.value, 0
+||  }
+|   settt tv, LUA_TBOOLEAN
+||  break;
+||case LUA_TNUMBER: {
+|   loadnvaluek &(tvk)->value
+|   fstp qword tv.value
+|   settt tv, LUA_TNUMBER
+||  break;
+||}
+||case LUA_TSTRING:
+|   mov aword tv.value, &gcvalue(tvk)
+|   settt tv, LUA_TSTRING
+||  break;
+||default: lua_assert(0); break;
+||}
+||if ((tvk)->taint) {
+|   mov dword tv.taint, &(tvk)->taint
+|   mov edx, &(tvk)->taint
+|   taintread edx
+||} else {
+|   stamp tv, edx
+||}
+|.endmacro
+|
+|// Macros to get Lua structures.
+|.macro getLCL, reg			// May use CI and TOP (edi).
+||if (!J->pt->is_vararg) {
+|  mov LCL:reg, BASE[-1].value
+||} else {
+|  mov CI, L->ci
+|  mov TOP, CI->func
+|  mov LCL:reg, TOP->value
+||}
+|.endmacro
+|.macro getLCL;  getLCL eax; .endmacro
+|
+|// Macros to handle variants.
+|.macro addidx, type, idx
+||if (idx) {
+|  add type, idx*#type
+||}
+|.endmacro
+|
+|.macro subidx, type, idx
+||if (idx) {
+|  sub type, idx*#type
+||}
+|.endmacro
+|
+|// Annoying x87 stuff: support for two compare variants.
+|.macro fcomparepp			// Compare and pop st0 >< st1.
+||if (J->flags & JIT_F_CPU_CMOV) {
+|  fucomip st1
+|  fpop
+||} else {
+|  fucompp
+|  fnstsw ax				// eax modified!
+|  sahf
+|  // Sometimes test ah, imm8 would be faster.
+|  // But all following compares need to be changed then.
+|  // Don't bother since this is only compatibility stuff for old CPUs.
+||}
+|.endmacro
+|
+|// If you change LUA_TVALUE_ALIGN, be sure to change the Makefile, too:
+|//   DASMFLAGS= -D TVALUE_SIZE=...
+|// Then rerun make. Or change the default below:
+|.if not TVALUE_SIZE; .define TVALUE_SIZE, 16; .endif
+|
+|.if TVALUE_SIZE == 16
+|  .macro TValuemul, reg;  sal reg, 4; .endmacro  // *16
+|  .macro TValuediv, reg;  sar reg, 4; .endmacro  // /16
+|  .macro Nodemul, reg;  imul reg, 40; .endmacro  // *40 (the key's taint widens Node from 32)
+|.elif TVALUE_SIZE == 12
+|  .macro TValuemul, reg;  sal reg, 2;  lea reg, [reg+reg*2]; .endmacro  // *12
+|  .macro TValuediv, reg;  sal reg, 2;  imul reg, 0xaaaaaaab; .endmacro  // /12
+|  .macro Nodemul, reg;  imul reg, 28; .endmacro  // *28
+|.else
+|  .fatal Unsupported TValue size `TVALUE_SIZE'.
+|.endif
+|
+|//
+|// x86 C calling conventions and stack frame layout during a JIT call:
+|//
+|// ebp+aword*4  CARG2     nresults
+|// ebp+aword*3  CARG2     func      (also used as SAVER3 for L)
+|// ebp+aword*2  CARG1     L
+|// -------------------------------  call to GATE_LJ
+|// ebp+aword*1  retaddr
+|// ebp+aword*0  frameptr       ebp
+|// ebp-aword*1  SAVER1    TOP  edi
+|// ebp-aword*2  SAVER2    BASE ebx
+|// -------------------------------
+|//              GATE_LJ retaddr
+|// esp+aword*2  ARG3
+|// esp+aword*1  ARG2
+|// esp+aword*0  ARG1                <-- esp for first JIT frame
+|// -------------------------------
+|//              1st JIT frame retaddr
+|// esp+aword*2  ARG3
+|// esp+aword*1  ARG2
+|// esp+aword*0  ARG1                <-- esp for second JIT frame
+|// -------------------------------
+|//              2nd JIT frame retaddr
+|//
+|// We could omit the fixed frame pointer (ebp) and have one more register
+|// available. But there is no pressing need (could use it for CI).
+|// And it's easier for debugging (gdb is still confused -- why?).
+|//
+|// The stack is aligned to 4 awords (16 bytes). Calls to C functions
+|// with up to 3 arguments do not need any stack pointer adjustment.
+|//
+|
+|.define CARG3, [ebp+aword*4]
+|.define CARG2, [ebp+aword*3]
+|.define CARG1, [ebp+aword*2]
+|.define SAVER1, [ebp-aword*1]
+|.define SAVER2, [ebp-aword*2]
+|.define ARG7, aword [esp+aword*6]	// Requires large frame.
+|.define ARG6, aword [esp+aword*5]	// Requires large frame.
+|.define ARG5, aword [esp+aword*4]	// Requires large frame.
+|.define ARG4, aword [esp+aword*3]	// Requires large frame.
+|.define ARG3, aword [esp+aword*2]
+|.define ARG2, aword [esp+aword*1]
+|.define ARG1, aword [esp]
+|.define FRAME_RETADDR, aword [esp+aword*3]
+|.define TMP3, [esp+aword*2]
+|.define TMP2, [esp+aword*1]
+|.define TMP1, [esp]
+|.define FPARG2, qword [esp+qword*1]	// Requires large frame.
+|.define FPARG1, qword [esp]
+|.define LJFRAME_OFFSET, aword*2	// 16 byte aligned with retaddr + ebp.
+|.define FRAME_OFFSET, aword*3		// 16 byte aligned with retaddr.
+|.define LFRAME_OFFSET, aword*7		// 16 byte aligned with retaddr.
+|.define S2LFRAME_OFFSET, aword*4	// Delta to large frame.
+|
+|.macro call, target, a1
+|  mov ARG1, a1;  call target; .endmacro
+|.macro call, target, a1, a2
+|  mov ARG1, a1;  mov ARG2, a2;  call target; .endmacro
+|.macro call, target, a1, a2, a3
+|  mov ARG1, a1;  mov ARG2, a2;  mov ARG3, a3;  call target; .endmacro
+|.macro call, target, a1, a2, a3, a4
+|  push a4;  push a3;  push a2;  push a1
+|  call target;  add esp, S2LFRAME_OFFSET;  .endmacro
+|.macro call, target, a1, a2, a3, a4, a5
+|  mov ARG1, a5; push a4; push a3;  push a2;  push a1
+|  call target;  add esp, S2LFRAME_OFFSET;  .endmacro
+|
+|// The following macros require a large frame.
+|.macro call_LFRAME, target, a1, a2, a3, a4
+|  mov ARG1, a1;  mov ARG2, a2;  mov ARG3, a3;  mov ARG4, a4
+|  call target; .endmacro
+|.macro call_LFRAME, target, a1, a2, a3, a4, a5
+|  mov ARG1, a1;  mov ARG2, a2;  mov ARG3, a3;  mov ARG4, a4;  mov ARG5, a5
+|  call target; .endmacro
+|

@@ -7,7 +7,7 @@ local lower = string.lower
 _G["AwesomeCVar"] = {} -- Public API table
 
 -- Must match the AwesomeWotlk global set in Entry.cpp (checked by addons/version_check.lua).
-ACVar.MOD_VERSION = 38
+ACVar.MOD_VERSION = 39
 ACVar.URLS = {
     GITHUB = "https://github.com/noname08662/awesome_wotlk",
     RELEASES = "https://github.com/noname08662/awesome_wotlk/releases/latest",
@@ -51,6 +51,7 @@ ACVar.CONSTANTS = {
         RESET = "|r",
         DESC_TEXT = {0.6, 0.6, 0.6},
         PERF_TEXT = {0.85, 0.7, 0.45},
+        RESTART_TEXT = {1, 0.5, 0.25},
         INACTIVE_TEXT = {0.75, 0.75, 0.75},
     },
     DIMMED_ALPHA = 0.4,
@@ -93,6 +94,8 @@ local REQUIRES = {
     clamping = { reason = L.REASON_CLAMPING_OFF, test = function(get) return get("nameplateClampMode") ~= 0 end },
     clampAllSides = { reason = L.REASON_CLAMP_NOT_ALL_SIDES,
         test = function(get) local mode = get("nameplateClampMode") return mode == 3 or mode == 4 end },
+    clampViews = { reason = L.REASON_CLAMP_VIEWS_OFF,
+        test = function(get) return get("nameplateClampMode") ~= 0 and get("worldCullMode") ~= 0 end },
     freeze = { reason = L.REASON_FREEZE_OFF, test = function(get) return get("nameplateMouseFreeze") ~= 0 end },
     shortHitbox = { reason = L.REASON_HITBOX_FULL, test = function(get)
         return (tonumber(get("nameplateHitboxHeightE")) or 1) < 1 or (tonumber(get("nameplateHitboxHeightF")) or 1) < 1
@@ -101,6 +104,7 @@ local REQUIRES = {
 }
 
 -- Keyed by category id. Ids are locale-independent: frame names, tab lookup and the public API use them.
+-- restart = true shows the restart notice on the card: the mod reads that CVar only at client start.
 ACVar.CVARS = {
     Rendering = {
         { name = "headerCamera", label = L.SECTION_CAMERA, type = "header" },
@@ -122,17 +126,29 @@ ACVar.CVARS = {
             [64] = "64", [128] = "128", [256] = "256", [512] = "512", [1024] = "1024", [2048] = "2048",
         }},
         { name = "headerFonts", label = L.SECTION_FONTS, type = "header" },
-        { name = "MSDFMode", label = L.CVAR_LABEL_MSDF_MODE, desc = L.DESC_MSDF, perf = L.PERF_MSDF, type = "mode", default = 1, modes = {
+        { name = "MSDFMode", label = L.CVAR_LABEL_MSDF_MODE, desc = L.DESC_MSDF, perf = L.PERF_MSDF, type = "mode", default = 1, restart = true, modes = {
             { value = 0, label = L.MODE_DISABLED },
             { value = 1, label = L.MODE_ENABLED },
             { value = 2, label = L.MODE_MSDF_ENABLED_UNSAFE },
         }},
-        { name = "MSDFOutlinePass", label = L.CVAR_LABEL_MSDF_OUTLINE, desc = L.DESC_MSDF_OUTLINE, perf = L.PERF_MSDF_OUTLINE, type = "toggle", min = 0, max = 1, default = 1,
+        { name = "MSDFOutlinePass", label = L.CVAR_LABEL_MSDF_OUTLINE, desc = L.DESC_MSDF_OUTLINE, perf = L.PERF_MSDF_OUTLINE, type = "toggle", min = 0, max = 1, default = 0,
             requires = REQUIRES.msdf },
         { name = "noteMSDFPregen", label = L.CVAR_LABEL_MSDF_PREGEN, desc = L.DESC_MSDF_PREGEN, type = "description", requires = REQUIRES.msdf },
         { name = "noteMSDFBlacklist", label = L.CVAR_LABEL_MSDF_BLACKLIST, desc = L.DESC_MSDF_BLACKLIST, type = "description", requires = REQUIRES.msdf },
-        { name = "headerAlwaysOn", label = L.SECTION_ALWAYS_ON, type = "header" },
-        { name = "noteProjectedTextures", label = L.CVAR_LABEL_PROJECTED_TEXTURES, desc = L.DESC_PROJECTED_TEXTURES, type = "description" },
+    },
+    World = {
+        { name = "headerEngineFixes", label = L.SECTION_ENGINE_FIXES, type = "header" },
+        { name = "worldCullMode", label = L.CVAR_LABEL_WORLD_CULL, desc = L.DESC_WORLD_CULL, perf = L.PERF_WORLD_CULL, type = "toggle", min = 0, max = 1, default = 1 },
+        { name = "projectedTextureMode", label = L.CVAR_LABEL_PROJECTED_TEXTURES, desc = L.DESC_PROJECTED_TEXTURES, perf = L.PERF_PROJECTED_TEXTURES, type = "toggle", min = 0, max = 1, default = 1 },
+        { name = "headerWorldObjects", label = L.SECTION_WORLD_OBJECTS, type = "header" },
+        { name = "objectHighlightMode", label = L.CVAR_LABEL_OBJ_HIGHLIGHT, desc = L.DESC_OBJ_HIGHLIGHT, perf = L.PERF_OBJ_HIGHLIGHT, type = "mode", default = 0, modes = {
+            { value = 0, label = L.MODE_DISABLED },
+            { value = 1, label = L.MODE_ENABLED },
+            { value = 2, label = L.MODE_HIGHLIGHTS_TRACKED },
+        }},
+        { name = "headerTargeting", label = L.SECTION_TARGETING, type = "header" },
+        { name = "tabTargetDistance", label = L.CVAR_LABEL_TAB_TARGET_DISTANCE, desc = L.DESC_TAB_TARGET_DISTANCE, perf = L.PERF_NONE, type = "slider", min = 41, max = 200, step = 1, default = 41 },
+        { name = "groundTargetClamp", label = L.CVAR_LABEL_GROUND_TARGET_CLAMP, desc = L.DESC_GROUND_TARGET_CLAMP, perf = L.PERF_NEGLIGIBLE, type = "toggle", min = 0, max = 1, default = 1 },
     },
     Nameplates = {
         { name = "headerNotes", label = L.SECTION_NOTES, type = "header" },
@@ -182,6 +198,16 @@ ACVar.CVARS = {
             { value = 2, label = L.MODE_CLAMP_FILTER_COMBAT },
             { value = 3, label = L.MODE_CLAMP_FILTER_TARGET_COMBAT },
         }},
+        { name = "nameplateClampModeAffiliation", label = L.CVAR_LABEL_CLAMP_AFFILIATION, desc = L.DESC_CLAMP_AFFILIATION, perf = L.PERF_NEGLIGIBLE, type = "mode", default = 0, requires = REQUIRES.clamping, modes = {
+            { value = 0, label = L.MODE_CLAMP_AFFILIATION_ALL },
+            { value = 1, label = L.MODE_CLAMP_AFFILIATION_ENEMY },
+            { value = 2, label = L.MODE_CLAMP_AFFILIATION_FRIENDLY },
+        }},
+        { name = "nameplateClampViews", label = L.CVAR_LABEL_CLAMP_VIEWS, desc = L.DESC_CLAMP_VIEWS, perf = L.PERF_CLAMP_VIEWS, type = "mode", default = 0, requires = REQUIRES.clampViews, modes = {
+            { value = 0, label = L.MODE_DISABLED },
+            { value = 1, label = L.MODE_CLAMP_VIEWS_TOP },
+            { value = 2, label = L.MODE_CLAMP_VIEWS_TOP_SIDES },
+        }},
         { name = "nameplateClampModeVOffset", label = L.CVAR_LABEL_V_OFFSET, desc = L.DESC_V_OFFSET, perf = L.PERF_NONE, type = "slider", min = 0, max = 0.05, step = 0.01, default = 0.01, requires = REQUIRES.clamping },
         { name = "nameplateClampModeHOffset", label = L.CVAR_LABEL_H_OFFSET, desc = L.DESC_H_OFFSET, perf = L.PERF_NONE, type = "slider", min = 0, max = 0.1, step = 0.01, default = 0.01,
             requires = REQUIRES.clampAllSides },
@@ -201,6 +227,13 @@ ACVar.CVARS = {
             { value = 0, label = L.MODE_DISABLED },
             { value = 1, label = L.MODE_FREEZE_ALWAYS },
             { value = 2, label = L.MODE_FREEZE_COMBAT },
+            { value = 3, label = L.MODE_FREEZE_ALWAYS_NO_TARGET },
+            { value = 4, label = L.MODE_FREEZE_COMBAT_NO_TARGET },
+        }},
+        { name = "nameplateMouseFreezeAffiliation", label = L.CVAR_LABEL_FREEZE_AFFILIATION, desc = L.DESC_FREEZE_AFFILIATION, perf = L.PERF_NONE, type = "mode", default = 0, requires = REQUIRES.freeze, modes = {
+            { value = 0, label = L.MODE_FREEZE_AFFILIATION_ALL },
+            { value = 1, label = L.MODE_FREEZE_AFFILIATION_ENEMY },
+            { value = 2, label = L.MODE_FREEZE_AFFILIATION_FRIENDLY },
         }},
         { name = "nameplateMouseFreezeGrace", label = L.CVAR_LABEL_FREEZE_GRACE, desc = L.DESC_FREEZE_GRACE, perf = L.PERF_NONE, type = "slider", min = 0, max = 1, step = 0.01, default = 0.15, requires = REQUIRES.freeze },
         { name = "nameplateMouseFreezeTime", label = L.CVAR_LABEL_FREEZE_TIME, desc = L.DESC_FREEZE_TIME, perf = L.PERF_NONE, type = "slider", min = 0, max = 2, step = 0.05, default = 0.3, requires = REQUIRES.freeze },
@@ -234,12 +267,8 @@ ACVar.CVARS = {
         { name = "interactionHighlight", label = L.CVAR_LABEL_INTERACTION_HIGHLIGHT, desc = L.DESC_INTERACTION_HIGHLIGHT, perf = L.PERF_NEGLIGIBLE, type = "toggle", min = 0, max = 1, default = 1 },
     },
     Other = {
-        { name = "headerWorldObjects", label = L.SECTION_WORLD_OBJECTS, type = "header" },
-        { name = "objectHighlightMode", label = L.CVAR_LABEL_OBJ_HIGHLIGHT, desc = L.DESC_OBJ_HIGHLIGHT, perf = L.PERF_OBJ_HIGHLIGHT, type = "mode", default = 0, modes = {
-            { value = 0, label = L.MODE_DISABLED },
-            { value = 1, label = L.MODE_ENABLED },
-            { value = 2, label = L.MODE_HIGHLIGHTS_TRACKED },
-        }},
+        { name = "headerLuaEngine", label = L.SECTION_LUA_ENGINE, type = "header" },
+        { name = "luaSwap", label = L.CVAR_LABEL_LUA_SWAP, desc = L.DESC_LUA_SWAP, perf = L.PERF_LUA_SWAP, type = "toggle", min = 0, max = 1, default = 0, restart = true },
         { name = "headerLogs", label = L.SECTION_LOGS, type = "header" },
         { name = "chatLogSessionKey", label = L.CVAR_LABEL_CHAT_LOG, desc = L.DESC_SESSION_LOG, perf = L.PERF_NONE, type = "toggle", min = 0, max = 1, default = 1 },
         { name = "combatLogSessionKey", label = L.CVAR_LABEL_COMBAT_LOG, desc = L.DESC_SESSION_LOG, perf = L.PERF_NONE, type = "toggle", min = 0, max = 1, default = 1 },
@@ -249,6 +278,7 @@ ACVar.CVARS = {
         { name = "noteFrameCapture", label = L.CVAR_LABEL_FRAME_CAPTURE, desc = L.DESC_FRAME_CAPTURE, type = "description" },
         { name = "headerAlwaysOnOther", label = L.SECTION_ALWAYS_ON, type = "header" },
         { name = "noteClipboard", label = L.CVAR_LABEL_CLIPBOARD, desc = L.DESC_CLIPBOARD, type = "description" },
+        { name = "noteSavedVariables", label = L.CVAR_LABEL_SAVED_VARIABLES, desc = L.DESC_SAVED_VARIABLES, type = "description" },
     },
     -- Read-only entries: "header" starts a section, "description" is text, "link" is a copyable URL
     About = {
@@ -267,13 +297,14 @@ function ACVar.IsReadOnly(cvarDef)
 end
 
 -- Tab order; must list every category id in CVARS.
-ACVar.CATEGORY_ORDER = { "Rendering", "Nameplates", "TextToSpeech", "Interaction", "Other", "About" }
+ACVar.CATEGORY_ORDER = { "Rendering", "World", "Nameplates", "TextToSpeech", "Interaction", "Other", "About" }
 
 -- Tab selected when the window is first built; later opens keep the last selected tab.
 ACVar.DEFAULT_CATEGORY = "About"
 
 ACVar.CATEGORY_NAMES = {
     Rendering = L.CATEGORY_RENDERING,
+    World = L.CATEGORY_WORLD,
     Nameplates = L.CATEGORY_NAMEPLATES,
     TextToSpeech = L.CATEGORY_TEXT_TO_SPEECH,
     Interaction = L.CATEGORY_INTERACTION,

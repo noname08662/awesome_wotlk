@@ -1,5 +1,7 @@
 #pragma once
 
+#include <hookkit/hookkit.h>
+
 #include "Graphics/CGxFont.h"
 #include "Graphics/CGxStringBatch.h"
 #include "Heap/CDataAllocator.h"
@@ -40,10 +42,10 @@ struct PLAYERNAMEDESC {
 
     TSLink<PLAYERNAMEDESC> link;
     CGxString* gx_str;
-    unk_t _alignment;
+    uint32_t color;
     guid_t guid;
     State state;
     unk_t _pad;
     WORLDTEXTSTRING* texts[4];
-    float _field_30;
+    float text_height;  // line count times the font size
 };

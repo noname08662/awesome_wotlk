@@ -11,7 +11,6 @@
 
 struct CGxPool;
 struct CGxPushedRenderState;
-struct CGxAppRenderState;
 struct CGxStateBom;
 struct IDirect3DDevice9;
 struct IDirect3DSurface9;
@@ -46,11 +45,42 @@ struct CGxPool {
 
 static_assert(sizeof(CGxPool) == 0x34);
 
+struct CGxAppRenderState {
+    uint32_t value;  // what rsSet stored: an int, a float or a pointer, by state
+    uint8_t _unk04[0x14];
+};
+
+static_assert(sizeof(CGxAppRenderState) == 0x18);
+
 struct CGxMatrixStack {
-    unk_t _unk[70];
+    uint32_t top;  // level index into matrices
+    uint8_t dirty;
+    uint8_t _pad05[3];
+    Mat4f matrices[4];
+    uint32_t flags[4];  // per level
+
+    const Mat4f& current() const { return matrices[top]; }
+
+    void setCurrent(const Mat4f& matrix) {
+        dirty = 1;
+        flags[top] &= ~1u;
+        matrices[top] = matrix;
+    }
+
+    void pop() {
+        if (top != 0) { --top; }
+        dirty = 1;
+    }
 };
 
 static_assert(sizeof(CGxMatrixStack) == 0x118);
+
+enum GxXform : uint32_t {
+    eGxXformTex1 = 1,
+    eGxXformTex2 = 2,
+    eGxXformWorld = 8,
+    eGxXformView = 10,
+};
 
 struct CGxViewport {
     float min_x;
@@ -128,7 +158,7 @@ struct CGxCaps {
     uint32_t texel_center_on_edge;
     uint32_t max_streams;
     unk_t _unk10;
-    unk_t _unk14;
+    uint32_t rgba_vertex_colors;
     unk_t _unk18;
     uint32_t max_vertex_index;
     uint32_t can_autogen_mipmap;
@@ -167,6 +197,7 @@ static_assert(sizeof(CGxCaps) == 0x13C);
 
 class CGxDevice {
 public:
+    inline static const char* (&gx_api)[eGxApiCount] = *reinterpret_cast<const char* (*)[eGxApiCount]>(0x00AD87E4);
     inline static const char* (&ui_pixel_shaders_desc)[2] = *reinterpret_cast<const char* (*)[2]>(0x00AC0EF8);
 
     inline static auto& ui_pixel_shaders = *reinterpret_cast<std::array<CGxShader*, 2>*>(0x00B47934);
@@ -194,7 +225,7 @@ public:
     }
 
     virtual void texMarkAsUpdated(CGxTex* tex) = 0;                                  // 0 (0x00)
-    virtual void rsSendToHw() = 0;                                                   // 1 (0x04)
+    virtual void rsSendToHw(GxRenderState which) = 0;                                // 1 (0x04)
     virtual void* cursorCreate(const void* params) = 0;                              // 2 (0x08)
     virtual void cursorDestroy(void* cursor) = 0;                                    // 3 (0x0C)
     virtual void cursorDraw() = 0;                                                   // 4 (0x10)
@@ -257,7 +288,7 @@ public:
     virtual void texDestroy(CGxTex* tex) = 0;                                                       // 58 (0xE8)
     virtual void texCopy(CGxTex* dst, CGxTex* src) = 0;                                             // 59 (0xEC)
     virtual void texStretch(CGxTex* dst, CGxTex* src) = 0;                                          // 60 (0xF0)
-    virtual void stubTex00632050() = 0;                                                             // 61 (0xF4)
+    virtual void texSetBudget(uint32_t bytes) = 0;                                                  // 61 (0xF4)
     virtual void* queryCreate(int type) = 0;                                                        // 62 (0xF8)
     virtual void queryDestroy(void* query) = 0;                                                     // 63 (0xFC)
     virtual void queryBegin(void* query) = 0;                                                       // 64 (0x100)
@@ -315,10 +346,10 @@ public:
     unk_t _F5C;
     uint32_t window_visible_;
     unk_t _F64;
-    unk_t _F68;
+    uint32_t present_count_;
     uint32_t viewport_dirty_;
     CGxViewport viewport_;
-    Mat4f _F88;
+    Mat4f projection_;
     Mat4f _FC8;
     CGxMatrixStack matrix_stacks1_[11];
     CGxMatrixStack matrix_stacks2_[8];
@@ -366,6 +397,14 @@ public:
 
     static CGxDevice* getDevice() { return *reinterpret_cast<CGxDevice**>(getAddr()); }
 
+    const Mat4f& xform(GxXform which) const { return matrix_stacks1_[which].current(); }
+
+    void setXform(GxXform which, const Mat4f& matrix) { matrix_stacks1_[which].setCurrent(matrix); }
+
+    void popXform(GxXform which) { matrix_stacks1_[which].pop(); }
+
+    uint32_t rsValue(GxRenderState state) const { return app_render_states_[state].value; }
+
     [[nodiscard]]
     Vec2f viewportPixelSize() const {
         const double win_w = cur_window_.right;
@@ -376,39 +415,47 @@ public:
             static_cast<float>(std::lround((1.0 - viewport_.min_y) * win_h - static_cast<double>(y)))};
     }
 
-    HOOKKIT_HOOK(deviceCreate, 0x00682CB0, ::hookkit::Conv::eThiscall, int, CGxDevice*, void*, const void*);
-    HOOKKIT_HOOK(notifyOnDeviceRestored, 0x006843B0, ::hookkit::Conv::eThiscall, int, CGxDevice*);
+    HOOKKIT_HOOK(deviceCreate, 0x00682CB0, hookkit::Conv::eThiscall, int, CGxDevice*, void*, const void*);
+    HOOKKIT_HOOK(notifyOnDeviceRestored, 0x006843B0, hookkit::Conv::eThiscall, int, CGxDevice*);
     // shaders, type, path, name, count: opens path/<profile>/name.bls from the best supported profile down and runs
-    HOOKKIT_HOOK(iShaderLoad, 0x00684970, ::hookkit::Conv::eThiscall, uint32_t, CGxDevice*, CGxShader**, GxShaderType,
+    HOOKKIT_HOOK(iShaderLoad, 0x00684970, hookkit::Conv::eThiscall, uint32_t, CGxDevice*, CGxShader**, GxShaderType,
         const char*, const char*, uint32_t);
-    HOOKKIT_HOOK(shaderCreateVertex, 0x006AA0D0, ::hookkit::Conv::eThiscall, void, CGxDevice*, CGxShader*);
-    HOOKKIT_HOOK(shaderCreatePixel, 0x006AA070, ::hookkit::Conv::eThiscall, void, CGxDevice*, CGxShader*);
+    HOOKKIT_HOOK(shaderCreateVertex, 0x006AA0D0, hookkit::Conv::eThiscall, void, CGxDevice*, CGxShader*);
+    HOOKKIT_HOOK(shaderCreatePixel, 0x006AA070, hookkit::Conv::eThiscall, void, CGxDevice*, CGxShader*);
+    HOOKKIT_HOOK(rsPush, 0x00409670, hookkit::Conv::eThiscall, void, CGxDevice*);
     // state, value
-    HOOKKIT_HOOK(rsSet, 0x00685F50, ::hookkit::Conv::eThiscall, void, CGxDevice*, GxRenderState, void*);
+    HOOKKIT_HOOK(rsSet, 0x00685F50, hookkit::Conv::eThiscall, void, CGxDevice*, GxRenderState, void*);
+    // stack, matrix; popXform takes it off again, four levels deep at most
+    HOOKKIT_HOOK(xformPush, 0x00616A30, hookkit::Conv::eThiscall, void, CGxDevice*, GxXform, const Mat4f*);
     // target, item size, item count; the device's per-target stream buffer, grown to fit and reset
     HOOKKIT_HOOK(
-        bufStream, 0x00684850, ::hookkit::Conv::eThiscall, CGxBuf*, CGxDevice*, GxPoolTarget, uint32_t, uint32_t);
-    HOOKKIT_HOOK(saveRenderTarget, 0x00682D50, ::hookkit::Conv::eThiscall, int, CGxDevice*, int, CGxTex**);
-    HOOKKIT_HOOK(deviceScreenShot, 0x006841D0, ::hookkit::Conv::eThiscall, void, CGxDevice*);
+        bufStream, 0x00684850, hookkit::Conv::eThiscall, CGxBuf*, CGxDevice*, GxPoolTarget, uint32_t, uint32_t);
+    HOOKKIT_HOOK(saveRenderTarget, 0x00682D50, hookkit::Conv::eThiscall, int, CGxDevice*, int, CGxTex**);
+    HOOKKIT_HOOK(deviceScreenShot, 0x006841D0, hookkit::Conv::eThiscall, void, CGxDevice*);
     // size, flag, name
-    HOOKKIT_HOOK(poolCreate, 0x006876D0, ::hookkit::Conv::eThiscall, CGxPool*, CGxDevice*, GxPoolTarget, GxPoolUsage,
+    HOOKKIT_HOOK(poolCreate, 0x006876D0, hookkit::Conv::eThiscall, CGxPool*, CGxDevice*, GxPoolTarget, GxPoolUsage,
         uint32_t, uint32_t, const char*);
 
     // bbox, color, matrix, z_bias, flags, vtx_mode, depth_bias
     HOOKKIT_HOOK_HANDLE(
-        projectTex2d, 0x007E4370, ::hookkit::Conv::eCdecl, void*, AaBox*, Vec4u8*, Mat4f*, float, int, char, float);
+        projectTex2d, 0x007E4370, hookkit::Conv::eCdecl, void*, AaBox*, Vec4u8*, Mat4f*, float, int, char, float);
+    // buf, format
+    HOOKKIT_HOOK_HANDLE(primVertexPtr, 0x00681B00, hookkit::Conv::eCdecl, int, CGxBuf*, GxVertexBufferFormat);
     // stream buf, vert count; unlocks, draws the verts with the font index buffer and relocks, returns the new write ptr
-    HOOKKIT_HOOK_HANDLE(flushBuffer, 0x006C48D0, ::hookkit::Conv::eCdecl, void*, CGxBuf**, uint32_t);
-    HOOKKIT_HOOK_HANDLE(initFontIndexBuffer, 0x006C47B0, ::hookkit::Conv::eCdecl, CGxBuf*);
+    HOOKKIT_HOOK_HANDLE(flushBuffer, 0x006C48D0, hookkit::Conv::eCdecl, void*, CGxBuf**, uint32_t);
+    HOOKKIT_HOOK_HANDLE(initFontIndexBuffer, 0x006C47B0, hookkit::Conv::eCdecl, CGxBuf*);
     // pool, stride, element count (bytes = stride * count), index
-    HOOKKIT_HOOK_HANDLE(bufCreate, 0x00687660, ::hookkit::Conv::eStdcall, CGxBuf*, CGxPool*, uint32_t, uint32_t, void*);
-    HOOKKIT_HOOK_HANDLE(setRenderTarget, 0x0057E4F0, ::hookkit::Conv::eCdecl, void, uint32_t, CGxTex*, uint32_t);
-    HOOKKIT_HOOK_HANDLE(gxSceneClear, 0x006813B0, ::hookkit::Conv::eCdecl, void, uint32_t, uint32_t);
+    HOOKKIT_HOOK_HANDLE(bufCreate, 0x00687660, hookkit::Conv::eStdcall, CGxBuf*, CGxPool*, uint32_t, uint32_t, void*);
+    HOOKKIT_HOOK_HANDLE(setRenderTarget, 0x0057E4F0, hookkit::Conv::eCdecl, void, uint32_t, CGxTex*, uint32_t);
+    HOOKKIT_HOOK_HANDLE(gxSceneClear, 0x006813B0, hookkit::Conv::eCdecl, void, uint32_t, uint32_t);
+    HOOKKIT_HOOK_HANDLE(devCreate, 0x00681290, hookkit::Conv::eCdecl, CGxDevice*, GxApi, void*, const void*);
     HOOKKIT_HOOK_HANDLE(initUIShaders, 0x00483060, hookkit::Conv::eCdecl, void);
     HOOKKIT_HOOK_HANDLE(shutdownUIShaders, 0x004830A0, hookkit::Conv::eCdecl, void);
     // cfmt, fmt, blp_fmt, alphadepth
     HOOKKIT_HOOK_HANDLE(resolveGxFormat, 0x004B5FE0, hookkit::Conv::eCdecl, char*, CPixelFormat*, GxTexFormat*,
         blpcodec::BLPPixelFormat, int8_t);
+
+    HOOKKIT_HOOK_HANDLE(gxApiSupported, 0x006811D0, hookkit::Conv::eCdecl, bool, GxApi);
 };
 
 static_assert(sizeof(CGxDevice) == 0x3968);

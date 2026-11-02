@@ -25,7 +25,9 @@ public:
     uint32_t field_20_;
     uint32_t field_24_;
     const char* str_;
-    unk_t _unk_2C[5];
+    float float_value_;
+    int32_t int_value_;
+    unk_t _unk_34[3];
     uint32_t bool_;
     unk_t _unk_44[9];
     Handler handler_;

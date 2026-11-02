@@ -42,7 +42,10 @@ void Entry::updateStacking() {
 
 void Entry::updateClamping() {
     if (auto* unit = object_mgr::get<CGUnit_C>(ptr->owner_guid_, eTypemaskUnit)) {
-        setState(State::eShouldClamp, kSettings->clampsRank([unit] { return unit->getCreatureRank(); }));
+        const Settings& s = *kSettings;
+        const bool clamps = s.clampsRank([unit] { return unit->getCreatureRank(); }) &&
+            s.clampsAffiliation([this] { return hasState(State::eIsFriendly); });
+        setState(State::eShouldClamp, clamps);
     }
 }
 
@@ -50,6 +53,7 @@ void Entry::updateReaction() {
     if (auto* unit = object_mgr::get<CGUnit_C>(ptr->owner_guid_, eTypemaskUnit)) {
         setState(State::eIsFriendly, unit->isFriendly());
         updateStacking();
+        updateClamping();
     }
 }
 

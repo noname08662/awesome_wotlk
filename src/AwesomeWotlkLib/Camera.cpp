@@ -179,7 +179,7 @@ HOOKKIT_BIND(CGWorldFrame::getDoodadHitDetails_hook, [](WorldIntersectHitBuffer*
     scene_state.pending_hit = CM2ModelExt::of(root);
 });
 
-HOOKKIT_NAMED_BIND_RAW(intersect_call, 0x006060E6, {"jmpback", 0x00606103}) {
+HOOKKIT_NAMED_BIND_RAW(intersect_call, 0x006060E6, 0x00606103) {
     const uintptr_t intersect =
         HOOKKIT_LAMBDA_ADDR([](Vec3f* player_pos, Vec3f* camera_pos, Vec3f* hit_point, float* hit_distance,
                                 uint32_t hit_flags, WorldIntersectHitBuffer*) {
@@ -237,7 +237,7 @@ HOOKKIT_NAMED_BIND_RAW(intersect_call, 0x006060E6, {"jmpback", 0x00606103}) {
             }
             return result;
         });
-    constexpr uintptr_t kJmp = intersect_call::target("jmpback");
+    constexpr uintptr_t kJmp = intersect_call::target();
     return CallsiteTrampolineBuilder{}
         .assertOnBuildFailure()
         .scratchReg(Reg::eCx)
@@ -253,9 +253,9 @@ HOOKKIT_NAMED_BIND_RAW(intersect_call, 0x006060E6, {"jmpback", 0x00606103}) {
         .build(intersect, jmpTo(kJmp), 0);
 };
 
-HOOKKIT_NAMED_BIND_RAW(raycastModelsHit_site, 0x0081E0F5, {"jmpback", 0x0081E0FB}) {
+HOOKKIT_NAMED_BIND_RAW(raycastModelsHit_site, 0x0081E0F5, 0x0081E0FB) {
     constexpr auto kRawDefSlot = static_cast<std::int32_t>(offsetof(CM2SceneExt::FadeState, raw_def));
-    constexpr uintptr_t kJmp = raycastModelsHit_site::target("jmpback");
+    constexpr uintptr_t kJmp = raycastModelsHit_site::target();
     return CallsiteTrampolineBuilder{}
         .assertOnBuildFailure()
         .step(movRegMem(Reg::eCx, Reg::eSi, 0x13C))  // last_hit_doodad_def_

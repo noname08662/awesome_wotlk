@@ -15,10 +15,13 @@ add_library(
         "CommandLine.h" "CommandLine.cpp"
         "Inventory.h" "Inventory.cpp"
         "Item.h" "Item.cpp"
+        "LuaSwap.h" "LuaSwap.cpp"
         "Spell.h" "Spell.cpp"
         "Misc.h" "Misc.cpp"
         "MiscCaptureFrame.h"
         "MiscCaptureFrameLua.h"
+        "MiscInteraction.h"
+        "MiscProjectedLayers.h"
         "MSDF.h" "MSDF.cpp"
         "MSDFCache.h" "MSDFCache.cpp"
         "MSDFFaceSweep.h" "MSDFFaceSweep.cpp"
@@ -33,7 +36,11 @@ add_library(
         "NamePlateEntry.h" "NamePlateEntry.cpp"
         "NamePlateManager.h" "NamePlateManager.cpp"
         "UnitAPI.h" "UnitAPI.cpp"
-        "VoiceChat.h" "VoiceChat.cpp")
+        "VoiceChat.h" "VoiceChat.cpp"
+        "WorldCull.h" "WorldCull.cpp"
+        "WorldCullCore.h"
+        "WorldCullX87.h"
+        "WorldCullViews.cpp")
 
 target_include_directories(
     ${PROJECT_NAME} PRIVATE
@@ -43,6 +50,7 @@ target_include_directories(
 target_link_libraries(
     ${PROJECT_NAME} PRIVATE
         AwesomeWotLK_Common
+        luajit
 
         ole32
         oleaut32

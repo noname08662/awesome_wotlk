@@ -46,7 +46,7 @@ public:
     float getWidth() override;                                  // 10
     float getHeight() override;                                 // 11
     int32_t stubReturnInt32One() override;                      // 17
-    void onFrameSizeChanged(Rectf rect) override;               // 18
+    void onFrameSizeChanged(const Rectf& rect) override;        // 18
 
     struct HTEXTBLOCK : CHandle {
         CGxString* gx_string;

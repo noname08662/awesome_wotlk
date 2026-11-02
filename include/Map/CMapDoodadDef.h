@@ -34,7 +34,8 @@ public:
 
     TSHashObject<CMapDoodadDef> hash_obj_;
     TSLink<CMapDoodadDef> group_link_;
-    uint32_t _unkB0[4];
+    uint32_t cull_render_;
+    uint32_t _unkB4[3];
     Vec3f _unkC0;
     Vec3f _unkCC;
     Mat4f world_transform_;
@@ -44,6 +45,7 @@ public:
     HOOKKIT_HOOK_HANDLE(getFromFile, 0x007BECD0, hookkit::Conv::eCdecl, CMapDoodadDef*, char*, SMDoodadDef*, Vec3f*);
     HOOKKIT_HOOK_HANDLE(spawn, 0x007BEB40, hookkit::Conv::eCdecl, CMapDoodadDef*, char*, Vec3f*, float, int);
     HOOKKIT_HOOK_HANDLE(loadModel, 0x007BDA70, hookkit::Conv::eCdecl, CM2Model*, char*, CMapDoodadDef*, int, int);
+    HOOKKIT_HOOK_HANDLE(finishLoadedDoodads, 0x007B5630, hookkit::Conv::eCdecl, void);
 };
 
 static_assert(sizeof(CMapDoodadDef) == 0x170);

@@ -85,7 +85,7 @@ public:
     virtual bool canBeAnchorFor(CLayoutFrame* other);                                       // 15
     virtual CLayoutFrame* resolveRelativeFrame(const char* src);                            // 16
     virtual int32_t stubReturnInt32One();                                                   // 17
-    virtual void onFrameSizeChanged(Rectf rect);                                            // 18
+    virtual void onFrameSizeChanged(const Rectf& rect);                                     // 18
 
     TSLink<CLayoutFrame> link_resize_;
     CFramePoint* frame_points_[9];

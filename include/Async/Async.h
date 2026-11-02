@@ -42,10 +42,10 @@ public:
     };
 
     inline static auto* TSL_free = reinterpret_cast<TSExplicitList<CAsyncQueue>*>(0x00AC3460);
-    inline static auto* TSL_completed = reinterpret_cast<TSExplicitList<CAsyncQueue>*>(0x00AC346C);
+    inline static auto* TSL_completed = reinterpret_cast<TSExplicitList<CAsyncObject>*>(0x00AC346C);
 
     using AsyncWorker = int32_t(__cdecl*)(CAsyncObject* async_obj);
-    using AsyncComplete = void(__cdecl*)(CAsyncObject* async_obj);
+    using AsyncComplete = void(__cdecl*)(void* owner);
 
     TSLink<CAsyncObject> link_free_;
     uint32_t size_;

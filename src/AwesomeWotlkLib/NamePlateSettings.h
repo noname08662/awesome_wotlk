@@ -24,9 +24,36 @@ enum class ClampMode : int { eDisabled = 0, eAll = 1, eBoss = 2, eAllEdges = 3, 
 
 enum class ClampFilter : int { eNone = 0, eTarget = 1 << 0, eCombat = 1 << 1, eTargetCombat = eTarget | eCombat };
 
+enum class ClampAffiliation : int { eAll = 0, eEnemy = 1, eFriendly = 2 };
+
+enum class ClampViews : int { eDisabled = 0, eTop = 1, eTopSides = 2 };
+
 enum class OcclusionMode : int { eAlways = 0, eNotInCombat = 1 };
 
-enum class FreezeMode : int { eDisabled = 0, eAlways = 1, eCombat = 2 };
+enum class FreezeMode : int { eDisabled = 0, eAlways = 1, eCombat = 2, eAlwaysNoTarget = 3, eCombatNoTarget = 4 };
+
+constexpr bool freezesInCombatOnly(FreezeMode mode) {
+    return mode == FreezeMode::eCombat || mode == FreezeMode::eCombatNoTarget;
+}
+
+constexpr bool freezesTarget(FreezeMode mode) {
+    return mode == FreezeMode::eAlways || mode == FreezeMode::eCombat;
+}
+
+enum class FreezeAffiliation : int { eAll = 0, eEnemy = 1, eFriendly = 2 };
+
+// enemy is anything not friendly, as in stacking
+constexpr bool freezesAffiliation(FreezeAffiliation affiliation, bool is_friendly) {
+    switch (affiliation) {
+        case FreezeAffiliation::eEnemy:
+            return !is_friendly;
+        case FreezeAffiliation::eFriendly:
+            return is_friendly;
+        case FreezeAffiliation::eAll:
+        default:
+            return true;
+    }
+}
 
 enum class MouseMode : uint32_t {
     eDisabled = 0,
@@ -82,7 +109,10 @@ struct Settings {
     const float& clamp_v_offset;
     const float& clamp_h_offset;
     const int& clamp_filter;
+    const int& clamp_affiliation;
+    const int& clamp_views;
     const int& freeze_mode;
+    const int& freeze_affiliation;
     const float& freeze_grace;
     const float& freeze_time;
 
@@ -94,6 +124,11 @@ struct Settings {
     [[nodiscard]]
     ClampMode clampMode() const {
         return static_cast<ClampMode>(clamp_mode);
+    }
+
+    [[nodiscard]]
+    ClampViews clampViews() const {
+        return static_cast<ClampViews>(clamp_views);
     }
 
     [[nodiscard]]
@@ -117,6 +152,21 @@ struct Settings {
         }
     }
 
+    // enemy is anything not friendly, as in stacking
+    template <typename FriendlyFn>
+    [[nodiscard]]
+    bool clampsAffiliation(const FriendlyFn& is_friendly) const {
+        switch (static_cast<ClampAffiliation>(clamp_affiliation)) {
+            case ClampAffiliation::eEnemy:
+                return !is_friendly();
+            case ClampAffiliation::eFriendly:
+                return is_friendly();
+            case ClampAffiliation::eAll:
+            default:
+                return true;
+        }
+    }
+
     [[nodiscard]]
     bool clampFilterPasses(guid_t guid, guid_t target, bool in_combat) const {
         const auto filter = static_cast<uint32_t>(clamp_filter);
@@ -124,12 +174,6 @@ struct Settings {
             (filter & static_cast<uint32_t>(ClampFilter::eTarget)) == 0 || (guid != 0 && guid == target);
         const bool combat_ok = (filter & static_cast<uint32_t>(ClampFilter::eCombat)) == 0 || in_combat;
         return target_ok && combat_ok;
-    }
-
-    [[nodiscard]]
-    bool freezeActive() const {
-        const auto mode = static_cast<FreezeMode>(freeze_mode);
-        return mode == FreezeMode::eAlways || (mode == FreezeMode::eCombat && game_ui::inCombatLockdown());
     }
 
     // the cvars must be registered before the first access
@@ -161,7 +205,10 @@ struct Settings {
             .clamp_v_offset = cvars.ref<float>("nameplateClampModeVOffset"),
             .clamp_h_offset = cvars.ref<float>("nameplateClampModeHOffset"),
             .clamp_filter = cvars.ref<int>("nameplateClampModeFilter"),
+            .clamp_affiliation = cvars.ref<int>("nameplateClampModeAffiliation"),
+            .clamp_views = cvars.ref<int>("nameplateClampViews"),
             .freeze_mode = cvars.ref<int>("nameplateMouseFreeze"),
+            .freeze_affiliation = cvars.ref<int>("nameplateMouseFreezeAffiliation"),
             .freeze_grace = cvars.ref<float>("nameplateMouseFreezeGrace"),
             .freeze_time = cvars.ref<float>("nameplateMouseFreezeTime"),
         };

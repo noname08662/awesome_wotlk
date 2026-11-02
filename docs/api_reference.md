@@ -110,7 +110,7 @@ Fires when a nameplate is detached from a unit and is about to be hidden.
 **Arguments:** `distance` (number)  
 **Default:** 41
 
-Sets the display distance of nameplates in yards, up to **200**. Tab-targeting range follows this value.
+Sets the display distance of nameplates in yards, up to **200**.
 
 ## nameplateStacking `CVar`
 **Arguments:** `mode` (number)  
@@ -254,14 +254,49 @@ Restricts which nameplates `nameplateClampMode` applies to. Restrictions stack: 
 - **2** = In Combat Only (player in combat)
 - **3** = Target Only, In Combat Only
 
+## nameplateClampModeAffiliation `CVar`
+**Arguments:** `affiliation` (number)  
+**Default:** 0
+
+Restricts `nameplateClampMode` to enemy or friendly nameplates. A unit counts as friendly when its reaction to you is friendly, or neutral and you can't attack it; everything else counts as an enemy. Combines with the mode's boss restriction and with `nameplateClampModeFilter`: a plate is clamped only when all of them hold. Requires `nameplateClampMode` to be non-zero.
+- **0** = All
+- **1** = Enemies Only
+- **2** = Friends Only
+
+## nameplateClampViews `CVar`
+**Arguments:** `mode` (number)  
+**Default:** 0
+
+Keeps a clamped plate alive after its unit's model leaves the screen past the chosen edges, as long as the unit is in front of the camera. The world cull drops a unit once its model is off screen, and the plate goes with it, so clamping alone only holds until then. This cvar runs extra world culls for the directions outside the screen, and a plate stays while its unit would be visible from one of them. Past any other edge and behind the camera nothing changes: the plate ends with the world cull. Requires `nameplateClampMode` to be non-zero and `worldCullMode` to be on.
+- **0** = Disabled
+- **1** = Top Only
+- **2** = Top and Sides
+
+Mode 2 opens the sides only under an all-sides `nameplateClampMode` (3 or 4), because a top-only clamp leaves those plates off screen. Under a top-only clamp it acts as mode 1, and the sides open as soon as the clamp mode changes.
+
+Mode 1 uses one extra direction, mode 2 three. A direction only costs anything while it holds a clamped, off-screen unit in range: it then repeats the world cull every frame, out to that unit's distance.
+
 ## nameplateMouseFreeze `CVar`
 **Arguments:** `mode` (number)  
 **Default:** 0
 
-Pins the nameplate under the cursor (the moused-over plate, or your target's plate if it is the one under the cursor) at its current screen position. With `nameplateStacking` enabled, every other nameplate, bosses included, yields and stacks around it for as long as it stays frozen. Clicking keeps it frozen; dragging the camera or hovering another nameplate releases it immediately.
+Pins the nameplate under the cursor (the moused-over plate, or your target's plate if it is the one under the cursor) at its current screen position. With `nameplateStacking` enabled, every other nameplate, bosses included, yields and stacks around it for as long as it stays frozen. Clicking keeps it frozen; dragging the camera or hovering another nameplate releases it immediately. `nameplateMouseFreezeAffiliation` limits it to enemy or friendly nameplates.
 - **0** = Disabled
 - **1** = Always
 - **2** = In Combat Only (player in combat)
+- **3** = Always, Except Target
+- **4** = In Combat Only, Except Target
+
+The Except Target modes never freeze your target's nameplate; clicking a frozen nameplate to target it releases it. In every mode, a nameplate beneath your target's stays unfrozen while your target's is the one under the cursor.
+
+## nameplateMouseFreezeAffiliation `CVar`
+**Arguments:** `affiliation` (number)  
+**Default:** 0
+
+Restricts `nameplateMouseFreeze` to enemy or friendly nameplates. A unit counts as friendly when its reaction to you is friendly, or neutral and you can't attack it; everything else counts as an enemy. Hovering a nameplate it skips still releases a frozen one, as hovering any other nameplate does. Requires `nameplateMouseFreeze` to be non-zero.
+- **0** = All
+- **1** = Enemies Only
+- **2** = Friends Only
 
 ## nameplateMouseFreezeGrace `CVar`
 **Arguments:** `seconds` (number)  
@@ -572,6 +607,8 @@ Selects which target the interaction keybind and `/interact` pick.
 - **1** = Interaction is limited to entities in front of the player within the angle defined by `interactionAngle` and within 20 yards  
 - **0** = Interaction occurs with the nearest entity within 20 yards, regardless of direction
 
+In both modes, repeated presses cycle through every loot target (lootable mobs, mobs you can skin, herb or mine with your professions, and chests) plus the nearest other target (NPC, door, chair, mailbox, herb or ore node, etc.); farther non-loot targets are skipped. Targets not yet interacted with come first, nearest first, then the one used longest ago. With no loot target around, pressing again reuses the same target.
+
 ## interactionAngle `CVar`
 **Arguments:** `angle` (number)  
 **Default:** 60
@@ -601,7 +638,7 @@ Type `/msdfpregen` (available while MSDF is enabled) to fill the cache in advanc
 
 ## MSDFOutlinePass `CVar`
 **Arguments:** `enabled` (number)  
-**Default:** 1
+**Default:** 0
 
 Draws MSDF font outlines in a separate pass so they don't overlap neighboring characters. Disabling it draws text and outline in one pass, which halves the vertex count but can leave outline artifacts between tightly packed characters.
 
@@ -620,6 +657,49 @@ Forces the loot sparkle on interactive world objects (containers, gathering node
 **Default:** 64
 
 Sets the texture resolution used to render 3D unit portraits. Accepts values between **64** and **2048** (rounded up to the nearest power of two). Each portrait uses its own texture of this size.
+
+## projectedTextureMode `CVar`
+**Arguments:** `enabled` (number)  
+**Default:** 1
+
+Stops selection circles, AoE targeting circles and M2 ground decals from being cut off on steep terrain, by growing the height range they are projected onto. A circle's range scales with its radius, 1.79 times the radius above and below it, between 3 and 50 yards and never less than the engine's own, which keeps a 50 degree slope at full strength out to its edge. M2 ground decals always get 50 yards. When an AoE targeting circle covers stacked surfaces, such as a roof over the ground or a tunnel's ceiling over its floor, its height range narrows and tilts onto the surface under the cursor, and it paints only the part of that surface connected to the cursor, so the others stay clear.
+
+- **0** = Disabled
+- **1** = Enabled
+
+## groundTargetClamp `CVar`
+**Arguments:** `enabled` (number)  
+**Default:** 1
+
+Hovering past a ground-targeted spell's maximum range keeps the targeting circle at the edge of that range, on the cursor's line, and a click casts there. Hovers far past the range and the sky keep the default out-of-range behavior. Below a spell's minimum range the circle is pushed out to it the same way. Based on the retail client.
+
+## tabTargetDistance `CVar`
+**Arguments:** `distance` (number)  
+**Default:** 41
+
+Sets the tab-targeting range in yards, between **41** and **200**.
+
+## worldCullMode `CVar`
+**Arguments:** `enabled` (number)  
+**Default:** 1
+
+Replaces two parts of the engine's world culling, which decides what gets drawn, with exact reimplementations that fix their bugs: the portal walk (the view through the doorways and windows of buildings) and the terrain horizon test (what lies behind hills). Creatures and objects just behind a ridge are no longer hidden or shown by mistake, and the walk no longer reads freed memory when many doorways are on screen. A few smaller engine fixes come with it: WMO groups whose box grew while their doodads loaded are bucketed again on the grown box, invisible carriers (missiles, effects) no longer keep last frame's visibility, and an overflowing distance bucket no longer drops the groups after it. The replacements also run slightly faster than the engine's own culling.
+
+- **0** = Disabled
+- **1** = Enabled
+
+## luaSwap `CVar`
+**Arguments:** `enabled` (number)  
+**Default:** 0
+
+Replaces the game's Lua VM, which runs every addon and the default UI, with LuaJIT 1.1.8, a just-in-time compiler. Lua code runs 2.5-3 times faster than on the stock VM. Read once at client start, so changing it requires a client restart.
+
+- **0** = Disabled
+- **1** = LuaJIT
+
+**Risk:** the swap hooks the game's Lua functions. A server whose Warden anti-cheat checks those functions could detect it, so use it at your own risk.
+
+Addons run unchanged, and taint and secure execution behave as on the stock VM. Only the main thread is compiled: coroutines stay interpreted, and nothing is compiled while `scriptProfile` is on. The VM is based on Lua 5.1.5 instead of the client's 5.1.1, so some error message texts and the iteration order of `pairs` over number keys can differ.
 
 ## chatLogSessionKey / combatLogSessionKey `CVar`
 **Arguments:** `enabled` (boolean)  
@@ -710,4 +790,4 @@ if AwesomeWotlk then print("Awesome WotLK version", AwesomeWotlk) end
 **Arguments:** `unitId` (string, optional)  
 **Returns:** none
 
-Interacts with the current interaction target, or with `unitId` if given. This is what the interaction keybind and `/interact` call.
+Interacts with the current interaction target, or with `unitId` if given. This is what the interaction keybind and `/interact` call. Each interaction moves the interaction target on to the next one when there is more than one (see `interactionMode`).

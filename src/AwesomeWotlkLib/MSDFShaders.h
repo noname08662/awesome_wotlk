@@ -18,12 +18,17 @@ inline constexpr auto kVertexShaderHlsl = R"(
         float4 info : TEXCOORD1; // target page index, outline vert
     };
 
-    VS_OUT main(VS_IN IN) {
+    float4 project(float4 pos, bool stereo) {
+        float4 hpos = mul(pos, WorldViewProj);
+        return stereo ? float4(hpos.xy * hpos.w, hpos.zw) : hpos;
+    }
+
+    VS_OUT shade(VS_IN IN, bool stereo) {
         VS_OUT OUT;
         OUT.col = IN.col;
 
         if (control.z < 1.0f) {
-            OUT.hpos = mul(IN.pos, WorldViewProj);
+            OUT.hpos = project(IN.pos, stereo);
             OUT.uv0  = IN.uv0;
             OUT.info = float4(0, 1.0f, 0, 1.0f);
         } else {
@@ -37,7 +42,7 @@ inline constexpr auto kVertexShaderHlsl = R"(
 
             float4 pos = IN.pos;
             pos.z = z;
-            OUT.hpos = mul(pos, WorldViewProj);
+            OUT.hpos = project(pos, stereo);
 
             // encoded sign bits safely before decoding
             float bit0 = (IN.uv0.x < 0.0f) ? 1.0f : 0.0f;
@@ -48,6 +53,10 @@ inline constexpr auto kVertexShaderHlsl = R"(
         }
         return OUT;
     }
+
+    VS_OUT main(VS_IN IN) { return shade(IN, false); }
+
+    VS_OUT mainStereo(VS_IN IN) { return shade(IN, true); }
 )";
 
 inline constexpr auto kPixelShaderHlsl = R"(
