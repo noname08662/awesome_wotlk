@@ -26,11 +26,12 @@ if GetLocale() == "esMX" then
 
     -- Ventanas emergentes
     L.RESET_POPUP_TITLE = "Restablecer valores predeterminados"
-    L.RESET_POPUP_TEXT = "¿Restablecer todos los ajustes a sus valores predeterminados y devolver la ventana a su tamaño y posición predeterminados?"
+    L.RESET_POPUP_TEXT = "¿Restablecer todos los ajustes a sus valores predeterminados, devolver la ventana a su tamaño y posición predeterminados y expandir todas las secciones?"
 
     -- Mensajes del chat (se muestran tras el prefijo "AwesomeCVar:")
     L.MSG_LOADED = "Cargado. Escribe /awesome para abrir los ajustes."
-    L.MSG_FRAME_RESET = "Tamaño y posición de la ventana restablecidos."
+    L.MSG_LUA_SWAP_PROFILER = "El perfilador de scripts (CVar scriptProfile) está activado, así que el JIT de LuaJIT no se ejecuta y los addons no ganan velocidad. Desactívalo con /console scriptProfile 0 y luego usa /reload."
+    L.MSG_FRAME_RESET = "Tamaño y posición de la ventana restablecidos; todas las secciones expandidas."
     L.MSG_SET_VALUE = "%s establecido en %s."
     L.MSG_DEFAULTS_RESET = "Todos los ajustes se restablecieron a sus valores predeterminados."
     L.MSG_UNKNOWN_COMMAND = "Comando desconocido. Escribe /awesome help para ver la lista de comandos."
@@ -38,7 +39,7 @@ if GetLocale() == "esMX" then
     L.MSG_HELP_TOGGLE = "/awesome - Abre o cierra la ventana de ajustes"
     L.MSG_HELP_SHOW = "/awesome show - Abre la ventana de ajustes"
     L.MSG_HELP_HIDE = "/awesome hide - Cierra la ventana de ajustes"
-    L.MSG_HELP_RESET = "/awesome reset - Devuelve la ventana a su tamaño y posición predeterminados"
+    L.MSG_HELP_RESET = "/awesome reset - Devuelve la ventana a su tamaño y posición predeterminados y expande todas las secciones"
     L.MSG_HELP_HELP = "/awesome help - Muestra esta lista"
 
     -- Categorías de CVars
@@ -241,7 +242,7 @@ if GetLocale() == "esMX" then
     L.DESC_FRAME_CAPTURE = "Guarda un solo marco, con todo lo que contiene, como PNG con fondo transparente, recortado a lo que se dibuja, en la carpeta Screenshots.\n/fcapture captura el marco bajo el cursor del mouse. Los marcos que no responden al mouse, como la ventana de chat, deben indicarse por su nombre; /fstack muestra los nombres de los marcos. Agrega un tamaño para renderizarlo más grande: un número fija el lado más largo en píxeles y un número seguido de x multiplica el tamaño en pantalla. El texto ampliado solo se mantiene nítido con las fuentes MSDF activadas.\n\nEjemplo:\n/fcapture PlayerFrame 2x\n/fcapture ChatFrame1 2048"
     L.DESC_CLIPBOARD = "El texto que no está en inglés ya no se convierte en '???' al copiarlo del juego o pegarlo en él."
     L.DESC_WORLD_CULL = "Reemplaza dos partes del culling del mundo del motor, que decide qué se dibuja, con copias exactas que corrigen sus errores: la vista a través de puertas y ventanas, y el horizonte del terreno que oculta lo que hay detrás de las colinas. Las criaturas y los objetos justo detrás de una cresta ya no se ocultan ni se muestran por error, y el juego ya no lee memoria liberada cuando hay muchas puertas en pantalla.\nDesactivado, el culling del motor no se modifica."
-    L.DESC_LUA_SWAP = "Reemplaza la máquina virtual de Lua del juego, que ejecuta todos los addons y la interfaz predeterminada, por LuaJIT, un compilador just-in-time. Los addons funcionan igual, solo que más rápido.\nRiesgo: esto intercepta las funciones de Lua del juego. Un servidor cuyo antitrampas Warden revise esas funciones podría detectarlo, así que úsalo bajo tu propio riesgo."
+    L.DESC_LUA_SWAP = "Reemplaza la máquina virtual de Lua del juego, que ejecuta todos los addons y la interfaz predeterminada, por LuaJIT, un compilador just-in-time. Los addons funcionan igual, solo que más rápido.\nCon el perfilador de scripts del juego activado (la CVar scriptProfile), el JIT no se ejecuta y todas las funciones pasan por el intérprete, así que se pierde la mejora de velocidad.\nRiesgo: esto intercepta las funciones de Lua del juego. Un servidor cuyo antitrampas Warden revise esas funciones podría detectarlo, así que úsalo bajo tu propio riesgo."
     L.DESC_SAVED_VARIABLES = "Los datos de addons (SavedVariables) se escriben en disco en bloques grandes en lugar de muchos fragmentos pequeños, lo que hace notablemente más rápidos el cierre de sesión y /reload con addons que guardan muchos datos."
 
     -- Consejos de rendimiento

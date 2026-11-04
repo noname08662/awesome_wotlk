@@ -37,6 +37,9 @@ local PanelTemplates_SetNumTabs = PanelTemplates_SetNumTabs
 local RESET_TEXT_PADDING = 14
 local RESET_MIN_WIDTH = 100
 
+local SECTION_ARROW = "Interface\\ChatFrame\\ChatFrameExpandArrow"
+local SECTION_ARROW_SIZE = 14
+
 local function getFrameName(prefix, suffix)
     return addonName.."_"..prefix..(suffix or "")
 end
@@ -214,6 +217,51 @@ local function applyCardHeight(control)
     end
 end
 
+local function syncReason(control)
+    local holder = control.reasonHolder
+    if not holder then return end
+    if control.reasonShown and control:IsShown() then
+        holder:Show()
+    else
+        holder:Hide()
+    end
+end
+
+local function anchorControls(content)
+    local last
+    for _, control in ipairs(content.controls) do
+        if control:IsShown() then
+            control:ClearAllPoints()
+            if not last then
+                control:SetPoint("TOPLEFT", 10, -15)
+            elseif control.isHeader then
+                control:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -25)
+            else
+                control:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, last.isHeader and -4 or -15)
+            end
+            last = control
+        end
+    end
+    content.lastControl = last
+    content:SetScript("OnUpdate", fitContentHeight)
+end
+
+local function setSectionCollapsed(header, collapsed)
+    CloseDropDownMenus()
+    header.collapsed = collapsed
+    ACVar.DB.collapsedSections[header.sectionName] = collapsed or nil
+    if collapsed then
+        header.arrow:SetTexCoord(0, 1, 0, 1)
+    else
+        header.arrow:SetTexCoord(0, 1, 1, 1, 0, 0, 1, 0)
+    end
+    for _, member in ipairs(header.members) do
+        if collapsed then member:Hide() else member:Show() end
+        syncReason(member)
+    end
+    anchorControls(header:GetParent())
+end
+
 function ACVar:UpdateDependencies()
     for _, cvarList in pairs(CVARS) do
         for _, cvarDef in ipairs(cvarList) do
@@ -223,11 +271,7 @@ function ACVar:UpdateDependencies()
                 control:SetAlpha(active and 1 or CONSTANTS.DIMMED_ALPHA)
                 if control.reasonShown ~= not active then
                     control.reasonShown = not active
-                    if active then
-                        control.reasonHolder:Hide()
-                    else
-                        control.reasonHolder:Show()
-                    end
+                    syncReason(control)
                     applyCardHeight(control)
                     control:GetParent():SetScript("OnUpdate", fitContentHeight)
                 end
@@ -301,6 +345,9 @@ function ACVar:ResetFramePosition(silent)
         self.Frame:SetHeight(CONSTANTS.FRAME.MAIN_HEIGHT)
         self.Frame:ClearAllPoints()
         self.Frame:SetPoint("CENTER")
+        for _, header in ipairs(self.SectionHeaders) do
+            if header.collapsed then setSectionCollapsed(header, false) end
+        end
         if not silent then
             self:PrintMessage(L.MSG_FRAME_RESET)
         end
@@ -463,6 +510,7 @@ function ACVar:CreateMainFrame()
         ACVar:UpdateAllUI()
     end
     self._SelectTab = selectTab
+    self.SectionHeaders = {}
 
     for _, categoryName in ipairs(CATEGORY_ORDER) do
         frame.numTabs = frame.numTabs + 1
@@ -519,26 +567,26 @@ function ACVar:CreateMainFrame()
         end)
 
         local cvarList = CVARS[categoryName]
-        local lastControl = nil
+        local currentHeader = nil
 
         for _, cvarDef in ipairs(cvarList) do
             local isHeader = cvarDef.type == "header"
-            local control = CreateFrame("Frame", getFrameName(cvarDef.name, "Control"), content)
+            local control = CreateFrame(isHeader and "Button" or "Frame", getFrameName(cvarDef.name, "Control"), content)
             control:SetWidth(content:GetWidth() - 35)
             control.isHeader = isHeader
             tinsert(content.controls, control)
-
-            if not lastControl then
-                control:SetPoint("TOPLEFT", 10, -15)
-            elseif isHeader then
-                control:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, -25)
-            else
-                control:SetPoint("TOPLEFT", lastControl, "BOTTOMLEFT", 0, lastControl.isHeader and -4 or -15)
+            if isHeader then
+                control.sectionName = cvarDef.name
+                control.members = {}
+                currentHeader = control
+                tinsert(ACVar.SectionHeaders, control)
+            elseif currentHeader then
+                tinsert(currentHeader.members, control)
             end
 
             local paddingLeft, paddingRight, paddingTop, paddingBottom = 12, -12, -10, 10
             if isHeader then
-                paddingLeft, paddingRight, paddingTop, paddingBottom = 2, 0, 0, 0
+                paddingLeft, paddingRight, paddingTop, paddingBottom = 2 + SECTION_ARROW_SIZE + 2, 0, 0, 0
             else
                 control:SetBackdrop({
                     bgFile = "Interface/Tooltips/UI-Tooltip-Background",
@@ -562,6 +610,20 @@ function ACVar:CreateMainFrame()
                 rule:SetHeight(1)
                 rule:SetPoint("LEFT", text, "RIGHT", 8, 0)
                 rule:SetPoint("RIGHT", control, "RIGHT")
+
+                local arrow = control:CreateTexture(nil, "ARTWORK")
+                arrow:SetTexture(SECTION_ARROW)
+                arrow:SetWidth(SECTION_ARROW_SIZE)
+                arrow:SetHeight(SECTION_ARROW_SIZE)
+                arrow:SetPoint("RIGHT", text, "LEFT", -2, 0)
+                control.arrow = arrow
+                arrow:SetTexCoord(0, 1, 1, 1, 0, 0, 1, 0)
+                control:SetScript("OnClick", function(self)
+                    setSectionCollapsed(self, not self.collapsed)
+                    PlaySound(self.collapsed and "igMainMenuOptionCheckBoxOff" or "igMainMenuOptionCheckBoxOn")
+                end)
+                control:SetScript("OnEnter", function() text:SetTextColor(1, 1, 1) end)
+                control:SetScript("OnLeave", function() text:SetTextColor(1, 0.82, 0) end)
             else
                 text:SetWidth(control:GetWidth() + (paddingRight - paddingLeft))
             end
@@ -605,6 +667,9 @@ function ACVar:CreateMainFrame()
                     ACVar:SetCVarValue(self.cvarDef.name, newVal)
                     ACVar:UpdateResetButtonState(self.cvarDef, newVal)
                     ACVar:PrintCVarChange(self.cvarDef.name, newVal)
+                    if self.cvarDef.name == "luaSwap" and checked then
+                        ACVar:WarnLuaSwapProfiler()
+                    end
                     PlaySound(checked and "igMainMenuOptionCheckBoxOn" or "igMainMenuOptionCheckBoxOff")
                 end)
 
@@ -837,12 +902,13 @@ function ACVar:CreateMainFrame()
                 applyCardHeight(self)
             end
             control:SetScript("OnUpdate", layoutCardOnce)
-
-            lastControl = control
         end
 
-        content.lastControl = lastControl
-        content:SetScript("OnUpdate", fitContentHeight)
+        anchorControls(content)
+    end
+
+    for _, header in ipairs(self.SectionHeaders) do
+        if self.DB.collapsedSections[header.sectionName] then setSectionCollapsed(header, true) end
     end
 
     self.TabsByName = {}

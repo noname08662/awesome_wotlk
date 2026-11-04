@@ -26,11 +26,12 @@ do
 
     -- Popups
     L.RESET_POPUP_TITLE = "Reset to Defaults"
-    L.RESET_POPUP_TEXT = "Reset all settings to their default values and restore the window's default size and position?"
+    L.RESET_POPUP_TEXT = "Reset all settings to their default values, restore the window's default size and position, and expand all sections?"
 
     -- Chat Messages (printed after an "AwesomeCVar:" prefix)
     L.MSG_LOADED = "Loaded. Type /awesome to open the settings."
-    L.MSG_FRAME_RESET = "Window size and position reset."
+    L.MSG_LUA_SWAP_PROFILER = "The script profiler (scriptProfile CVar) is on, so LuaJIT's JIT doesn't run and addons get no speedup. Turn it off with /console scriptProfile 0, then /reload."
+    L.MSG_FRAME_RESET = "Window size and position reset, all sections expanded."
     L.MSG_SET_VALUE = "Set %s to %s."
     L.MSG_DEFAULTS_RESET = "All settings reset to their default values."
     L.MSG_UNKNOWN_COMMAND = "Unknown command. Type /awesome help for a list of commands."
@@ -38,7 +39,7 @@ do
     L.MSG_HELP_TOGGLE = "/awesome - Open or close the settings window"
     L.MSG_HELP_SHOW = "/awesome show - Open the settings window"
     L.MSG_HELP_HIDE = "/awesome hide - Close the settings window"
-    L.MSG_HELP_RESET = "/awesome reset - Restore the window's default size and position"
+    L.MSG_HELP_RESET = "/awesome reset - Restore the window's default size and position and expand all sections"
     L.MSG_HELP_HELP = "/awesome help - Show this list"
 
     -- CVar Categories
@@ -241,7 +242,7 @@ do
     L.DESC_FRAME_CAPTURE = "Saves one frame, with everything inside it, as a PNG with a transparent background, cropped to what is drawn, in the Screenshots folder.\n/fcapture captures the frame under the mouse. Frames that ignore the mouse, such as the chat window, have to be named; /fstack shows frame names. Add a size to render it larger: a number sets the longer side in pixels, a number followed by x multiplies the on-screen size. Enlarged text stays sharp only with MSDF fonts enabled.\n\nExample:\n/fcapture PlayerFrame 2x\n/fcapture ChatFrame1 2048"
     L.DESC_CLIPBOARD = "Non-English text no longer turns into '???' when copied from or pasted into the game."
     L.DESC_WORLD_CULL = "Replaces two parts of the engine's world culling, which decides what gets drawn, with exact copies that fix their bugs: the view through doorways and windows, and the terrain horizon that hides what lies behind hills. Creatures and objects just behind a ridge are no longer hidden or shown by mistake, and the game no longer reads freed memory when many doorways are on screen.\nWhen off, the engine's culling is left untouched."
-    L.DESC_LUA_SWAP = "Replaces the game's Lua VM, which runs all addons and the default UI, with LuaJIT, a just-in-time compiler. Addons run unchanged, only faster.\nRisk: this hooks the game's Lua functions. A server whose Warden anti-cheat checks those functions could detect it, so use it at your own risk."
+    L.DESC_LUA_SWAP = "Replaces the game's Lua VM, which runs all addons and the default UI, with LuaJIT, a just-in-time compiler. Addons run unchanged, only faster.\nWith the game's script profiler on (the scriptProfile CVar), the JIT doesn't run and every function goes through the interpreter, so the speedup is lost.\nRisk: this hooks the game's Lua functions. A server whose Warden anti-cheat checks those functions could detect it, so use it at your own risk."
     L.DESC_SAVED_VARIABLES = "Addon data (SavedVariables) is written to disk in large blocks instead of many small pieces, which makes logout and /reload noticeably faster with data-heavy addons."
 
     -- Performance Tips

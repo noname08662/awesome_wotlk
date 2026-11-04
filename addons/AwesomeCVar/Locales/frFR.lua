@@ -26,11 +26,12 @@ if GetLocale() == "frFR" then
 
     -- Fenêtres contextuelles
     L.RESET_POPUP_TITLE = "Rétablir les valeurs par défaut"
-    L.RESET_POPUP_TEXT = "Réinitialiser tous les réglages à leurs valeurs par défaut et rendre à la fenêtre sa taille et sa position par défaut ?"
+    L.RESET_POPUP_TEXT = "Réinitialiser tous les réglages à leurs valeurs par défaut, rendre à la fenêtre sa taille et sa position par défaut et déplier toutes les sections ?"
 
     -- Messages de chat (affichés après le préfixe "AwesomeCVar:")
     L.MSG_LOADED = "Chargé. Tapez /awesome pour ouvrir les réglages."
-    L.MSG_FRAME_RESET = "Taille et position de la fenêtre réinitialisées."
+    L.MSG_LUA_SWAP_PROFILER = "Le profileur de scripts (CVar scriptProfile) est activé : le JIT de LuaJIT ne tourne pas et les addons ne sont pas accélérés. Désactivez-le avec /console scriptProfile 0, puis faites /reload."
+    L.MSG_FRAME_RESET = "Taille et position de la fenêtre réinitialisées, toutes les sections dépliées."
     L.MSG_SET_VALUE = "%s réglé sur %s."
     L.MSG_DEFAULTS_RESET = "Tous les réglages ont été remis à leurs valeurs par défaut."
     L.MSG_UNKNOWN_COMMAND = "Commande inconnue. Tapez /awesome help pour la liste des commandes."
@@ -38,7 +39,7 @@ if GetLocale() == "frFR" then
     L.MSG_HELP_TOGGLE = "/awesome - Ouvre ou ferme la fenêtre des réglages"
     L.MSG_HELP_SHOW = "/awesome show - Ouvre la fenêtre des réglages"
     L.MSG_HELP_HIDE = "/awesome hide - Ferme la fenêtre des réglages"
-    L.MSG_HELP_RESET = "/awesome reset - Rend à la fenêtre sa taille et sa position par défaut"
+    L.MSG_HELP_RESET = "/awesome reset - Rend à la fenêtre sa taille et sa position par défaut et déplie toutes les sections"
     L.MSG_HELP_HELP = "/awesome help - Affiche cette liste"
 
     -- Catégories de CVars
@@ -241,7 +242,7 @@ if GetLocale() == "frFR" then
     L.DESC_FRAME_CAPTURE = "Enregistre un seul cadre, avec tout ce qu'il contient, en PNG sur fond transparent, rogné à ce qui est dessiné, dans le dossier Screenshots.\n/fcapture capture le cadre sous le curseur de la souris. Les cadres qui ne réagissent pas à la souris, comme la fenêtre de discussion, doivent être désignés par leur nom ; /fstack affiche les noms des cadres. Ajoutez une taille pour un rendu plus grand : un nombre fixe le plus grand côté en pixels, un nombre suivi de x multiplie la taille à l'écran. Le texte agrandi ne reste net qu'avec les polices MSDF activées.\n\nExemple :\n/fcapture PlayerFrame 2x\n/fcapture ChatFrame1 2048"
     L.DESC_CLIPBOARD = "Le texte non anglais ne se transforme plus en '???' quand il est copié depuis le jeu ou collé dans le jeu."
     L.DESC_WORLD_CULL = "Remplace deux parties du culling du monde du moteur, qui décide de ce qui est affiché, par des copies exactes qui en corrigent les bugs, à savoir la vue à travers les portes et les fenêtres, et l'horizon du terrain qui masque ce qui se trouve derrière les collines. Les créatures et les objets juste derrière une crête ne sont plus masqués ni affichés par erreur, et le jeu ne lit plus de mémoire libérée quand de nombreuses portes sont à l'écran.\nDésactivé, le culling du moteur reste inchangé."
-    L.DESC_LUA_SWAP = "Remplace la machine virtuelle Lua du jeu, qui exécute tous les addons et l'interface par défaut, par LuaJIT, un compilateur à la volée. Les addons fonctionnent sans changement, mais plus vite.\nRisque : cela intercepte les fonctions Lua du jeu. Un serveur dont l'anti-triche Warden vérifie ces fonctions pourrait le détecter, à utiliser donc à vos risques et périls."
+    L.DESC_LUA_SWAP = "Remplace la machine virtuelle Lua du jeu, qui exécute tous les addons et l'interface par défaut, par LuaJIT, un compilateur à la volée. Les addons fonctionnent sans changement, mais plus vite.\nQuand le profileur de scripts du jeu est activé (la CVar scriptProfile), le JIT ne tourne pas et toutes les fonctions passent par l'interpréteur : le gain de vitesse est perdu.\nRisque : cela intercepte les fonctions Lua du jeu. Un serveur dont l'anti-triche Warden vérifie ces fonctions pourrait le détecter, à utiliser donc à vos risques et périls."
     L.DESC_SAVED_VARIABLES = "Les données d'addons (SavedVariables) sont écrites sur le disque par gros blocs au lieu de nombreux petits morceaux, ce qui accélère nettement la déconnexion et /reload avec les addons qui stockent beaucoup de données."
 
     -- Conseils de performance

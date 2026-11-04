@@ -26,11 +26,12 @@ if GetLocale() == "koKR" then
 
     -- 팝업
     L.RESET_POPUP_TITLE = "기본값으로 초기화"
-    L.RESET_POPUP_TEXT = "모든 설정을 기본값으로 초기화하고 창의 크기와 위치도 기본값으로 되돌리시겠습니까?"
+    L.RESET_POPUP_TEXT = "모든 설정을 기본값으로 초기화하고, 창의 크기와 위치를 기본값으로 되돌리고, 모든 섹션을 펼치시겠습니까?"
 
     -- 채팅 메시지 ("AwesomeCVar:" 접두사 뒤에 출력)
     L.MSG_LOADED = "로드되었습니다. /awesome을 입력하면 설정 창이 열립니다."
-    L.MSG_FRAME_RESET = "창의 크기와 위치를 초기화했습니다."
+    L.MSG_LUA_SWAP_PROFILER = "스크립트 프로파일러(scriptProfile CVar)가 켜져 있어 LuaJIT의 JIT가 실행되지 않으며 애드온이 빨라지지 않습니다. /console scriptProfile 0 으로 끈 뒤 /reload 하세요."
+    L.MSG_FRAME_RESET = "창의 크기와 위치를 초기화하고 모든 섹션을 펼쳤습니다."
     L.MSG_SET_VALUE = "%s을(를) %s(으)로 설정했습니다."
     L.MSG_DEFAULTS_RESET = "모든 설정을 기본값으로 초기화했습니다."
     L.MSG_UNKNOWN_COMMAND = "알 수 없는 명령어입니다. 명령어 목록은 /awesome help를 입력하세요."
@@ -38,7 +39,7 @@ if GetLocale() == "koKR" then
     L.MSG_HELP_TOGGLE = "/awesome - 설정 창 열기/닫기"
     L.MSG_HELP_SHOW = "/awesome show - 설정 창 열기"
     L.MSG_HELP_HIDE = "/awesome hide - 설정 창 닫기"
-    L.MSG_HELP_RESET = "/awesome reset - 창의 크기와 위치를 기본값으로 되돌리기"
+    L.MSG_HELP_RESET = "/awesome reset - 창의 크기와 위치를 기본값으로 되돌리고 모든 섹션 펼치기"
     L.MSG_HELP_HELP = "/awesome help - 이 목록 표시"
 
     -- CVar 분류
@@ -241,7 +242,7 @@ if GetLocale() == "koKR" then
     L.DESC_FRAME_CAPTURE = "프레임 하나와 그 안의 모든 요소를 투명한 배경의 PNG로 Screenshots 폴더에 저장합니다. 이미지는 실제로 그려진 부분에 맞게 잘립니다.\n/fcapture는 마우스 커서 아래의 프레임을 캡처합니다. 채팅창처럼 마우스에 반응하지 않는 프레임은 이름을 지정해야 하며, /fstack으로 프레임 이름을 확인할 수 있습니다. 크기를 추가하면 더 크게 렌더링합니다. 숫자는 긴 쪽의 픽셀 수이고, 숫자 뒤에 x를 붙이면 화면 크기의 배수입니다. 확대한 글자는 MSDF 글꼴을 사용할 때만 선명하게 유지됩니다.\n\n예시:\n/fcapture PlayerFrame 2x\n/fcapture ChatFrame1 2048"
     L.DESC_CLIPBOARD = "영어가 아닌 텍스트를 게임에서 복사하거나 게임에 붙여 넣을 때 더 이상 '???'로 바뀌지 않습니다."
     L.DESC_WORLD_CULL = "엔진의 월드 컬링은 무엇을 그릴지 결정합니다. 그중 문과 창문을 통한 시야, 그리고 언덕 뒤를 가리는 지형 지평선 두 부분을 버그를 수정한 정확한 복제본으로 교체합니다. 능선 바로 뒤의 생물과 오브젝트가 더 이상 잘못 숨겨지거나 표시되지 않으며, 화면에 문이 많을 때 게임이 해제된 메모리를 더 이상 읽지 않습니다.\n끄면 엔진의 컬링은 그대로 유지됩니다."
-    L.DESC_LUA_SWAP = "모든 애드온과 기본 UI를 실행하는 게임의 Lua VM을 JIT 컴파일러인 LuaJIT로 교체합니다. 애드온은 그대로 동작하며 더 빨라집니다.\n위험: 이 기능은 게임의 Lua 함수를 후킹합니다. 서버의 Warden 안티치트가 해당 함수를 검사하면 탐지될 수 있으므로, 사용에 따른 위험은 본인이 감수해야 합니다."
+    L.DESC_LUA_SWAP = "모든 애드온과 기본 UI를 실행하는 게임의 Lua VM을 JIT 컴파일러인 LuaJIT로 교체합니다. 애드온은 그대로 동작하며 더 빨라집니다.\n게임의 스크립트 프로파일러(scriptProfile CVar)가 켜져 있으면 JIT가 실행되지 않고 모든 함수가 인터프리터로 실행되므로 속도 향상이 사라집니다.\n위험: 이 기능은 게임의 Lua 함수를 후킹합니다. 서버의 Warden 안티치트가 해당 함수를 검사하면 탐지될 수 있으므로, 사용에 따른 위험은 본인이 감수해야 합니다."
     L.DESC_SAVED_VARIABLES = "애드온 데이터(SavedVariables)를 작은 조각 여러 개가 아닌 큰 블록 단위로 디스크에 기록하므로, 데이터가 많은 애드온을 쓸 때 로그아웃과 /reload가 눈에 띄게 빨라집니다."
 
     -- 성능 정보

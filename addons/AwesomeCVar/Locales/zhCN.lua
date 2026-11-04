@@ -26,11 +26,12 @@ if GetLocale() == "zhCN" then
 
     -- 弹出窗口
     L.RESET_POPUP_TITLE = "重置为默认值"
-    L.RESET_POPUP_TEXT = "要将所有设置重置为默认值，并恢复窗口的默认大小和位置吗？"
+    L.RESET_POPUP_TEXT = "要将所有设置重置为默认值、恢复窗口的默认大小和位置并展开所有分区吗？"
 
     -- 聊天消息（显示在 "AwesomeCVar:" 前缀之后）
     L.MSG_LOADED = "已加载。输入 /awesome 打开设置。"
-    L.MSG_FRAME_RESET = "窗口大小和位置已重置。"
+    L.MSG_LUA_SWAP_PROFILER = "脚本性能分析（scriptProfile CVar）已开启，因此 LuaJIT 的 JIT 不会运行，插件不会提速。请用 /console scriptProfile 0 关闭它，然后执行 /reload。"
+    L.MSG_FRAME_RESET = "窗口大小和位置已重置，所有分区已展开。"
     L.MSG_SET_VALUE = "已将 %s 设为 %s。"
     L.MSG_DEFAULTS_RESET = "所有设置已重置为默认值。"
     L.MSG_UNKNOWN_COMMAND = "未知命令。输入 /awesome help 查看命令列表。"
@@ -38,7 +39,7 @@ if GetLocale() == "zhCN" then
     L.MSG_HELP_TOGGLE = "/awesome - 打开或关闭设置窗口"
     L.MSG_HELP_SHOW = "/awesome show - 打开设置窗口"
     L.MSG_HELP_HIDE = "/awesome hide - 关闭设置窗口"
-    L.MSG_HELP_RESET = "/awesome reset - 恢复窗口的默认大小和位置"
+    L.MSG_HELP_RESET = "/awesome reset - 恢复窗口的默认大小和位置并展开所有分区"
     L.MSG_HELP_HELP = "/awesome help - 显示此列表"
 
     -- CVar 分类
@@ -241,7 +242,7 @@ if GetLocale() == "zhCN" then
     L.DESC_FRAME_CAPTURE = "将单个框体及其中的所有内容保存为透明背景的 PNG，按实际绘制的内容裁剪，存放在 Screenshots 文件夹中。\n/fcapture 截取鼠标指针下的框体。不响应鼠标的框体（如聊天窗口）需要指定名称；/fstack 可显示框体名称。添加尺寸可放大渲染：数字指定较长边的像素数，数字后加 x 表示屏幕尺寸的倍数。放大后的文字只有在启用 MSDF 字体渲染时才能保持清晰。\n\n示例：\n/fcapture PlayerFrame 2x\n/fcapture ChatFrame1 2048"
     L.DESC_CLIPBOARD = "从游戏中复制或粘贴到游戏中的非英文文本不再变成 '???'。"
     L.DESC_WORLD_CULL = "引擎的世界剔除决定绘制哪些内容。此选项将其中两部分替换为修复了错误的精确副本：透过门窗的视野，以及遮挡山丘后方内容的地形地平线。紧挨山脊后方的生物和物体不再被错误地隐藏或显示，屏幕上有大量门洞时游戏也不再读取已释放的内存。\n关闭时，引擎的剔除保持不变。"
-    L.DESC_LUA_SWAP = "将运行所有插件和默认界面的游戏 Lua 虚拟机替换为 LuaJIT（一种即时编译器）。插件无需改动，只会运行得更快。\n风险：此功能会挂钩游戏的 Lua 函数。如果服务器的 Warden 反作弊检查这些函数，就可能检测到它，请自行承担风险。"
+    L.DESC_LUA_SWAP = "将运行所有插件和默认界面的游戏 Lua 虚拟机替换为 LuaJIT（一种即时编译器）。插件无需改动，只会运行得更快。\n开启游戏的脚本性能分析（scriptProfile CVar）时，JIT 不会运行，所有函数都由解释器执行，因此不会有提速效果。\n风险：此功能会挂钩游戏的 Lua 函数。如果服务器的 Warden 反作弊检查这些函数，就可能检测到它，请自行承担风险。"
     L.DESC_SAVED_VARIABLES = "插件数据（SavedVariables）以大块写入磁盘，而不是许多小片段，使用数据量大的插件时，登出和 /reload 会明显更快。"
 
     -- 性能提示

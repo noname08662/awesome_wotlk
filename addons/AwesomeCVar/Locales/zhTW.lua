@@ -26,11 +26,12 @@ if GetLocale() == "zhTW" then
 
     -- 彈出視窗
     L.RESET_POPUP_TITLE = "重設為預設值"
-    L.RESET_POPUP_TEXT = "要將所有設定重設為預設值，並恢復視窗的預設大小和位置嗎？"
+    L.RESET_POPUP_TEXT = "要將所有設定重設為預設值、恢復視窗的預設大小和位置並展開所有區段嗎？"
 
     -- 聊天訊息（顯示在 "AwesomeCVar:" 前綴之後）
     L.MSG_LOADED = "已載入。輸入 /awesome 開啟設定。"
-    L.MSG_FRAME_RESET = "視窗大小和位置已重設。"
+    L.MSG_LUA_SWAP_PROFILER = "腳本效能分析（scriptProfile CVar）已開啟，因此 LuaJIT 的 JIT 不會執行，插件不會加速。請用 /console scriptProfile 0 關閉它，然後執行 /reload。"
+    L.MSG_FRAME_RESET = "視窗大小和位置已重設，所有區段已展開。"
     L.MSG_SET_VALUE = "已將 %s 設為 %s。"
     L.MSG_DEFAULTS_RESET = "所有設定已重設為預設值。"
     L.MSG_UNKNOWN_COMMAND = "未知的指令。輸入 /awesome help 查看指令列表。"
@@ -38,7 +39,7 @@ if GetLocale() == "zhTW" then
     L.MSG_HELP_TOGGLE = "/awesome - 開啟或關閉設定視窗"
     L.MSG_HELP_SHOW = "/awesome show - 開啟設定視窗"
     L.MSG_HELP_HIDE = "/awesome hide - 關閉設定視窗"
-    L.MSG_HELP_RESET = "/awesome reset - 恢復視窗的預設大小和位置"
+    L.MSG_HELP_RESET = "/awesome reset - 恢復視窗的預設大小和位置並展開所有區段"
     L.MSG_HELP_HELP = "/awesome help - 顯示此列表"
 
     -- CVar 分類
@@ -241,7 +242,7 @@ if GetLocale() == "zhTW" then
     L.DESC_FRAME_CAPTURE = "將單一框架及其中的所有內容儲存為透明背景的 PNG，依實際繪製的內容裁切，存放在 Screenshots 資料夾中。\n/fcapture 擷取滑鼠游標下的框架。不回應滑鼠的框架（如聊天視窗）需要指定名稱；/fstack 可顯示框架名稱。加上尺寸可放大渲染：數字指定較長邊的像素數，數字後加 x 表示螢幕尺寸的倍數。放大後的文字只有在啟用 MSDF 字型渲染時才能保持清晰。\n\n範例：\n/fcapture PlayerFrame 2x\n/fcapture ChatFrame1 2048"
     L.DESC_CLIPBOARD = "從遊戲中複製或貼上到遊戲中的非英文文字不再變成 '???'。"
     L.DESC_WORLD_CULL = "引擎的世界剔除決定要繪製哪些內容。此選項將其中兩部分替換為修正了錯誤的精確副本：透過門窗的視野，以及遮擋山丘後方內容的地形地平線。緊鄰山脊後方的生物和物件不再被錯誤地隱藏或顯示，畫面上有大量門洞時遊戲也不再讀取已釋放的記憶體。\n關閉時，引擎的剔除維持不變。"
-    L.DESC_LUA_SWAP = "將執行所有插件和預設介面的遊戲 Lua 虛擬機器替換為 LuaJIT（一種即時編譯器）。插件無須修改，只會執行得更快。\n風險：此功能會掛鉤遊戲的 Lua 函式。如果伺服器的 Warden 反作弊檢查這些函式，就可能偵測到它，請自行承擔風險。"
+    L.DESC_LUA_SWAP = "將執行所有插件和預設介面的遊戲 Lua 虛擬機器替換為 LuaJIT（一種即時編譯器）。插件無須修改，只會執行得更快。\n開啟遊戲的腳本效能分析（scriptProfile CVar）時，JIT 不會執行，所有函式都由直譯器執行，因此不會有加速效果。\n風險：此功能會掛鉤遊戲的 Lua 函式。如果伺服器的 Warden 反作弊檢查這些函式，就可能偵測到它，請自行承擔風險。"
     L.DESC_SAVED_VARIABLES = "插件資料（SavedVariables）以大區塊寫入磁碟，而不是許多小片段，使用資料量大的插件時，登出和 /reload 會明顯更快。"
 
     -- 效能提示

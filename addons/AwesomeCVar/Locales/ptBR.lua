@@ -26,11 +26,12 @@ if GetLocale() == "ptBR" then
 
     -- Janelas pop-up
     L.RESET_POPUP_TITLE = "Redefinir para os padrões"
-    L.RESET_POPUP_TEXT = "Redefinir todas as configurações para os valores padrão e restaurar o tamanho e a posição padrão da janela?"
+    L.RESET_POPUP_TEXT = "Redefinir todas as configurações para os valores padrão, restaurar o tamanho e a posição padrão da janela e expandir todas as seções?"
 
     -- Mensagens no bate-papo (exibidas após o prefixo "AwesomeCVar:")
     L.MSG_LOADED = "Carregado. Digite /awesome para abrir as configurações."
-    L.MSG_FRAME_RESET = "Tamanho e posição da janela redefinidos."
+    L.MSG_LUA_SWAP_PROFILER = "O profiler de scripts (CVar scriptProfile) está ligado, então o JIT do LuaJIT não roda e os addons não ficam mais rápidos. Desligue com /console scriptProfile 0 e depois use /reload."
+    L.MSG_FRAME_RESET = "Tamanho e posição da janela redefinidos; todas as seções expandidas."
     L.MSG_SET_VALUE = "%s definido como %s."
     L.MSG_DEFAULTS_RESET = "Todas as configurações foram redefinidas para os valores padrão."
     L.MSG_UNKNOWN_COMMAND = "Comando desconhecido. Digite /awesome help para ver a lista de comandos."
@@ -38,7 +39,7 @@ if GetLocale() == "ptBR" then
     L.MSG_HELP_TOGGLE = "/awesome - Abre ou fecha a janela de configurações"
     L.MSG_HELP_SHOW = "/awesome show - Abre a janela de configurações"
     L.MSG_HELP_HIDE = "/awesome hide - Fecha a janela de configurações"
-    L.MSG_HELP_RESET = "/awesome reset - Restaura o tamanho e a posição padrão da janela"
+    L.MSG_HELP_RESET = "/awesome reset - Restaura o tamanho e a posição padrão da janela e expande todas as seções"
     L.MSG_HELP_HELP = "/awesome help - Mostra esta lista"
 
     -- Categorias de CVars
@@ -241,7 +242,7 @@ if GetLocale() == "ptBR" then
     L.DESC_FRAME_CAPTURE = "Salva um único quadro, com tudo o que há dentro dele, como PNG com fundo transparente, recortado ao que é desenhado, na pasta Screenshots.\n/fcapture captura o quadro sob o cursor do mouse. Quadros que não respondem ao mouse, como a janela de bate-papo, precisam ser informados pelo nome; /fstack mostra os nomes dos quadros. Adicione um tamanho para renderizar maior: um número define o lado maior em pixels, e um número seguido de x multiplica o tamanho na tela. O texto ampliado só continua nítido com as fontes MSDF ativadas.\n\nExemplo:\n/fcapture PlayerFrame 2x\n/fcapture ChatFrame1 2048"
     L.DESC_CLIPBOARD = "Textos que não estão em inglês não viram mais '???' ao serem copiados do jogo ou colados nele."
     L.DESC_WORLD_CULL = "Substitui duas partes do culling do mundo do motor, que decide o que é desenhado, por cópias exatas que corrigem seus bugs: a visão através de portas e janelas, e o horizonte do terreno que esconde o que está atrás das colinas. Criaturas e objetos logo atrás de uma crista não são mais escondidos nem mostrados por engano, e o jogo não lê mais memória liberada quando há muitas portas na tela.\nDesligado, o culling do motor fica inalterado."
-    L.DESC_LUA_SWAP = "Substitui a VM Lua do jogo, que executa todos os addons e a interface padrão, pelo LuaJIT, um compilador just-in-time. Os addons funcionam sem alterações, só que mais rápido.\nRisco: isso intercepta as funções Lua do jogo. Um servidor cujo antitrapaça Warden verifique essas funções poderia detectar isso, então use por sua conta e risco."
+    L.DESC_LUA_SWAP = "Substitui a VM Lua do jogo, que executa todos os addons e a interface padrão, pelo LuaJIT, um compilador just-in-time. Os addons funcionam sem alterações, só que mais rápido.\nCom o profiler de scripts do jogo ligado (a CVar scriptProfile), o JIT não roda e todas as funções passam pelo interpretador, então o ganho de velocidade se perde.\nRisco: isso intercepta as funções Lua do jogo. Um servidor cujo antitrapaça Warden verifique essas funções poderia detectar isso, então use por sua conta e risco."
     L.DESC_SAVED_VARIABLES = "Os dados de addons (SavedVariables) são gravados no disco em blocos grandes em vez de muitos pedaços pequenos, o que deixa o logout e o /reload visivelmente mais rápidos com addons que guardam muitos dados."
 
     -- Dicas de desempenho

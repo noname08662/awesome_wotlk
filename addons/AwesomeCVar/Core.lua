@@ -42,6 +42,12 @@ function ACVar:PrintCVarChange(cvarName, value, label)
     )
 end
 
+function ACVar:WarnLuaSwapProfiler()
+    if tonumber(GetCVar("luaSwap")) == 1 and tonumber(GetCVar("scriptProfile")) == 1 then
+        self:PrintMessage("%s", L.MSG_LUA_SWAP_PROFILER)
+    end
+end
+
 function ACVar:GetCVarValue(cvarName)
     local value = GetCVar(cvarName)
     return tonumber(value) or value
@@ -201,6 +207,7 @@ function ACVar:OnLoad()
     if self.DB.showChatMessages then
         self:PrintMessage(L.MSG_LOADED)
     end
+    self:WarnLuaSwapProfiler()
     if self.GetVersionStatus() ~= "ok" then
         self:PrintMessage("%s", self.GetVersionStatusText())
     end
@@ -307,6 +314,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg)
             if db.showGameMenuButton == nil then db.showGameMenuButton = true end
             if db.showChatMessages == nil then db.showChatMessages = true end
             if db.showVersionAlerts == nil then db.showVersionAlerts = true end
+            db.collapsedSections = db.collapsedSections or {}
 
             ACVar.DB = db
             ACVar:OnLoad()
