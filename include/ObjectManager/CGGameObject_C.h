@@ -3,9 +3,8 @@
 #include "BaseTypes.h"
 
 #include "DB/DBRecords.h"
+#include "M2/CM2Model.h"
 #include "ObjectManager/CGObject_C.h"
-
-class CM2Model;
 
 class CGGameObject_C : public CGObject_C {
 public:
@@ -25,6 +24,8 @@ public:
 
     // usable right now and of a type the interact key acts on
     bool canInteract() {
+        CM2Model* model = getObjectModel();
+        if (model == nullptr || model->isLoaded(0, 0) == 0) { return false; }
         switch (descriptors_->subtype) {
             case eGameobjectTypeDoor:
             case eGameobjectTypeButton:
