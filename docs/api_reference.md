@@ -655,6 +655,12 @@ Only used if `interactionMode` is set to 1 (default).
 
 Toggles the highlight on the object or unit the interaction keybind would currently interact with.
 
+## interactionFlags `CVar`
+**Arguments:** `flags` (boolean)  
+**Default:** 1
+
+Includes battleground flags in what the interaction keybind and `/interact` pick: WSG flag stands and dropped flags, EotS tower flags, and AV banners. A flag within range always wins over NPCs and loot, so the keybind grabs a flag instead of cycling past it. Flags are sent to the server as a normal gameobject use, which decides between capturing, returning, or ignoring the click, so pressing the keybind next to a flag you cannot take does nothing.
+
 ## MSDFMode `CVar`
 **Arguments:** `mode` (number)  
 **Default:** 1

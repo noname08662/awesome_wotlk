@@ -266,6 +266,7 @@ ACVar.CVARS = {
         { name = "interactionAngle", label = L.CVAR_LABEL_INTERACTION_ANGLE, desc = L.DESC_INTERACTION_ANGLE, perf = L.PERF_NONE, type = "slider", min = 15, max = 160, step = 1, default = 60,
             requires = REQUIRES.cone },
         { name = "interactionHighlight", label = L.CVAR_LABEL_INTERACTION_HIGHLIGHT, desc = L.DESC_INTERACTION_HIGHLIGHT, perf = L.PERF_NEGLIGIBLE, type = "toggle", min = 0, max = 1, default = 1 },
+        { name = "interactionFlags", label = L.CVAR_LABEL_INTERACTION_FLAGS, desc = L.DESC_INTERACTION_FLAGS, perf = L.PERF_NEGLIGIBLE, type = "toggle", min = 0, max = 1, default = 1 },
     },
     Other = {
         { name = "headerLuaEngine", label = L.SECTION_LUA_ENGINE, type = "header" },

@@ -26,6 +26,12 @@ inline constexpr DWORD kCandidateScanIntervalMs = 100;
 
 inline constexpr auto kInteractTypemask = static_cast<TypeMask>(eTypemaskGameobject | eTypemaskUnit);
 
+// a flag reports no interaction range of its own on some servers, so fall back to 5 yards
+inline constexpr float kFlagInteractDistanceSqFallback = 25.0f;
+
+// set from the interactionFlags cvar on every scan
+inline bool interact_flags = true;
+
 struct CycleStamp {
     guid_t guid;
     uint32_t stamp;
@@ -102,6 +108,16 @@ struct InteractState {
     static bool isLootTarget(CGObject_C* object);
     static bool isValidTarget(CGObject_C* object, CGUnit_C* player, float distance_sq, bool is_loot);
 
+    static bool isFlag(CGObject_C* object) {
+        return object->type_id_ == eTypeidGameobject && object->as<CGGameObject_C>()->isFlag();
+    }
+
+    static bool isFlagInRange(CGGameObject_C* go, float distance_sq) {
+        float range_sq = go->getInteractDistanceSq();
+        if (range_sq <= 0.0f) { range_sq = kFlagInteractDistanceSqFallback; }
+        return distance_sq <= range_sq;
+    }
+
     static void dimHighlight(CGObject_C* object) {
         if ((object->highlight_mask_ & CGObject_C::eHighlightMaskNative) != 0) { return; }
         if (CM2Model* model = object->getObjectModel()) { model->emissive_color_ *= 0.8f; }
@@ -131,9 +147,12 @@ inline void InteractState::updateCandidate() {
 
     CycleEntry best_loot;
     CycleEntry nearest_other;
+    CycleEntry nearest_flag;
 
     auto* player = object_mgr::get<CGPlayer_C>(object_mgr::getPlayerGuid(), eTypemaskPlayer);
     if (player == nullptr) { return; }
+
+    interact_flags = extensions::console::kCvarRegistry->ref<"interactionFlags", int>() != 0;
 
     auto angle_degrees = static_cast<float>(extensions::console::kCvarRegistry->ref<"interactionAngle", int>()) * 0.5f;
     bool look_in_angle = extensions::console::kCvarRegistry->ref<"interactionMode", int>() == 1;
@@ -149,9 +168,13 @@ inline void InteractState::updateCandidate() {
         auto distance_sq = static_cast<float>(object->getDistanceToPosSq(&pos_player));
         if (distance_sq == 0.0f || distance_sq > 400.0f) { return; }
 
+        bool is_flag = interact_flags && isFlag(object);
         bool is_loot = isLootTarget(object);
         CycleEntry entry{.guid = guid, .stamp = CycleStamp::find(cycle_stamps, guid), .distance_sq = distance_sq};
-        if (is_loot ? entry.key() > best_loot.key() : distance_sq > nearest_other.distance_sq) { return; }
+        if (is_flag ? distance_sq > nearest_flag.distance_sq
+                    : (is_loot ? entry.key() > best_loot.key() : distance_sq > nearest_other.distance_sq)) {
+            return;
+        }
 
         if (!isValidTarget(object, player, distance_sq, is_loot)) { return; }
 
@@ -174,7 +197,7 @@ inline void InteractState::updateCandidate() {
             }
         }
 
-        (is_loot ? best_loot : nearest_other) = entry;
+        (is_flag ? nearest_flag : (is_loot ? best_loot : nearest_other)) = entry;
     };
 
     object_mgr::enumObjects([&](guid_t guid) {
@@ -182,7 +205,11 @@ inline void InteractState::updateCandidate() {
         return true;
     });
 
-    candidate = nearest_other.key() < best_loot.key() ? nearest_other.guid : best_loot.guid;
+    if (nearest_flag.guid != 0) {
+        candidate = nearest_flag.guid;  // a flag in range always wins: capture or return it first
+    } else {
+        candidate = nearest_other.key() < best_loot.key() ? nearest_other.guid : best_loot.guid;
+    }
     setHighlighted((extensions::console::kCvarRegistry->ref<"interactionHighlight", int>() != 0) ? candidate : 0);
 }
 
@@ -223,7 +250,11 @@ inline bool InteractState::isValidTarget(CGObject_C* object, CGUnit_C* player, f
         bool flags_ok = is_loot || (can_assist && npc_flags != 0);
         return flags_ok && distance_sq <= unit->getInteractDistanceSq();
     }
-    if (object->type_id_ == eTypeidGameobject) { return object->as<CGGameObject_C>()->canInteract(); }
+    if (object->type_id_ == eTypeidGameobject) {
+        auto* go = object->as<CGGameObject_C>();
+        if (interact_flags && go->isFlag()) { return go->canInteractFlag() && isFlagInRange(go, distance_sq); }
+        return go->canInteract();
+    }
     return false;
 }
 }  // namespace misc_interaction

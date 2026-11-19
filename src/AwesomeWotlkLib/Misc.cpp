@@ -623,6 +623,7 @@ void misc::initialize(hookkit::HookTransaction& tx) {
     cvars.add<int>({.name = "interactionMode", .init = 1, .min{0}, .max{1}});
     cvars.add<int>(
         {.name = "interactionHighlight", .init = 1, .min{0}, .max{1}, .on_change = applyInteractionHighlight});
+    cvars.add<int>({.name = "interactionFlags", .init = 1, .min{0}, .max{1}});
     cvars.add<int>({.name = "portraitResolution", .init = 64, .min{64}, .max{2048}, .on_change = applyPortraitRes});
     cvars.add<int>({.name = "objectHighlightMode", .init = 0, .min{0}, .max{2}, .on_change = applyObjHlMode});
     cvars.add<int>({.name = "chatLogSessionKey", .init = 1, .min{0}, .max{1}, .on_change = applyChatLogStamp});

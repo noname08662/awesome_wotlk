@@ -10,6 +10,12 @@ class CGGameObject_C : public CGObject_C {
 public:
     GameObjectEntry* descriptors_;
 
+    enum GoFlags : uint32_t {
+        eGoFlagInUse = 0x00000001,
+        eGoFlagLocked = 0x00000002,
+        eGoFlagNotSelectable = 0x00000010,
+    };
+
     HOOKKIT_HOOK(getLockRec, 0x0070EF30, hookkit::Conv::eThiscall, LockRec*, CGGameObject_C*);
     HOOKKIT_HOOK(checkForPassiveHighlight, 0x00711210, hookkit::Conv::eThiscall, void, CGGameObject_C*);
     HOOKKIT_HOOK(showLootEffect, 0x0070D080, hookkit::Conv::eThiscall, void, CGGameObject_C*);
@@ -43,5 +49,21 @@ public:
             default:
                 return false;
         }
+    }
+
+    // battleground flags: WSG flag stands and dropped flags, EotS tower flags, AV banners
+    bool isFlag() const {
+        return descriptors_->subtype == eGameobjectTypeFlagstand || descriptors_->subtype == eGameobjectTypeFlagdrop;
+    }
+
+    // A flag is never "useful" in the engine's sense: it has no lock record and its use state
+    // is what changes when the flag is picked up, so canUse()/canUseNow() reject every flag
+    // and the object never becomes an interaction candidate. Capturing or returning one is a
+    // plain CMSG_GAMEOBJ_USE, which onRightClick() already sends, so the flag is handed to the
+    // server instead: it decides between pick up, return, or nothing at all.
+    bool canInteractFlag() {
+        CM2Model* model = getObjectModel();
+        if (model == nullptr || model->isLoaded(0, 0) == 0) { return false; }
+        return (descriptors_->flags & eGoFlagNotSelectable) == 0;
     }
 };
