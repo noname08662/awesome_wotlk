@@ -471,11 +471,11 @@ bool MSDFCache::writeBlockFile(
     auto merged_entries = glyph_entry_pool_.acquire(old_entries.size() + pending.size());
     auto hash_table = hash_pool_.acquireSized(kBlockSize, kInvalidId);
 
-    std::vector<uint8_t>* payload_ref = nullptr;
+    std::vector<uint8_t> payload_buffer;
     FinalAction cleanup([&]() {
         if (!hash_table.empty()) { hash_pool_.release(std::move(hash_table)); }
         if (!merged_entries.empty()) { glyph_entry_pool_.release(std::move(merged_entries)); }
-        if (payload_ref != nullptr && !payload_ref->empty()) { vec_pool_.release(std::move(*payload_ref)); }
+        if (!payload_buffer.empty()) { vec_pool_.release(std::move(payload_buffer)); }
     });
 
     const auto make_entry = [](const GlyphMetricsToStore* p) {
@@ -516,8 +516,7 @@ bool MSDFCache::writeBlockFile(
         hash_table[merged_entries[i].codepoint & (kBlockSize - 1)] = i;
     }
 
-    auto payload_buffer = vec_pool_.acquireSized(total_payload_size);
-    payload_ref = &payload_buffer;
+    payload_buffer = vec_pool_.acquireSized(total_payload_size);
 
     const std::span payload_out(payload_buffer);
     auto pending_copy_it = pending.begin();
